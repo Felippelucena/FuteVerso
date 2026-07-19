@@ -17,11 +17,11 @@ Cada questão deve sair daqui somente quando possuir uma decisão registrada no 
 | --- | --- | --- | --- | --- |
 | Q01 | Linguagem e runtime definitivos | Decidido | TypeScript como linguagem principal; domínio em TS puro e runtime web/desktop por adaptadores | [camadas](../arquitetura/camadas.md) |
 | Q02 | Framework da interface | Decidido | Vite + React + TypeScript + Zod + Tailwind | [camadas](../arquitetura/camadas.md) |
-| Q03 | Formato final de distribuição | Decidido | Web app local/PWA como base e distribuição desktop com Tauri; Electron apenas como alternativa de contingência | [camadas](../arquitetura/camadas.md) |
-| Q04 | Estratégia exata de mods | Decidido | Mods declarativos em pacotes versionados, validados por schemas Zod e aplicados sobre o banco de conteúdo | [mods](../dados/mods.md) |
+| Q03 | Formato final de distribuição | Decidido | Windows desktop com Tauri como alvo principal; web app local para desenvolvimento; mobile futuro por Tauri quando a UX justificar | [camadas](../arquitetura/camadas.md) |
+| Q04 | Estratégia exata de mods | Decidido | Mods declarativos em arquivos/pacotes versionados, validados por schemas Zod e aplicados sobre o conteúdo base | [mods](../dados/mods.md) |
 | Q05 | Resolução de conflitos entre pacotes | Decidido | Ordem determinística de carregamento, validação prévia e relatório explícito de conflitos antes da campanha | [mods](../dados/mods.md) |
 | Q06 | Esquema de IDs | Em aberto | A definir | [IDs e referências](../dominio/ids-e-referencias.md) |
-| Q07 | Formato das regras editáveis | Em aberto | A definir | [banco de conteúdo](../dados/banco-conteudo.md) |
+| Q07 | Formato das regras editáveis | Decidido | Regras editáveis serão dados declarativos em JSON/JSONC validados por schema, sem execução de código arbitrário | [banco de conteúdo](../dados/banco-conteudo.md) |
 | Q08 | Estrutura definitiva do simulador | Em aberto | A definir | [arquitetura do simulador](../simulador/arquitetura.md) |
 | Q09 | Modelo financeiro | Em aberto | A definir | [módulos](../dominio/modulos.md) |
 | Q10 | Profundidade da comissão técnica | Em aberto | A definir | [módulos](../dominio/modulos.md) |

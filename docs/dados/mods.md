@@ -7,7 +7,7 @@ Este documento detalhará a estratégia de mods do FuteVerso.
 - [Q04 - Estratégia exata de mods](../planejamento/questoes-em-aberto.md)
 - [Q05 - Resolução de conflitos entre pacotes](../planejamento/questoes-em-aberto.md)
 
-## Perguntas iniciais
+## Perguntas respondidas
 
 1. Mods substituem, estendem ou combinam entidades?
 2. Como a ordem de carregamento é definida?
@@ -19,7 +19,11 @@ Este documento detalhará a estratégia de mods do FuteVerso.
 
 Estas decisões respondem Q04 e Q05.
 
-Mods serão pacotes declarativos de dados. Um mod pode adicionar, substituir ou estender entidades do banco de conteúdo, mas não deve executar código arbitrário dentro do domínio.
+Mods serão pacotes declarativos de dados. Um mod pode adicionar, substituir ou estender entidades do conteúdo base, mas não deve executar código arbitrário dentro do domínio.
+
+O formato padrão de mod será um conjunto de arquivos estruturados. Para distribuição, um pacote `.fvmod` pode ser usado como convenção de empacotamento; internamente, ele deve ser tratável como um arquivo compactado contendo manifesto, dados e mídias.
+
+No Windows, o jogo pode aceitar tanto pastas de mod quanto pacotes importáveis. Em mobile futuro, a estratégia preferencial deve ser importação de pacote, porque o acesso a pastas soltas é mais restrito.
 
 Cada pacote deve possuir um manifesto com, no mínimo:
 
@@ -33,7 +37,33 @@ Cada pacote deve possuir um manifesto com, no mínimo:
 - lista de alterações;
 - escopo de conteúdo alterado.
 
-As alterações devem ser descritas em arquivos estruturados e validadas por schemas Zod antes de serem aplicadas. O carregador de mods deve produzir um conteúdo resolvido, validado e rastreável, sem alterar diretamente as fontes originais dos pacotes.
+As alterações devem ser descritas em arquivos JSON/JSONC e validadas por schemas Zod antes de serem aplicadas. O carregador de mods deve produzir um conteúdo resolvido, validado e rastreável, sem alterar diretamente as fontes originais dos pacotes.
+
+## Estrutura de pacote
+
+Estrutura recomendada:
+
+```text
+meu-mod/
+  manifest.json
+  clubs/
+    *.json
+  people/
+    *.json
+  competitions/
+    *.json
+  rules/
+    *.json
+  media/
+```
+
+Distribuição compactada:
+
+```text
+meu-mod.fvmod
+```
+
+O editor pode exportar um pacote `.fvmod`, mas durante o desenvolvimento local o mesmo conteúdo pode ser mantido como pasta para facilitar versionamento, diff e revisão.
 
 ## Operações permitidas
 
@@ -78,3 +108,20 @@ Conflitos não devem ser resolvidos de forma silenciosa. O editor deve apresenta
 Uma campanha deve guardar snapshot ou referência resolvida do conteúdo usado na sua criação.
 
 Alterações posteriores em mods instalados não devem modificar uma campanha existente automaticamente. Atualizar uma campanha para uma nova composição de mods deve ser uma operação explícita, validada e migrável.
+
+## Conteúdo modável
+
+A meta de design é permitir que todo conteúdo de jogo seja modável por dados, incluindo:
+
+- clubes;
+- pessoas;
+- estádios;
+- cidades;
+- países;
+- competições;
+- regras parametrizáveis;
+- mídias;
+- atributos iniciais;
+- históricos oficiais.
+
+Essa abertura não significa permitir código arbitrário em mods. Comportamentos complexos devem ser expostos como regras, parâmetros, presets ou combinações suportadas pelo código oficial do jogo.

@@ -38,6 +38,34 @@ O conteúdo pode ser:
 - sobrescrito por mods;
 - versionado.
 
+## Armazenamento do conteúdo
+
+O conteúdo editável deve ser baseado em arquivos estruturados, com JSON como formato padrão. JSONC pode ser aceito em arquivos de autoria quando comentários forem úteis, desde que seja normalizado antes da validação.
+
+Estrutura conceitual:
+
+```text
+content/
+  base/
+    manifest.json
+    clubs/
+    people/
+    competitions/
+    rules/
+    media/
+
+mods/
+  pacote-exemplo/
+    manifest.json
+    clubs/
+    people/
+    competitions/
+    rules/
+    media/
+```
+
+Arquivos de conteúdo são a fonte de verdade para autoria, revisão, importação, exportação e mods. Bancos ou índices derivados podem existir para performance, mas devem ser reconstruíveis a partir dos arquivos e manifests.
+
 ## Estado da campanha
 
 A campanha representa uma cópia independente do conteúdo inicial.
@@ -56,9 +84,9 @@ Exemplos de alterações exclusivas da campanha:
 - competições produzem campeões;
 - históricos são acumulados.
 
-Alterações futuras no banco de conteúdo não devem modificar automaticamente campanhas existentes.
+Alterações futuras no conteúdo editável, em caches de conteúdo ou em mods instalados não devem modificar automaticamente campanhas existentes.
 
-## Bancos separados
+## Armazenamentos separados
 
 Sugestão inicial:
 
@@ -66,6 +94,8 @@ Sugestão inicial:
 content.db
 campaign-<id>.db
 ```
+
+`content.db`, quando existir, deve ser tratado como cache ou banco compilado de conteúdo resolvido. Ele não substitui os arquivos de conteúdo e mods como fonte de verdade.
 
 O save da campanha deve ser autocontido.
 
@@ -113,3 +143,4 @@ type MetadadosCampanha = {
 }
 ```
 
+O snapshot deve preservar o suficiente do conteúdo resolvido para que a campanha continue funcionando mesmo que arquivos base, edições locais ou mods sejam alterados depois. Atualizar uma campanha existente para uma nova composição de conteúdo deve ser uma operação explícita, validada e migrável.

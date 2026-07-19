@@ -57,11 +57,23 @@ Essas bibliotecas não devem atravessar a fronteira do domínio.
 
 ### Distribuição
 
-O formato base será web app local/PWA, com distribuição desktop por Tauri.
+O alvo principal de distribuição será Windows desktop por Tauri.
+
+O formato base de desenvolvimento continuará sendo web app local, executado por Vite, para acelerar prototipação e testes de interface. A entrega oficial do jogo, porém, deve considerar desde o início um aplicativo instalável no Windows.
 
 Tauri é a escolha preferencial para executáveis desktop por permitir reaproveitar a interface web, gerar aplicações multiplataforma e manter uma camada nativa pequena para arquivos, banco local e integrações de sistema.
 
 Electron fica definido como alternativa de contingência, caso algum requisito futuro exija integração Node/Chromium mais ampla que a oferecida por Tauri.
+
+Android e iOS são alvos futuros viáveis por Tauri, mas não devem conduzir a arquitetura inicial. O custo principal para mobile não está na persistência ou no empacotamento, e sim na adaptação de UX para telas pequenas, navegação por toque, tabelas extensas, editor de conteúdo e importação de pacotes.
+
+O projeto deve preparar a base para mobile sem transformar mobile no foco da primeira fase:
+
+- interface responsiva desde o início;
+- domínio e aplicação sem dependências de desktop;
+- persistência por portas;
+- mods como pacotes importáveis, não apenas como pastas soltas;
+- SQLite como alvo preferencial também para mobile quando o runtime oferecer suporte adequado.
 
 O jogo não deve depender de uma decisão irreversível entre web e desktop. A camada de aplicação deve conversar com portas, e cada runtime deve fornecer seus adaptadores.
 
