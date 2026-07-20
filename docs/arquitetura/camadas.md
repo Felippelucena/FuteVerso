@@ -21,7 +21,7 @@ As regras do jogo não devem depender de:
 
 TypeScript é a linguagem principal do projeto.
 
-O domínio deve ser implementado em TypeScript puro, sem dependência direta de React, Vite, APIs de navegador, Tauri, IndexedDB, SQLite ou qualquer framework de interface.
+O domínio deve ser implementado em TypeScript puro, sem dependência direta de React, Vite, APIs de navegador, Tauri, IndexedDB, SQLite.
 
 O runtime padrão de desenvolvimento será o ambiente web fornecido por Vite. Runtimes específicos, como navegador, PWA ou desktop, devem entrar pelas camadas de interface e infraestrutura.
 
@@ -51,13 +51,6 @@ Essas bibliotecas não devem atravessar a fronteira do domínio.
 
 O alvo principal de distribuição será Windows desktop por Tauri.
 
-O formato base de desenvolvimento continuará sendo web app local, executado por Vite, para acelerar prototipação e testes de interface. A entrega oficial do jogo, porém, deve considerar desde o início um aplicativo instalável no Windows.
-
-Tauri é a escolha preferencial para executáveis desktop por permitir reaproveitar a interface web, gerar aplicações multiplataforma e manter uma camada nativa pequena para arquivos, banco local e integrações de sistema.
-
-Android e iOS são alvos futuros viáveis por Tauri, mas não devem conduzir a arquitetura inicial. O custo principal para mobile não está na persistência ou no empacotamento, e sim na adaptação de UX para telas pequenas, navegação por toque, tabelas extensas, editor de conteúdo e importação de pacotes.
-
-O jogo não deve depender de uma decisão irreversível entre web e desktop. A camada de aplicação deve conversar com portas, e cada runtime deve fornecer seus adaptadores.
 
 ## Estrutura em camadas
 
