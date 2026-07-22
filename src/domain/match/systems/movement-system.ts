@@ -52,7 +52,7 @@ const updatePlayer = (player: PlayerRuntime, decision: AgentDecision, controlsBa
   if (speed > 0.3 && (!controlsBall || decision.ballAction.kind === "dribble")) player.facing = normalize(player.velocity);
   const stamina = player.profile.skills.stamina / 100;
   const effortCost = 0.85 + player.profile.mental.intensity / 200;
-  const recovery = 0.038 + stamina * 0.012 + clamp((0.72 - player.energy) * 0.38, 0, 0.11);
+  const recovery = 0.022 + stamina * 0.01 + clamp((0.72 - player.energy) * 0.45, 0, 0.125);
   const energyDelta = player.sprintTimer > 0
     ? -(0.04 - stamina * 0.015)
     : running

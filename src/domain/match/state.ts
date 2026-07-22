@@ -10,6 +10,8 @@ const teamStats = () => ({
   longPasses: 0, completedLongPasses: 0, aerialPasses: 0, completedAerialPasses: 0,
   feintsAttempted: 0, feintsCompleted: 0, sprintDribbles: 0,
   shortSprintDribbles: 0, mediumSprintDribbles: 0, longSprintDribbles: 0,
+  crosses: 0, cutbacks: 0, throughBalls: 0, firstTimeShots: 0,
+  headers: 0, volleys: 0, longShots: 0, aggressiveBreaks: 0,
   tacklesAttempted: 0, tacklesWon: 0,
   goalsFromShots: 0, goalsFromPasses: 0, goalsFromDribbles: 0,
   possessionSeconds: 0, reward: 0,
@@ -46,6 +48,9 @@ const makePlayer = (participant: MatchParticipant): PlayerRuntime => {
     plan: null,
     nextThinkAt: 0,
     lastDecisionAt: 0,
+    lastCognitiveEventId: 0,
+    objective: null,
+    objectiveExpiresAt: 0,
   };
   player.position = formationAnchor(player);
   return player;
@@ -64,6 +69,7 @@ export function createMatchState(config: MatchConfig): MatchState {
     },
     stats: { blue: teamStats(), coral: teamStats() },
     events: [{ id: 1, time: 0, type: "match-started" }],
+    cognitiveEvents: [],
     elapsed: 0,
     kickoffTimer: 1.1,
     ballControlTeam: null,
@@ -72,6 +78,8 @@ export function createMatchState(config: MatchConfig): MatchState {
     possessionCandidateSince: 0,
     lastPossessionChangeAt: 0,
     eventCounter: 1,
+    cognitiveEventCounter: 0,
+    passCounter: 0,
     randomSeed: config.seed ?? DEFAULT_MATCH_SEED,
     learningEnabled: config.learningEnabled,
     pendingPass: null,

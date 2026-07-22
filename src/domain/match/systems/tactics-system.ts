@@ -34,6 +34,8 @@ export const createTacticalState = (team: Team): TeamTacticalState => ({
   finalThirdLatched: false,
   lastFinalThirdEntryAt: -POSSESSION.finalThirdEntryCooldown,
   collectivePlan: null,
+  safetyPlayerId: null,
+  safetySelectedAt: 0,
 });
 
 const attackingProgress = (team: Team, x: number): number => team === "blue" ? x / FIELD.width : (FIELD.width - x) / FIELD.width;
@@ -170,11 +172,25 @@ const createCollectivePlan = (state: MatchState, team: Team): TeamCollectivePlan
     };
     return score(second) - score(first);
   });
-  const safety = outfield.filter((player) => player.profile.id !== actorId).sort((first, second) => {
-    const score = (player: PlayerRuntime): number => player.profile.skills.defending * 0.55
-      + player.profile.mental.decisionMaking * 0.25 + player.profile.mental.teamwork * 0.2;
-    return score(second) - score(first);
-  })[0] ?? null;
+  const safetyCandidates = outfield.filter((player) => player.profile.id !== actorId);
+  const safetyScore = (player: PlayerRuntime): number => {
+    const goalSide = 1 - attackingProgress(team, player.position.x);
+    const central = 1 - clamp(Math.abs(player.position.y - FIELD.height / 2) / (FIELD.height / 2), 0, 1);
+    return player.profile.skills.defending * 0.42 + player.profile.mental.decisionMaking * 0.2
+      + player.profile.mental.anticipation * 0.18 + player.profile.mental.teamwork * 0.12
+      + goalSide * 5 + central * 3;
+  };
+  const rankedSafety = [...safetyCandidates].sort((first, second) => safetyScore(second) - safetyScore(first));
+  const bestSafety = rankedSafety[0] ?? null;
+  const currentSafety = safetyCandidates.find((player) => player.profile.id === tactical.safetyPlayerId) ?? null;
+  const switchLocked = currentSafety && state.elapsed - tactical.safetySelectedAt < 1.2;
+  const safety = currentSafety && (switchLocked || !bestSafety || safetyScore(bestSafety) < safetyScore(currentSafety) * 1.12)
+    ? currentSafety
+    : bestSafety;
+  if (safety?.profile.id !== tactical.safetyPlayerId) {
+    tactical.safetyPlayerId = safety?.profile.id ?? null;
+    tactical.safetySelectedAt = state.elapsed;
+  }
   const primary = candidates.find((player) => player.profile.id !== safety?.profile.id) ?? candidates[0] ?? null;
   const secondary = candidates.find((player) => player.profile.id !== primary?.profile.id && player.profile.id !== safety?.profile.id) ?? null;
   const scoreDifference = state.stats[team].goals - state.stats[team === "blue" ? "coral" : "blue"].goals;

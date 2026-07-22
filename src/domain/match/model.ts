@@ -35,6 +35,10 @@ export type AttackChannel = "left" | "center" | "right";
 export type BuildUpStyle = "short" | "balanced" | "direct";
 export type DefensiveBlock = "high" | "mid" | "low";
 export type PressTrigger = "looseBall" | "counterPress" | "touchline" | "compact";
+export type PassPurpose = "feet" | "throughBall" | "cross" | "cutback" | "switch" | "layoff";
+export type ShotTechnique = "placed" | "power" | "volley" | "header" | "redirect";
+export type PlayerObjective = "aggressiveBreak" | null;
+export type PreparedReceptionKind = "shot" | "pass" | "control" | "redirect";
 export type DecisionReason =
   | "shootingWindow"
   | "progressivePass"
@@ -50,6 +54,9 @@ export type DecisionReason =
   | "coverGoal"
   | "markThreat"
   | "attackReception"
+  | "firstTimeAction"
+  | "aggressiveBreak"
+  | "longShot"
   | "protectGoal";
 export type PlayerIntent =
   | "carrying"
@@ -59,6 +66,8 @@ export type PlayerIntent =
   | "passing"
   | "shooting"
   | "receiving"
+  | "firstTime"
+  | "breaking"
   | "supporting"
   | "pressing"
   | "marking"
@@ -90,6 +99,9 @@ export interface PlayerRuntime {
   plan: PlayerPlan | null;
   nextThinkAt: number;
   lastDecisionAt: number;
+  lastCognitiveEventId: number;
+  objective: PlayerObjective;
+  objectiveExpiresAt: number;
 }
 
 export interface Ball {
@@ -130,7 +142,16 @@ export type BallAction =
     opponentEta?: number;
     rangeReason?: DribbleRangeReason;
   }
-  | { kind: "shot"; target: Vec2; power: number }
+  | {
+    kind: "shot";
+    target: Vec2;
+    power: number;
+    technique?: ShotTechnique;
+    preparedPassId?: number;
+    utility?: number;
+    blocked?: boolean;
+    goalkeeperGap?: number;
+  }
   | {
     kind: "pass";
     receiverId: string;
@@ -138,6 +159,7 @@ export type BallAction =
     trajectory: PassTrajectory;
     range: PassRange;
     targeting: PassTargeting;
+    purpose?: PassPurpose;
     power: number;
     receiverEta?: number;
     opponentEta?: number;
@@ -168,6 +190,8 @@ export interface PlayerPlan {
   intent: PlayerIntent;
   reason: DecisionReason;
   ballAction: BallAction;
+  objective: PlayerObjective;
+  preparedReceptionAction: PreparedReceptionAction | null;
   startedAt: number;
   expiresAt: number;
   possessionTeam: Team | null;
@@ -177,7 +201,22 @@ export interface PlayerPlan {
   duringRestart: boolean;
 }
 
+export interface PreparedReceptionAction {
+  passId: number;
+  kind: PreparedReceptionKind;
+  technique?: ShotTechnique;
+  target: Vec2;
+  receiverId?: string;
+  validFrom: number;
+  expiresAt: number;
+  expectedHeight: number;
+  expectedSpeed: number;
+  score: number;
+  fallback: "orientedControl" | "protectBall";
+}
+
 export interface PendingPass {
+  id?: number;
   passerId: string;
   receiverId: string;
   team: Team;
@@ -185,12 +224,27 @@ export interface PendingPass {
   trajectory: PassTrajectory;
   range: PassRange;
   targeting: PassTargeting;
+  purpose?: PassPurpose;
   selectionReason: DecisionReason;
   target: Vec2;
   landingPoint: Vec2;
   expectedArrivalAt: number;
   receiverEta: number;
   opponentEta: number;
+  expectedHeight?: number;
+  expectedSpeed?: number;
+}
+
+export type CognitiveEventType = "passCommitted" | "ballTrajectoryChanged" | "controlClaimed" | "passResolved" | "possessionChanged";
+
+export interface CognitiveEvent {
+  id: number;
+  time: number;
+  type: CognitiveEventType;
+  playerIds: string[] | null;
+  passId?: number;
+  controllerId?: string;
+  outcome?: "received" | "otherTeammate" | "intercepted" | "loose" | "out";
 }
 
 export interface FeintEvasion {
@@ -216,6 +270,14 @@ export interface TeamStats {
   shortSprintDribbles: number;
   mediumSprintDribbles: number;
   longSprintDribbles: number;
+  crosses: number;
+  cutbacks: number;
+  throughBalls: number;
+  firstTimeShots: number;
+  headers: number;
+  volleys: number;
+  longShots: number;
+  aggressiveBreaks: number;
   tacklesAttempted: number;
   tacklesWon: number;
   goalsFromShots: number;
@@ -251,6 +313,8 @@ export interface TeamTacticalState {
   finalThirdLatched: boolean;
   lastFinalThirdEntryAt: number;
   collectivePlan: TeamCollectivePlan | null;
+  safetyPlayerId: string | null;
+  safetySelectedAt: number;
 }
 
 export interface TeamCollectivePlan {
@@ -324,6 +388,7 @@ export interface MatchState {
   ball: Ball;
   stats: Record<Team, TeamStats>;
   events: MatchEvent[];
+  cognitiveEvents: CognitiveEvent[];
   elapsed: number;
   kickoffTimer: number;
   ballControlTeam: Team | null;
@@ -332,6 +397,8 @@ export interface MatchState {
   possessionCandidateSince: number;
   lastPossessionChangeAt: number;
   eventCounter: number;
+  cognitiveEventCounter: number;
+  passCounter: number;
   randomSeed: number;
   learningEnabled: boolean;
   pendingPass: PendingPass | null;

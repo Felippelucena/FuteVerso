@@ -2,6 +2,7 @@ import { PHYSICS } from "../config";
 import { add, distance, dot, length, scale, subtract } from "../../shared/math";
 import type { MatchState, PlayerRuntime } from "../model";
 import { isEvadedDefender } from "../runtime/control";
+import { emitCognitiveEvent, relevantPlayersNear } from "../runtime/cognitive-events";
 
 const resolvePlayerCollision = (state: MatchState, a: PlayerRuntime, b: PlayerRuntime): void => {
   const evasion = state.feintEvasion;
@@ -58,4 +59,7 @@ export const resolveBallPlayerCollision = (state: MatchState): void => {
   }
   state.ball.lastTouch = nearest.team;
   state.ball.lastTouchPlayerId = nearest.profile.id;
+  if (state.pendingPass) {
+    emitCognitiveEvent(state, "ballTrajectoryChanged", relevantPlayersNear(state, state.ball.position), { passId: state.pendingPass.id });
+  }
 };

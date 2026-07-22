@@ -5,7 +5,7 @@ import type { MatchState } from "../../domain/match";
 import type { PlayerRuntime } from "../../domain/match/model";
 import type { Team } from "../../domain/shared/model";
 import type { GameRenderer } from "../canvas/game-renderer";
-import { DRIBBLE_RANGE_REASON_LABELS, DRIBBLE_TOUCH_LABELS, escapeHtml, formatClock, INTENT_LABELS, PACE_LABELS, percentage, PHASE_LABELS, POSITION_LABELS, REASON_LABELS, ROLE_LABELS, teamLabel } from "../app/labels";
+import { DRIBBLE_RANGE_REASON_LABELS, DRIBBLE_TOUCH_LABELS, escapeHtml, formatClock, INTENT_LABELS, PACE_LABELS, PASS_PURPOSE_LABELS, percentage, PHASE_LABELS, POSITION_LABELS, REASON_LABELS, ROLE_LABELS, SHOT_TECHNIQUE_LABELS, teamLabel } from "../app/labels";
 import { hydrateIcons } from "../app/icons";
 import { formatMatchEvent } from "./format-match-event";
 import { createContestMetric, createMatchHeaderViewModel, createMatchSummary } from "./match-view-model";
@@ -239,17 +239,27 @@ export class MatchScreen {
     const pendingPass = state.pendingPass;
     const receptionDiagnostic = pendingPass
       && (pendingPass.receiverId === selected.profile.id || pendingPass.passerId === selected.profile.id)
-      ? `<div class="decision-explanation"><small>RECEPÇÃO</small><strong>${pendingPass.range === "long" ? "Longo" : "Curto"} ${pendingPass.trajectory === "air" ? "aéreo" : "rasteiro"} para ${pendingPass.targeting === "space" ? "o espaço" : "os pés"} · ${REASON_LABELS[pendingPass.selectionReason]}<br>Ponto ${pendingPass.landingPoint.x.toFixed(1)}, ${pendingPass.landingPoint.y.toFixed(1)} · ETA ${pendingPass.receiverEta.toFixed(2)}s / rival ${pendingPass.opponentEta.toFixed(2)}s</strong></div>`
+      ? `<div class="decision-explanation"><small>RECEPÇÃO</small><strong>${PASS_PURPOSE_LABELS[pendingPass.purpose ?? "feet"]} · ${pendingPass.range === "long" ? "Longo" : "Curto"} ${pendingPass.trajectory === "air" ? "aéreo" : "rasteiro"}<br>Ponto ${pendingPass.landingPoint.x.toFixed(1)}, ${pendingPass.landingPoint.y.toFixed(1)} · ETA ${pendingPass.receiverEta.toFixed(2)}s / rival ${pendingPass.opponentEta.toFixed(2)}s</strong></div>`
       : "";
     const dribbleAction = selected.plan?.ballAction.kind === "dribble" ? selected.plan.ballAction : null;
     const dribbleDiagnostic = dribbleAction?.runway !== undefined
       ? `<div class="decision-explanation"><small>CONDUÇÃO</small><strong>${dribbleAction.touchRange ? DRIBBLE_TOUCH_LABELS[dribbleAction.touchRange] : "Sem pique"} · ${DRIBBLE_RANGE_REASON_LABELS[dribbleAction.rangeReason ?? "insufficientRunway"]}<br>Corredor ${dribbleAction.runway.toFixed(1)} · ETA ${dribbleAction.carrierEta?.toFixed(2) ?? "–"}s / rival ${Number.isFinite(dribbleAction.opponentEta) ? dribbleAction.opponentEta?.toFixed(2) : "livre"}s</strong></div>`
       : "";
+    const prepared = selected.plan?.preparedReceptionAction;
+    const preparedDiagnostic = prepared
+      ? `<div class="decision-explanation"><small>PREPARAÇÃO</small><strong>${prepared.kind === "shot" || prepared.kind === "redirect" ? SHOT_TECHNIQUE_LABELS[prepared.technique ?? "redirect"] : prepared.kind === "pass" ? "Passe de primeira" : prepared.fallback === "protectBall" ? "Proteger a bola" : "Domínio orientado"}<br>Altura ${prepared.expectedHeight.toFixed(2)} · velocidade ${prepared.expectedSpeed.toFixed(1)} · valor ${prepared.score.toFixed(2)}</strong></div>`
+      : "";
+    const shotAction = selected.plan?.ballAction.kind === "shot" ? selected.plan.ballAction : null;
+    const shotDiagnostic = shotAction
+      ? `<div class="decision-explanation"><small>FINALIZAÇÃO</small><strong>${SHOT_TECHNIQUE_LABELS[shotAction.technique ?? "power"]} · valor ${shotAction.utility?.toFixed(2) ?? "–"}<br>Linha ${shotAction.blocked ? "bloqueada" : "livre"} · espaço do goleiro ${shotAction.goalkeeperGap?.toFixed(1) ?? "–"}</strong></div>`
+      : "";
     this.find("#player-detail").innerHTML = `
       <div class="detail-title"><div><strong>${escapeHtml(selected.profile.name)}</strong><span>${POSITION_LABELS[selected.profile.position]} · ${ROLE_LABELS[selected.profile.role]}</span></div><span class="intent intent--${selected.team}">${intentLabel(state, selected)}</span></div>
       <div class="decision-explanation"><small>POR QUÊ</small><strong>${REASON_LABELS[selected.decisionReason]}</strong></div>
       ${receptionDiagnostic}
+      ${preparedDiagnostic}
       ${dribbleDiagnostic}
+      ${shotDiagnostic}
       <div class="detail-metrics"><span><small>POSTURA</small><strong>${selected.posture === "inPossession" ? "COM POSSE" : "SEM POSSE"}</strong></span><span><small>RITMO</small><strong>${PACE_LABELS[selected.pace]}</strong></span><span><small>PLANO</small><strong>${planAge.toFixed(1)}s</strong></span><span><small>GOLS</small><strong>${stats.goals}</strong></span><span><small>PASSES</small><strong>${stats.completedPasses}</strong></span></div>`;
   }
 
@@ -325,8 +335,10 @@ export class MatchScreen {
       ["Passes longos", `${blue.completedLongPasses}/${blue.longPasses}`, `${coral.completedLongPasses}/${coral.longPasses}`],
       ["Passes aéreos", `${blue.completedAerialPasses}/${blue.aerialPasses}`, `${coral.completedAerialPasses}/${coral.aerialPasses}`],
       ["Finalizações", blue.shots, coral.shots], ["Chutes no alvo", blue.shotsOnTarget, coral.shotsOnTarget], ["Defesas", blue.saves, coral.saves],
+      ["De primeira", blue.firstTimeShots, coral.firstTimeShots], ["De longe", blue.longShots, coral.longShots], ["Cruzamentos", blue.crosses, coral.crosses],
       ["Fintas", `${blue.feintsCompleted}/${blue.feintsAttempted}`, `${coral.feintsCompleted}/${coral.feintsAttempted}`], ["Toques longos", blue.sprintDribbles, coral.sprintDribbles],
       ["Desarmes", `${blue.tacklesWon}/${blue.tacklesAttempted}`, `${coral.tacklesWon}/${coral.tacklesAttempted}`], ["Recuperações", blue.turnoversWon, coral.turnoversWon],
+      ["Avanços agressivos", blue.aggressiveBreaks, coral.aggressiveBreaks],
       ["Entradas no terço final", blue.finalThirdEntries, coral.finalThirdEntries], ["Quebras de linha", blue.lineBreaks, coral.lineBreaks], ["Inversões", blue.switches, coral.switches],
       ["Largura média", Math.round(this.averageShape("blue", "widthIntegral")), Math.round(this.averageShape("coral", "widthIntegral"))],
       ["Compactação média", Math.round(this.averageShape("blue", "compactnessIntegral")), Math.round(this.averageShape("coral", "compactnessIntegral"))],

@@ -11,6 +11,8 @@ import {
 } from "../runtime/control";
 import { emitMatchEvent } from "../runtime/events";
 import { signedMatchNoise } from "../runtime/random";
+import { emitCognitiveEvent, relevantPlayersNear } from "../runtime/cognitive-events";
+import { executeBallAction } from "./ball-system";
 
 const ballClaimQuality = (state: MatchState, player: PlayerRuntime, ownBox: boolean): number => {
   const skills = player.profile.skills;
@@ -30,6 +32,8 @@ const registerPassOutcome = (state: MatchState, controller: PlayerRuntime): void
   if (!pending) return;
   const passer = state.players.find((player) => player.profile.id === pending.passerId);
   if (!passer) return;
+  const outcome = controller.team !== pending.team ? "intercepted"
+    : controller.profile.id === pending.receiverId ? "received" : "otherTeammate";
   if (controller.team === pending.team && controller.profile.id !== passer.profile.id) {
     passer.memory.stats.completedPasses += 1;
     state.stats[pending.team].completedPasses += 1;
@@ -45,6 +49,11 @@ const registerPassOutcome = (state: MatchState, controller: PlayerRuntime): void
     adaptPlayerPolicy(passer, "pass", state.learningEnabled ? -0.0015 : 0);
     if (controller.team !== pending.team) adaptPlayerPolicy(controller, "press", state.learningEnabled ? 0.0015 : 0);
   }
+  emitCognitiveEvent(state, "passResolved", [controller.profile.id, pending.receiverId, ...relevantPlayersNear(state, controller.position)], {
+    passId: pending.id,
+    controllerId: controller.profile.id,
+    outcome,
+  });
   state.pendingPass = null;
 };
 
@@ -67,8 +76,8 @@ const firstTouchOutcome = (
   const pressureDifficulty = pressureAt(state, player) * 0.1 * (1.22 - player.profile.mental.composure / 180);
   const passControlDifficulty = state.pendingPass?.team === player.team
     ? state.pendingPass.trajectory === "air"
-      ? state.pendingPass.range === "long" ? 0.24 : 0.16
-      : state.pendingPass.range === "long" ? 0.17 : 0.075
+      ? state.pendingPass.range === "long" ? 0.24 : 0.19
+      : state.pendingPass.range === "long" ? 0.17 : 0.12
     : 0;
   const dribbleBonus = continuesOwnDribble ? 0.18 : 0;
   const receptionBonus = preparedReceiver
@@ -93,6 +102,60 @@ const applyHeavyTouch = (state: MatchState, player: PlayerRuntime, quality: numb
   state.ball.controlStartedAt = 0;
   clearDribbleOwner(state);
   registerLooseBall(state);
+};
+
+const tryPreparedContact = (state: MatchState, player: PlayerRuntime): boolean => {
+  const pending = state.pendingPass;
+  const prepared = player.plan?.preparedReceptionAction;
+  if (!pending || !prepared || prepared.kind === "control") return false;
+  if (prepared.passId !== (pending.id ?? 0)) return false;
+  if (state.elapsed < prepared.validFrom - 0.08 || state.elapsed > prepared.expiresAt) return false;
+  const height = state.ball.height;
+  const heightValid = prepared.technique === "header" ? height >= 0.9 && height <= 2.4
+    : prepared.technique === "volley" ? height >= 0.2 && height <= 1.85
+      : prepared.technique === "redirect" ? height <= 2
+        : height <= 0.75;
+  if (!heightValid || Math.abs(length(state.ball.velocity) - prepared.expectedSpeed) > 32) return false;
+  const techniqueBase = prepared.kind === "pass"
+    ? (player.profile.skills.passing * 0.5 + player.profile.skills.control * 0.3
+      + player.profile.mental.anticipation * 0.1 + player.profile.mental.composure * 0.1) / 100
+    : (player.profile.skills.finishing * 0.55 + player.profile.skills.control * 0.25
+      + player.profile.mental.anticipation * 0.1 + player.profile.mental.composure * 0.1) / 100;
+  const contactDifficulty = (prepared.technique === "header" ? 0.04 : prepared.technique === "volley" ? 0.07 : 0)
+    + pressureAt(state, player) * 0.08 + Math.max(0, length(state.ball.velocity) - 48) * 0.002;
+  const ready = techniqueBase - contactDifficulty + signedMatchNoise(state) * 0.12
+    >= (prepared.kind === "pass" ? 0.82 : 0.78);
+  if (!ready) {
+    player.plan!.preparedReceptionAction = { ...prepared, kind: "control" };
+    return false;
+  }
+  const passId = pending.id;
+  registerPassOutcome(state, player);
+  if (prepared.kind === "pass" && prepared.receiverId) {
+    const passDistance = distance(player.position, prepared.target);
+    executeBallAction(state, player, {
+      kind: "pass",
+      receiverId: prepared.receiverId,
+      target: prepared.target,
+      trajectory: "ground",
+      range: passDistance > FIELD.width * 0.24 ? "long" : "short",
+      targeting: "feet",
+      purpose: "layoff",
+      power: clamp(0.48 + passDistance / FIELD.width * 0.5, 0.48, 0.9),
+      selectionReason: "firstTimeAction",
+    });
+  } else {
+    executeBallAction(state, player, {
+      kind: "shot",
+      target: prepared.target,
+      power: prepared.technique === "header" ? 0.7 : prepared.technique === "volley" ? 0.84 : 0.76,
+      technique: prepared.technique ?? "redirect",
+      preparedPassId: passId,
+    });
+  }
+  player.intent = "firstTime";
+  player.decisionReason = "firstTimeAction";
+  return true;
 };
 
 export const updatePossession = (state: MatchState, dt: number): void => {
@@ -200,10 +263,16 @@ export const updatePossession = (state: MatchState, dt: number): void => {
   }
   const controller = claim.player;
   const continuesOwnDribble = dribbleOwner?.profile.id === controller.profile.id;
+  if (!continuesOwnDribble && tryPreparedContact(state, controller)) return;
   const touchOutcome = firstTouchOutcome(state, controller, claim.quality, claim.ownBox, continuesOwnDribble);
   if (touchOutcome !== "clean") {
     controller.controlCooldown = touchOutcome === "heavy" ? PHYSICS.heavyTouchCooldown : PHYSICS.controlAttemptCooldown;
     if (touchOutcome === "heavy") applyHeavyTouch(state, controller, claim.quality);
+    if (state.pendingPass) {
+      emitCognitiveEvent(state, "ballTrajectoryChanged", [controller.profile.id, state.pendingPass.receiverId, ...relevantPlayersNear(state, state.ball.position)], {
+        passId: state.pendingPass.id,
+      });
+    }
     if (!dribbleOwner && !inFlightPassTeam) state.contestedSeconds += dt;
     return;
   }
@@ -226,6 +295,10 @@ export const updatePossession = (state: MatchState, dt: number): void => {
   state.ball.lastTouch = controller.team;
   state.ball.lastTouchPlayerId = controller.profile.id;
   registerControlledTeam(state, controller.team);
+  emitCognitiveEvent(state, "controlClaimed", [controller.profile.id, ...relevantPlayersNear(state, controller.position)], {
+    passId: state.pendingPass?.id,
+    controllerId: controller.profile.id,
+  });
   if (state.feintEvasion && state.feintEvasion.attackerId !== controller.profile.id) state.feintEvasion = null;
   state.stats[controller.team].possessionSeconds += dt;
   registerPassOutcome(state, controller);
@@ -240,6 +313,10 @@ export const expirePendingPass = (state: MatchState): void => {
     : state.pendingPass.range === "long" ? 0.48 : 0.75;
   if (state.elapsed <= state.pendingPass.expectedArrivalAt + controlWindow) return;
   const passer = state.players.find((player) => player.profile.id === state.pendingPass?.passerId);
+  emitCognitiveEvent(state, "passResolved", relevantPlayersNear(state, state.ball.position), {
+    passId: state.pendingPass.id,
+    outcome: "loose",
+  });
   if (passer) passer.memory.stats.failedPasses += 1;
   state.pendingPass = null;
 };

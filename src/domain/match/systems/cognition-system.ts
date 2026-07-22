@@ -3,6 +3,7 @@ import { COGNITION, FIELD } from "../config";
 import { distance } from "../../shared/math";
 import type { AgentDecision, MatchState, PlayerRuntime } from "../model";
 import { activeBallPlayerId } from "../runtime/control";
+import { cognitiveEventAffects } from "../runtime/cognitive-events";
 
 const planNeedsRefresh = (player: PlayerRuntime, state: MatchState): boolean => {
   const plan = player.plan;
@@ -25,9 +26,12 @@ const planNeedsRefresh = (player: PlayerRuntime, state: MatchState): boolean => 
 
 export const updateCognition = (state: MatchState): Map<string, AgentDecision> => {
   const actorId = activeBallPlayerId(state);
+  const queuedEvents = state.cognitiveEvents;
+  const latestEventId = queuedEvents.at(-1)?.id ?? 0;
   const immediateRefresh = state.players.some((player) => {
     const plan = player.plan;
-    return !plan
+    const stimulated = queuedEvents.some((event) => event.id > player.lastCognitiveEventId && cognitiveEventAffects(event, player.profile.id));
+    return stimulated || !plan
       || plan.possessionTeam !== state.possessionTeam
       || plan.ballActorId !== actorId
       || plan.collectivePlanStartedAt !== (state.tactics[player.team].collectivePlan?.startedAt ?? 0);
@@ -36,7 +40,8 @@ export const updateCognition = (state: MatchState): Map<string, AgentDecision> =
     const candidates = planAll(state);
     for (const player of state.players) {
       const candidate = candidates.get(player.profile.id)!;
-      const invalid = planNeedsRefresh(player, state);
+      const stimulated = queuedEvents.some((event) => event.id > player.lastCognitiveEventId && cognitiveEventAffects(event, player.profile.id));
+      const invalid = stimulated || planNeedsRefresh(player, state);
       if (!invalid) {
         if (state.elapsed < player.nextThinkAt) continue;
         player.nextThinkAt = state.elapsed + thinkingInterval(player);
@@ -57,10 +62,22 @@ export const updateCognition = (state: MatchState): Map<string, AgentDecision> =
         if (sameIdea || state.elapsed < commitmentUntil) continue;
       }
       player.plan = candidate;
+      if (candidate.objective === "aggressiveBreak") {
+        if (player.objective !== "aggressiveBreak" || state.elapsed >= player.objectiveExpiresAt) {
+          player.objectiveExpiresAt = state.elapsed + 3;
+          state.stats[player.team].aggressiveBreaks += 1;
+        }
+        player.objective = "aggressiveBreak";
+      } else if (invalid || state.elapsed >= player.objectiveExpiresAt) {
+        player.objective = null;
+        player.objectiveExpiresAt = 0;
+      }
       player.lastDecisionAt = state.elapsed;
       player.nextThinkAt = state.elapsed + thinkingInterval(player);
     }
     state.nextCognitionAt = state.elapsed + COGNITION.teamTickSeconds;
+    for (const player of state.players) player.lastCognitiveEventId = Math.max(player.lastCognitiveEventId, latestEventId);
+    state.cognitiveEvents = [];
   }
   return new Map(state.players.map((player) => [player.profile.id, resolvePlanDecision(player, state)]));
 };

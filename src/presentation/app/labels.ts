@@ -1,4 +1,4 @@
-import type { DecisionReason, DribbleRangeReason, DribbleTouchRange, MovementPace, TacticalPhase } from "../../domain/match/model";
+import type { DecisionReason, DribbleRangeReason, DribbleTouchRange, MovementPace, PassPurpose, ShotTechnique, TacticalPhase } from "../../domain/match/model";
 import type { PlayerPosition, PlayerRole } from "../../domain/roster/model";
 import type { Team } from "../../domain/shared/model";
 
@@ -24,6 +24,8 @@ export const INTENT_LABELS = {
   passing: "Passando",
   shooting: "Finalizando",
   receiving: "Recebendo passe",
+  firstTime: "Preparando ação de primeira",
+  breaking: "Avanço agressivo",
   supporting: "Apoiando",
   pressing: "Pressionando",
   marking: "Marcando",
@@ -43,6 +45,23 @@ export const DRIBBLE_RANGE_REASON_LABELS: Record<DribbleRangeReason, string> = {
   reducedForRace: "Faixa reduzida pela disputa",
   touchCooldown: "Preparando o próximo pique",
   insufficientRunway: "Corredor insuficiente",
+};
+
+export const PASS_PURPOSE_LABELS: Record<PassPurpose, string> = {
+  feet: "Nos pés",
+  throughBall: "Passe em profundidade",
+  cross: "Cruzamento",
+  cutback: "Passe para trás",
+  switch: "Inversão",
+  layoff: "Devolução",
+};
+
+export const SHOT_TECHNIQUE_LABELS: Record<ShotTechnique, string> = {
+  placed: "Colocado",
+  power: "Potente",
+  volley: "Voleio",
+  header: "Cabeceio",
+  redirect: "Desvio",
 };
 
 export const PACE_LABELS: Record<MovementPace, string> = {
@@ -79,6 +98,9 @@ export const REASON_LABELS: Record<DecisionReason, string> = {
   coverGoal: "Cobrir o gol",
   markThreat: "Marcar ameaça",
   attackReception: "Atacar a recepção",
+  firstTimeAction: "Ação de primeira",
+  aggressiveBreak: "Avanço agressivo",
+  longShot: "Finalização de longe",
   protectGoal: "Proteger o gol",
 };
 

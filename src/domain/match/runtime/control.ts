@@ -2,6 +2,7 @@ import { POSSESSION } from "../config";
 import { clamp, distance } from "../../shared/math";
 import type { MatchState, PlayerRuntime, Team } from "../model";
 import { policyLearningBounds } from "../../roster/personality";
+import { emitCognitiveEvent } from "./cognitive-events";
 
 export const pressureAt = (state: MatchState, player: PlayerRuntime): number => {
   const closest = Math.min(...state.players.filter((other) => other.team !== player.team).map((other) => distance(other.position, player.position)));
@@ -31,6 +32,7 @@ const confirmPossession = (state: MatchState, team: Team): void => {
     state.lastControlledTeam = team;
     state.controlChangedAt = state.elapsed;
     state.lastPossessionChangeAt = state.elapsed;
+    emitCognitiveEvent(state, "possessionChanged", null, { controllerId: state.ball.controllerId ?? undefined });
   }
   state.possessionTeam = team;
   state.possessionCandidateTeam = null;
