@@ -35,9 +35,13 @@ export class AnimationLoop {
     if (!this.running) return;
     const realDelta = (now - this.previousTime) / 1000;
     this.previousTime = now;
-    this.application.match.advance(realDelta);
+    const steps = this.application.match.advance(realDelta);
     this.renderer.render(this.application.state);
-    if (now - this.lastUiUpdate > UI_INTERVAL_MS) {
+    // Só reconstrói o painel (roster, timeline, análise…) quando a simulação de
+    // fato avançou. Pausado/rebobinando/terminado o estado é idêntico, e reescrever
+    // o DOM várias vezes por segundo é puro desperdício. O canvas continua sendo
+    // repintado todo frame porque o resize limpa o backing store.
+    if (steps > 0 && now - this.lastUiUpdate > UI_INTERVAL_MS) {
       this.renderUi();
       this.lastUiUpdate = now;
     }
