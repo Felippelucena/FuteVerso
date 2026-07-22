@@ -107,6 +107,40 @@ describe("qualidade coletiva da simulacao", () => {
     expect(decisions.get(defender.profile.id)?.reason).toBe("restDefense");
   });
 
+  it("faz o atacante arrancar para oferecer passe depois de uma retomada defensiva", () => {
+    const state = createGameState(createDefaultSave(), 654);
+    state.kickoffTimer = 0;
+    state.elapsed = 30;
+    const carrier = state.players.find((player) => player.team === "blue" && player.profile.role === "defender" && player.profile.position !== "goalkeeper")!;
+    const forward = state.players.find((player) => player.team === "blue" && player.profile.role === "finisher")!;
+    carrier.position = { x: FIELD.width * 0.18, y: FIELD.height / 2 };
+    carrier.velocity = { x: 1, y: 0 };
+    forward.position = { x: FIELD.width * 0.23, y: FIELD.height * 0.62 };
+    forward.velocity = { x: 0, y: 0 };
+    state.players.forEach((player, index) => {
+      if (player.team === "coral") player.position = { x: FIELD.width * 0.68 + index, y: 10 + index * 11 };
+    });
+    state.ball.position = { ...carrier.position };
+    state.ball.controllerId = carrier.profile.id;
+    state.ball.controlStartedAt = state.elapsed - 0.4;
+    state.possessionTeam = "blue";
+    state.lastControlledTeam = "blue";
+    state.previousControlledTeam = "coral";
+    state.controlChangedAt = state.elapsed - 0.25;
+    updateTacticalContext(state, 0);
+
+    const decision = decideAll(state).get(forward.profile.id)!;
+
+    expect(state.tactics.blue.phase).toBe("counterAttack");
+    expect(decision.reason).toBe("runInBehind");
+    expect(decision.burst).toBe(true);
+    expect(decision.movementTarget.x).toBeGreaterThan(forward.position.x + FIELD.width * 0.07);
+
+    stepGame(state, 1 / 120);
+    expect(forward.sprintTimer).toBeGreaterThan(0);
+    expect(forward.pace).toBe("burst");
+  });
+
   it("aplica lateral para o adversario do ultimo toque", () => {
     const state = createGameState(createDefaultSave(), 123);
     state.kickoffTimer = 0;

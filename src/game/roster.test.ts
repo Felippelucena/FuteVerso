@@ -2,15 +2,15 @@ import { describe, expect, it } from "vitest";
 import { PASS_VARIANTS, decideAll, formationAnchor } from "./ai";
 import { FIELD, PHYSICS } from "./config";
 import { createGameState, executeBallAction, playerSpeedLimit, stepGame } from "./engine";
-import { distance } from "./math";
+import { distance, length } from "./math";
 import { createDefaultSave, validateLineups } from "./roster";
 
 describe("escalações 4 x 4", () => {
   it("usa campo e gol escalados", () => {
-    expect(FIELD.width).toBeCloseTo(230, 5);
-    expect(FIELD.height).toBeCloseTo(138, 5);
-    expect(FIELD.goalBottom - FIELD.goalTop).toBeCloseTo(38.4, 5);
-    expect(FIELD.goalDepth).toBe(8);
+    expect(FIELD.width).toBeCloseTo(180, 5);
+    expect(FIELD.height).toBeCloseTo(108, 5);
+    expect(FIELD.goalBottom - FIELD.goalTop).toBeCloseTo(33.6, 5);
+    expect(FIELD.goalDepth).toBe(7);
   });
 
   it("cria oito titulares com um goleiro por time", () => {
@@ -58,6 +58,65 @@ describe("ações e física", () => {
     expect(burst / run).toBeCloseTo(PHYSICS.burstSpeedFactor / PHYSICS.runSpeedFactor, 5);
     expect(controlledSprint / controlled).toBeGreaterThan(1.5);
     expect(burst / run).toBeGreaterThan(1.5);
+  });
+
+  it("dimensiona a força do toque e a duração do pique pela distância pretendida", () => {
+    const performKnockOn = (targetDistance: number) => {
+      const state = createGameState(createDefaultSave(), 812);
+      state.kickoffTimer = 0;
+      const attacker = state.players.find((player) => player.team === "blue" && player.profile.position === "midfielder")!;
+      attacker.position = { x: FIELD.width * 0.35, y: FIELD.height / 2 };
+      attacker.velocity = { x: 0, y: 0 };
+      attacker.profile.skills.control = 88;
+      attacker.profile.skills.burst = 88;
+      state.players.forEach((player, index) => {
+        if (player !== attacker) player.position = { x: FIELD.width * 0.75 + index, y: 8 + index * 10 };
+      });
+      state.ball.position = { x: attacker.position.x + attacker.radius + state.ball.radius + 0.15, y: attacker.position.y };
+      state.ball.controllerId = attacker.profile.id;
+      state.ball.controlStartedAt = state.elapsed - 1;
+
+      executeBallAction(state, attacker, {
+        kind: "dribble",
+        style: "knockOn",
+        target: { x: attacker.position.x + targetDistance, y: attacker.position.y },
+      });
+
+      return { ballSpeed: length(state.ball.velocity), sprintTimer: attacker.sprintTimer };
+    };
+
+    const shortTouch = performKnockOn(18);
+    const longTouch = performKnockOn(31);
+
+    expect(longTouch.ballSpeed).toBeGreaterThan(shortTouch.ballSpeed * 1.15);
+    expect(longTouch.sprintTimer).toBeGreaterThan(shortTouch.sprintTimer);
+    expect(shortTouch.sprintTimer).toBeGreaterThan(PHYSICS.burstDuration);
+  });
+
+  it("faz o defensor sustentar a explosão numa disputa por um toque longo", () => {
+    const state = createGameState(createDefaultSave(), 913);
+    state.kickoffTimer = 0;
+    const attacker = state.players.find((player) => player.team === "blue" && player.profile.position === "midfielder")!;
+    const defender = state.players.find((player) => player.team === "coral" && player.profile.position === "centerBack")!;
+    state.ball.position = { x: FIELD.width / 2, y: FIELD.height / 2 };
+    state.ball.velocity = { x: 30, y: 0 };
+    state.ball.controllerId = null;
+    state.ball.dribbleOwnerId = attacker.profile.id;
+    state.ball.dribbleStyle = "knockOn";
+    state.ball.dribbleStartedAt = state.elapsed;
+    attacker.position = { x: state.ball.position.x - 5, y: state.ball.position.y };
+    defender.position = { x: state.ball.position.x - 24, y: state.ball.position.y };
+    state.players.forEach((player, index) => {
+      if (player.team === "coral" && player !== defender) player.position = { x: FIELD.width - 8, y: 8 + index * 14 };
+    });
+
+    const decision = decideAll(state).get(defender.profile.id)!;
+
+    expect(decision.burst).toBe(true);
+    expect(decision.burstDuration).toBeGreaterThan(PHYSICS.burstDuration);
+    stepGame(state, 1 / 120);
+    expect(defender.sprintTimer).toBeGreaterThan(PHYSICS.burstDuration);
+    expect(defender.pace).toBe("burst");
   });
 
   it("evita tirar o goleiro do gol para pressionar longe da area", () => {
@@ -159,6 +218,48 @@ describe("ações e física", () => {
     expect(state.ball.verticalVelocity).toBeCloseTo((8 + PHYSICS.gravity / 60) * PHYSICS.ballBounce, 5);
     expect(state.ball.velocity.x).toBeGreaterThan(0);
     expect(state.ball.velocity.x).toBeLessThan(20 * PHYSICS.landingFriction);
+  });
+
+  it("faz uma finalizacao viajar claramente mais rapido que um passe longo", () => {
+    const shotState = createGameState(createDefaultSave(), 515);
+    shotState.kickoffTimer = 0;
+    const shooter = shotState.players.find((player) => player.team === "blue" && player.profile.role === "finisher")!;
+    shooter.position = { x: FIELD.width / 2, y: FIELD.height / 2 };
+    shooter.profile.skills.kickPower = 75;
+    shotState.players.forEach((player, index) => {
+      if (player !== shooter) player.position = { x: 10 + index * 8, y: 10 };
+    });
+    shotState.ball.position = { ...shooter.position };
+    executeBallAction(shotState, shooter, {
+      kind: "shot",
+      target: { x: FIELD.width, y: FIELD.height / 2 },
+      power: 0.8,
+    });
+    const shotSpeed = length(shotState.ball.velocity);
+
+    const passState = createGameState(createDefaultSave(), 515);
+    passState.kickoffTimer = 0;
+    const passer = passState.players.find((player) => player.profile.id === shooter.profile.id)!;
+    const receiver = passState.players.find((player) => player.team === passer.team && player !== passer)!;
+    passer.position = { x: FIELD.width / 2, y: FIELD.height / 2 };
+    passer.profile.skills.kickPower = 75;
+    passState.players.forEach((player, index) => {
+      if (player !== passer) player.position = { x: 10 + index * 8, y: 10 };
+    });
+    passState.ball.position = { ...passer.position };
+    executeBallAction(passState, passer, {
+      kind: "pass",
+      receiverId: receiver.profile.id,
+      target: { x: FIELD.width * 0.82, y: FIELD.height / 2 },
+      trajectory: "ground",
+      range: "long",
+      targeting: "space",
+      power: 1,
+    });
+    const passSpeed = length(passState.ball.velocity);
+
+    expect(shotSpeed).toBeGreaterThan(85);
+    expect(shotSpeed).toBeGreaterThan(passSpeed * 1.3);
   });
 
   it("reflete a bola que encontra um jogador de frente", () => {

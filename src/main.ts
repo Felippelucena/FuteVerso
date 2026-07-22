@@ -49,7 +49,7 @@ const POSITION_LABELS: Record<PlayerPosition, string> = {
 };
 const ROLE_LABELS: Record<PlayerRole, string> = { finisher: "Finalizador", playmaker: "Construção", defender: "Defesa" };
 const INTENT_LABELS = {
-  carrying: "Conduzindo", sprinting: "Pique com bola", feinting: "Fintando", passing: "Passando", shooting: "Finalizando", supporting: "Apoiando",
+  carrying: "Conduzindo", sprinting: "Sprint controlado", knockingOn: "Toque longo", feinting: "Fintando", passing: "Passando", shooting: "Finalizando", supporting: "Apoiando",
   pressing: "Pressionando", marking: "Marcando", covering: "Cobrindo", goalkeeping: "Protegendo o gol",
 } as const;
 const PACE_LABELS: Record<MovementPace, string> = {
@@ -311,7 +311,7 @@ const renderAnalysis = (): void => {
     ["Chutes no alvo", blue.shotsOnTarget, coral.shotsOnTarget],
     ["Defesas", blue.saves, coral.saves],
     ["Fintas", `${blue.feintsCompleted}/${blue.feintsAttempted}`, `${coral.feintsCompleted}/${coral.feintsAttempted}`],
-    ["Piques com bola", blue.sprintDribbles, coral.sprintDribbles],
+    ["Toques longos", blue.sprintDribbles, coral.sprintDribbles],
     ["Desarmes", `${blue.tacklesWon}/${blue.tacklesAttempted}`, `${coral.tacklesWon}/${coral.tacklesAttempted}`],
     ["Recuperações", blue.turnoversWon, coral.turnoversWon],
     ["Entradas no terço final", blue.finalThirdEntries, coral.finalThirdEntries],

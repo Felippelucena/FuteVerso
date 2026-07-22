@@ -35,7 +35,7 @@ export const PHYSICS = {
   playerBounce: 0.25,
   kickDistance: 4.15,
   kickCooldown: 0.42,
-  maxBallSpeed: 88,
+  maxBallSpeed: 108,
   walkSpeedFactor: 0.62,
   controlledSpeedFactor: 0.68,
   controlledSprintSpeedFactor: 1.08,

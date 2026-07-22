@@ -29,6 +29,7 @@ export type DecisionReason =
 export type PlayerIntent =
   | "carrying"
   | "sprinting"
+  | "knockingOn"
   | "feinting"
   | "passing"
   | "shooting"
@@ -148,7 +149,7 @@ export interface Ball {
 export type PassTrajectory = "ground" | "air";
 export type PassRange = "short" | "long";
 export type PassTargeting = "feet" | "space";
-export type DribbleStyle = "carry" | "sprint" | "feint";
+export type DribbleStyle = "carry" | "controlledSprint" | "knockOn" | "feint";
 
 export type BallAction =
   | { kind: "none" }
@@ -167,6 +168,7 @@ export type BallAction =
 export interface AgentDecision {
   movementTarget: Vec2;
   burst: boolean;
+  burstDuration?: number;
   posture: TeamPosture;
   intent: PlayerIntent;
   reason: DecisionReason;

@@ -1,7 +1,7 @@
 import { decideAll, formationAnchor } from "./ai";
 import { ANALYTICS_GRID, DEFAULT_MATCH_SEED, FIELD, MATCH_DURATION, PHYSICS } from "./config";
 import { add, clamp, distance, dot, lerp, length, limit, normalize, rotate, scale, subtract } from "./math";
-import type { AgentDecision, AutoballSave, BallAction, GameState, MatchEvent, PlayerRuntime, Team, Vec2 } from "./model";
+import type { AgentDecision, AutoballSave, BallAction, DribbleStyle, GameState, MatchEvent, PlayerRuntime, Team, Vec2 } from "./model";
 import { createMemory } from "./roster";
 import { lineupIds } from "./storage";
 import { createPhaseSeconds, createTacticalState, updateTacticalContext } from "./tactics";
@@ -99,6 +99,34 @@ const nextRandom = (state: GameState): number => {
 const signedNoise = (state: GameState): number => nextRandom(state) - nextRandom(state);
 const skillSpeed = (player: PlayerRuntime): number => 8.5 + player.profile.skills.sprintSpeed * 0.06;
 const skillAcceleration = (player: PlayerRuntime): number => 22 + player.profile.skills.acceleration * 0.38;
+
+const dribbleTravelPlan = (
+  player: PlayerRuntime,
+  style: DribbleStyle,
+  target: Vec2,
+  quality: number,
+): { launchSpeed: number; chaseDuration: number } => {
+  const intendedDistance = distance(player.position, target);
+  const controlOffset = player.radius + FIELD.ballRadius + 0.15;
+  const ballTravelDistance = Math.max(2.2, intendedDistance - controlOffset);
+  const speedFactor = style === "knockOn" || style === "feint"
+    ? PHYSICS.burstSpeedFactor
+    : style === "controlledSprint"
+      ? PHYSICS.runSpeedFactor
+      : PHYSICS.controlledSpeedFactor;
+  const expectedPlayerSpeed = skillSpeed(player) * speedFactor * (0.78 + quality * 0.14);
+  const minimumDuration = style === "knockOn" ? 0.86 : style === "feint" ? 0.72 : style === "controlledSprint" ? 0.56 : 0.38;
+  const maximumDuration = style === "knockOn" ? 1.45 : style === "feint" ? 1.2 : style === "controlledSprint" ? 1.05 : 0.76;
+  const chaseDuration = clamp(intendedDistance / Math.max(1, expectedPlayerSpeed) + 0.12, minimumDuration, maximumDuration);
+  const ballTravelTime = chaseDuration * (style === "carry" ? 0.82 : 0.72);
+  const dragDistanceFactor = 1 - Math.exp(-PHYSICS.ballDrag * ballTravelTime);
+  const distanceMatchedSpeed = ballTravelDistance * PHYSICS.ballDrag / Math.max(0.01, dragDistanceFactor);
+  const minimumLaunchSpeed = style === "knockOn" ? 30 : style === "feint" ? 25 : style === "controlledSprint" ? 19 : 17;
+  return {
+    launchSpeed: clamp(distanceMatchedSpeed, minimumLaunchSpeed, PHYSICS.maxBallSpeed),
+    chaseDuration,
+  };
+};
 
 export const playerSpeedLimit = (player: PlayerRuntime, controlsBall: boolean, running = false): number => {
   const factor = controlsBall
@@ -358,7 +386,7 @@ const updatePlayer = (player: PlayerRuntime, decision: AgentDecision, controlsBa
   player.duelCooldown = Math.max(0, player.duelCooldown - dt);
   player.controlCooldown = Math.max(0, player.controlCooldown - dt);
   if (decision.burst && player.sprintCooldown <= 0 && player.energy > 0.48) {
-    player.sprintTimer = PHYSICS.burstDuration;
+    player.sprintTimer = decision.burstDuration ?? PHYSICS.burstDuration;
     player.sprintCooldown = PHYSICS.burstCooldown;
   }
   const baseSpeed = skillSpeed(player);
@@ -367,6 +395,7 @@ const updatePlayer = (player: PlayerRuntime, decision: AgentDecision, controlsBa
     movementGap > FIELD.width * 0.095
     || decision.intent === "pressing"
     || decision.intent === "sprinting"
+    || decision.intent === "knockingOn"
     || decision.intent === "feinting"
   );
   const speedFactor = controlsBall
@@ -448,12 +477,13 @@ export const executeBallAction = (state: GameState, player: PlayerRuntime, actio
     let chosenDirection = targetDirection;
     let dribbleTarget = action.target;
     let defender: PlayerRuntime | null = null;
-    if (action.style === "sprint") {
+    if (action.style === "controlledSprint") {
+      errorFactor = 0.44 + pressure * 0.34 + (1 - player.energy) * 0.22;
+      speed = 18 + quality * 5;
+    } else if (action.style === "knockOn") {
       errorFactor = 0.58 + pressure * 0.42 + (1 - player.energy) * 0.35;
       speed = 25 + quality * 9;
       state.stats[player.team].sprintDribbles += 1;
-      player.sprintTimer = Math.max(player.sprintTimer, PHYSICS.burstDuration);
-      player.sprintCooldown = Math.max(player.sprintCooldown, PHYSICS.burstCooldown);
     } else if (action.style === "feint") {
       defender = [...state.players]
         .filter((candidate) => candidate.team !== player.team
@@ -489,8 +519,6 @@ export const executeBallAction = (state: GameState, player: PlayerRuntime, actio
         state.stats[player.team].feintsCompleted += 1;
         player.memory.stats.dribbles += 1;
         adapt(player, "dribble", state.learningEnabled ? 0.0012 : 0);
-        player.sprintTimer = Math.max(player.sprintTimer, PHYSICS.burstDuration * 0.95);
-        player.sprintCooldown = Math.max(player.sprintCooldown, PHYSICS.burstCooldown);
         player.velocity = add(player.velocity, scale(chosenDirection, 9));
       } else {
         if (defender) chosenDirection = normalize(subtract(defender.position, player.position));
@@ -499,6 +527,14 @@ export const executeBallAction = (state: GameState, player: PlayerRuntime, actio
       player.duelCooldown = success ? 5.2 : 6.8;
       errorFactor = success ? 0.14 : 0.72;
       speed = success ? 23 + quality * 7 : 11.5;
+    }
+    if (action.style !== "feint" || success) {
+      const travelPlan = dribbleTravelPlan(player, action.style, dribbleTarget, quality);
+      speed = travelPlan.launchSpeed;
+      if (action.style === "knockOn" || action.style === "feint") {
+        player.sprintTimer = Math.max(player.sprintTimer, travelPlan.chaseDuration);
+        player.sprintCooldown = Math.max(player.sprintCooldown, PHYSICS.burstCooldown);
+      }
     }
     const direction = rotate(chosenDirection, signedNoise(state) * (1 - quality) * errorFactor);
     releaseBall(state, player, direction, speed, 0);
@@ -517,14 +553,20 @@ export const executeBallAction = (state: GameState, player: PlayerRuntime, actio
       state.ball.controlStartedAt = controlStartedAt;
       state.possessionTeam = player.team;
     }
-    player.kickCooldown = action.style === "feint" ? success ? 0.32 : 0.42 : action.style === "sprint" ? 0.28 : 0.18;
+    player.kickCooldown = action.style === "feint"
+      ? success ? 0.32 : 0.42
+      : action.style === "knockOn"
+        ? 0.3
+        : action.style === "controlledSprint"
+          ? 0.22
+          : 0.16;
     return;
   }
   if (action.kind === "shot") {
     const quality = clamp((player.profile.skills.finishing * 0.72 + player.profile.skills.control * 0.28) / 100 - pressure * 0.22, 0.2, 0.98);
     const direction = rotate(normalize(subtract(action.target, state.ball.position)), signedNoise(state) * (1 - quality) * 0.5);
-    const skillFactor = 0.86 + player.profile.skills.kickPower / 360;
-    const speed = lerp(31, 68, action.power) * skillFactor;
+    const skillFactor = 0.78 + player.profile.skills.kickPower / 220;
+    const speed = lerp(58, 98, action.power) * skillFactor;
     releaseBall(state, player, direction, speed, 0);
     state.ball.lastAction = "shot";
     player.kickCooldown = 0.48;
@@ -643,6 +685,7 @@ const resetPositions = (state: GameState, kickoffTeam: Team): void => {
     player.facing = { x: player.team === "blue" ? 1 : -1, y: 0 };
     player.kickCooldown = 0;
     player.sprintTimer = 0;
+    player.sprintCooldown = 0;
     player.reactionTimer = 0;
     player.duelCooldown = 0;
     player.controlCooldown = 0;

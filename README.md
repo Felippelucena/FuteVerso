@@ -23,16 +23,18 @@ npm run build
 - Semente editavel e persistente para reproduzir uma partida ou gerar uma variacao nova.
 
 - Partida 4 x 4 com um goleiro e três jogadores de linha por time.
-- Campo físico de 230 x 138 e gols ampliados em 1.6x.
+- Campo físico de 180 x 108 e gols ampliados em 1.4x.
 - Posições de goleiro, zagueiro, lateral, meio-campo e atacante.
 - Funções de finalização, construção e defesa.
 - Posturas coletivas com e sem posse, pressão coordenada, apoio e marcação.
 - Fases táticas de construção, progressão, último terço, contra-ataque, pressão e blocos defensivos.
 - Coordenação ofensiva com amplitude, profundidade, terceiro homem, tabelas, inversões e defesa de segurança.
-- Ritmos bem separados entre caminhada, corrida, condução e explosão, com cortes antecipados contra defensores em aproximação.
+- Ritmos bem separados entre domínio curto, sprint controlado e toque longo: a distância desejada determina a força na bola e a duração da explosão de atacantes e defensores.
+- Corridas sem bola acionadas por retomadas, contra-ataques e oportunidades de atacar a profundidade.
 - Domínio contextual: velocidade da bola, orientação, pressão e atributos podem produzir controle limpo, toque pesado ou erro.
 - Fintas exigem posse estabilizada; ao vencer o duelo, o atacante ultrapassa o defensor e ganha uma janela curta de aceleração.
 - Passes rasteiros ou aéreos, curtos ou longos, no pé ou no espaço.
+- Finalizações com curva de potência própria, claramente mais rápidas que passes longos.
 - Erros determinísticos influenciados por habilidade, pressão, distância e fadiga.
 - Memória individual com estatísticas e ajuste limitado dos pesos de decisão.
 - Gerenciamento de jogadores e escalações persistido em `localStorage`.

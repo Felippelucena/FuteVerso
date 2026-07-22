@@ -1,6 +1,6 @@
-import { FIELD, PHYSICS } from "./config";
+import { FIELD, PHYSICS, TACTICS } from "./config";
 import { add, clamp, distance, dot, normalize, scale, subtract } from "./math";
-import type { AgentDecision, BallAction, DecisionReason, GameState, PlayerRuntime, Team, Vec2 } from "./model";
+import type { AgentDecision, BallAction, DecisionReason, DribbleStyle, GameState, PlayerRuntime, Team, Vec2 } from "./model";
 
 export const PASS_VARIANTS = (["ground", "air"] as const).flatMap((trajectory) =>
   (["short", "long"] as const).flatMap((range) =>
@@ -181,6 +181,17 @@ const chooseDribbleTarget = (player: PlayerRuntime, opponents: PlayerRuntime[]):
   })[0];
 };
 
+const openDribbleLane = (player: PlayerRuntime, target: Vec2, opponents: PlayerRuntime[]): number => {
+  const direction = normalize(subtract(target, player.position));
+  const blockers = opponents.flatMap((opponent) => {
+    const relative = subtract(opponent.position, player.position);
+    const forwardDistance = dot(relative, direction);
+    const lateralDistance = Math.abs(relative.x * direction.y - relative.y * direction.x);
+    return forwardDistance > 0 && lateralDistance < fieldY(6.5) ? [forwardDistance] : [];
+  });
+  return Math.min(fieldX(24), ...blockers);
+};
+
 const carrierDecision = (
   player: PlayerRuntime,
   teammates: PlayerRuntime[],
@@ -208,12 +219,12 @@ const carrierDecision = (
     : -1;
   const passUtility = pass ? pass.score + policy.pass * 0.52 + pressure * 0.74 + edgeRisk(player.position) * 0.62 : -1;
   const controlAge = Math.max(0, state.elapsed - state.ball.controlStartedAt);
-  const dribbleTarget = chooseDribbleTarget(player, opponents);
-  const dribbleSpace = Math.min(...opponents.map((opponent) => distance(dribbleTarget, opponent.position)));
+  const baseDribbleTarget = chooseDribbleTarget(player, opponents);
+  const dribbleSpace = Math.min(...opponents.map((opponent) => distance(baseDribbleTarget, opponent.position)));
   const dribbleUtility = policy.dribble * 0.62
     + clamp(dribbleSpace / fieldX(15), 0, 1.4)
     - pressure * (0.72 - escapeConfidence * 0.82)
-    - edgeRisk(dribbleTarget) * 0.55;
+    - edgeRisk(baseDribbleTarget) * 0.55;
   if (shotUtility >= passUtility && shotUtility >= dribbleUtility) {
     const aimY = player.position.y < FIELD.height / 2 ? FIELD.goalBottom - 2.5 : FIELD.goalTop + 2.5;
     return {
@@ -239,22 +250,50 @@ const carrierDecision = (
   const canFeint = controlAge >= PHYSICS.feintControlSettleTime
     && player.reactionTimer <= 0
     && player.duelCooldown <= 0;
-  const style = defenderIsCommitting && duelQuality > 0.56 && canFeint
+  const laneSpace = openDribbleLane(player, baseDribbleTarget, opponents);
+  const style: DribbleStyle = defenderIsCommitting && duelQuality > 0.56 && canFeint
     ? "feint"
-    : closestOpponent > fieldX(6.5) && player.energy > 0.46 && (phase === "counterAttack" || phase === "progression" || phase === "finalThird")
-      ? "sprint"
-      : "carry";
+    : closestOpponent > fieldX(10.5)
+      && laneSpace > fieldX(13)
+      && player.energy > 0.56
+      && (phase === "counterAttack" || phase === "progression" || phase === "finalThird")
+      ? "knockOn"
+      : closestOpponent > fieldX(6.2)
+        && laneSpace > fieldX(7)
+        && player.energy > 0.44
+        && phase !== "buildUp"
+        ? "controlledSprint"
+        : "carry";
+  const touchDistance = style === "knockOn"
+    ? clamp(laneSpace * 0.62, fieldX(10), fieldX(17))
+    : style === "controlledSprint"
+      ? clamp(laneSpace * 0.38, fieldX(5.5), fieldX(8))
+      : style === "feint"
+        ? clamp(laneSpace * 0.48, fieldX(7.5), fieldX(11.5))
+        : clamp(laneSpace * 0.22, fieldX(3.2), fieldX(4.8));
+  const dribbleTarget = clampToField(add(player.position, scale(normalize(subtract(baseDribbleTarget, player.position)), touchDistance)), 5);
+  const intent: AgentDecision["intent"] = style === "knockOn"
+    ? "knockingOn"
+    : style === "controlledSprint"
+      ? "sprinting"
+      : style === "feint"
+        ? "feinting"
+        : "carrying";
   return {
     movementTarget: dribbleTarget,
-    burst: style === "sprint" || style === "feint",
+    burst: style === "knockOn" || style === "feint",
     posture: "inPossession",
-    intent: style === "sprint" ? "sprinting" : style === "feint" ? "feinting" : "carrying",
+    intent,
     reason,
     ballAction: { kind: "dribble", target: dribbleTarget, style },
   };
 };
 
-const supportTarget = (player: PlayerRuntime, controller: PlayerRuntime, state: GameState): { target: Vec2; reason: DecisionReason } => {
+const supportTarget = (
+  player: PlayerRuntime,
+  controller: PlayerRuntime,
+  state: GameState,
+): { target: Vec2; reason: DecisionReason; burst: boolean } => {
   const direction = attackDirection(player.team);
   const anchor = formationAnchor(player);
   const supportDepth = perceptionDepth(player, state.ball.position);
@@ -298,7 +337,22 @@ const supportTarget = (player: PlayerRuntime, controller: PlayerRuntime, state: 
   const escapeOpponent = nearestOpponent && distance(nearestOpponent.position, candidate) < fieldX(7)
     ? scale(normalize(subtract(candidate, nearestOpponent.position)), fieldX(4))
     : { x: 0, y: 0 };
-  return { target: clampToField(add(add(candidate, separation), escapeOpponent), 5), reason };
+  const target = clampToField(add(add(candidate, separation), escapeOpponent), 5);
+  const targetGap = distance(player.position, target);
+  const forwardProgress = direction * (target.x - player.position.x);
+  const transitionAge = state.elapsed - state.controlChangedAt;
+  const transitionRun = phaseIsFast
+    && transitionAge < TACTICS.counterAttackWindow * 0.72
+    && player.profile.role !== "defender"
+    && forwardProgress > fieldX(7)
+    && targetGap > fieldX(10);
+  const depthRun = player.profile.role === "finisher"
+    && phase !== "buildUp"
+    && forwardProgress > fieldX(8)
+    && targetGap > fieldX(11)
+    && (phaseIsFinal || phaseIsFast || controller.velocity.x * direction > 2.5);
+  const burst = player.energy > 0.5 && player.sprintCooldown <= 0 && (transitionRun || depthRun);
+  return { target, reason, burst };
 };
 
 const defensiveTarget = (
@@ -360,13 +414,21 @@ export const decideAll = (state: GameState): Map<string, AgentDecision> => {
         if (actualController) {
           decisions.set(player.profile.id, carrierDecision(player, teammates, opponents, state));
         } else if (dribbleOwner) {
-          const chaseTarget = clampToField(add(state.ball.position, scale(state.ball.velocity, 0.16)), 3);
           const style = state.ball.dribbleStyle ?? "carry";
+          const lookAhead = style === "knockOn" ? 0.34 : style === "controlledSprint" ? 0.22 : style === "feint" ? 0.28 : 0.12;
+          const chaseTarget = clampToField(add(state.ball.position, scale(state.ball.velocity, lookAhead)), 3);
+          const intent: AgentDecision["intent"] = style === "knockOn"
+            ? "knockingOn"
+            : style === "controlledSprint"
+              ? "sprinting"
+              : style === "feint"
+                ? "feinting"
+                : "carrying";
           decisions.set(player.profile.id, {
             movementTarget: chaseTarget,
-            burst: style === "sprint" || style === "feint",
+            burst: style === "knockOn" || style === "feint",
             posture: "inPossession",
-            intent: style === "sprint" ? "sprinting" : style === "feint" ? "feinting" : "carrying",
+            intent,
             reason: "carryIntoSpace",
             ballAction: { kind: "none" },
           });
@@ -385,11 +447,11 @@ export const decideAll = (state: GameState): Map<string, AgentDecision> => {
       }
       if (teamHasPossession && controller) {
         const support = player.profile.position === "goalkeeper"
-          ? { target: goalkeeperTarget(player, state), reason: "protectGoal" as const }
+          ? { target: goalkeeperTarget(player, state), reason: "protectGoal" as const, burst: false }
           : supportTarget(player, controller, state);
         decisions.set(player.profile.id, {
           movementTarget: support.target,
-          burst: false,
+          burst: support.burst,
           posture: "inPossession",
           intent: player.profile.position === "goalkeeper" ? "goalkeeping" : "supporting",
           reason: support.reason,
@@ -410,7 +472,10 @@ export const decideAll = (state: GameState): Map<string, AgentDecision> => {
         const looseBallRace = !actualController
           && distance(player.position, state.ball.position) < fieldX(28)
           && rivalBallDistance < fieldX(28);
-        decisions.set(player.profile.id, { movementTarget: clampToField(goalSide, 3), burst: looseBallRace, posture: "outOfPossession", intent: "pressing", reason: "pressBall", ballAction: { kind: "none" } });
+        const raceDistance = distance(player.position, prediction);
+        const raceSpeed = (8.5 + player.profile.skills.sprintSpeed * 0.06) * PHYSICS.burstSpeedFactor;
+        const burstDuration = looseBallRace ? clamp(raceDistance / Math.max(1, raceSpeed * 0.78), PHYSICS.burstDuration, 1.45) : undefined;
+        decisions.set(player.profile.id, { movementTarget: clampToField(goalSide, 3), burst: looseBallRace, burstDuration, posture: "outOfPossession", intent: "pressing", reason: "pressBall", ballAction: { kind: "none" } });
         continue;
       }
       const coverSlot = Math.max(0, coveringPlayers.findIndex((candidate) => candidate.profile.id === player.profile.id));
