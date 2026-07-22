@@ -115,9 +115,27 @@ export const GOALKEEPING = {
   catchRecovery: 0.56,
   diveRecovery: 0.92,
   maximumAttemptAge: 2.2,
-  handReach: 11.5,
-  diveSpeedFactor: 12,
-  diveAccelerationFactor: 14,
+  // Reach beyond the body, as a multiple of the keeper's own radius: one radius of arm.
+  // Everything past that has to be earned by actually moving the body there.
+  handReachFactor: 1,
+  // Launch impulse of a dive, in field units per second. Comparable to a sprint
+  // (PHYSICS.burstSpeedFactor puts a sprint near 26) because a dive is an explosive
+  // push, not a teleport. It decays under diveDrag and cannot be steered.
+  diveLaunchSpeed: 27,
+  diveDrag: 1.45,
+  // Vertical impulse and gravity of the jump, in goal-height units.
+  jumpLaunchVertical: 5.6,
+  jumpGravity: 15.5,
+  // A dive with no vertical component still commits the body for this long.
+  groundedDiveTime: 0.42,
+  // Vertical reach of a grounded keeper (crossbar sits at FIELD.goalHeight).
+  standingReach: 2.85,
+  // How fast the keeper shuffles across the line while waiting for the launch window.
+  approachSpeedFactor: 1.25,
+  // If the window never opens, launch anyway this close to arrival and come up short.
+  desperationLead: 0.07,
+  // Upper bound on how far ahead the launch solver looks along the ball path.
+  launchSearchStep: 0.02,
 } as const;
 
 export const ANALYTICS_GRID = {

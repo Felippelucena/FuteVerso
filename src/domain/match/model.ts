@@ -264,20 +264,32 @@ export interface ActiveShot {
   goalkeeperTouched: boolean;
 }
 
+/**
+ * A save is a commitment, not a guided trajectory. While `launchedAt` is null the keeper is
+ * still repositioning on his feet and free to change his mind. Once he launches, the direction
+ * is frozen and the body flies ballistically until it lands — reaching the ball or not.
+ */
 export interface GoalkeeperAttempt {
   source: GoalkeeperSource;
   sourceId: number;
   action: GoalkeeperAction;
   startedAt: number;
   reactionReadyAt: number;
-  contactAt: number;
   expiresAt: number;
   origin: Vec2;
-  target: Vec2;
-  targetHeight: number;
-  expectedSpeed: number;
-  requiredReach: number;
-  availableReach: number;
+  /** Where the keeper shuffles to while the launch window is still closed. */
+  approachTarget: Vec2;
+  launchedAt: number | null;
+  /** Frozen at launch. Null while grounded. */
+  launchDirection: Vec2 | null;
+  launchSpeed: number;
+  launchVertical: number;
+  /** How long the body stays committed before it lands and the keeper can act again. */
+  flightTime: number;
+  /** Body radius plus arm span: the sphere that has to intersect the ball. */
+  reachRadius: number;
+  /** True when the keeper launched knowing he could not get there. */
+  desperate: boolean;
   outcome: SaveOutcome | null;
   contactQuality: number | null;
   resolvedAt: number | null;

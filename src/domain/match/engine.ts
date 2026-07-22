@@ -29,7 +29,7 @@ export function stepMatch(state: MatchState, dt: number): void {
 
   updatePossession(state, 0);
   updateTacticalContext(state, 0);
-  updateGoalkeeperAnticipation(state);
+  updateGoalkeeperAnticipation(state, dt);
   const decisions = updateCognition(state);
   updatePlayers(state, decisions, dt);
   resolvePlayerCollisions(state);

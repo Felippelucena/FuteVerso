@@ -1,5 +1,6 @@
 import { FIELD, PHYSICS } from "../../domain/match/config";
 import { clamp, distance, length } from "../../domain/shared/math";
+import { goalkeeperJumpHeight } from "../../domain/match/systems/goalkeeper-system";
 import type { MatchState, PlayerRuntime, Team, Vec2 } from "../../domain/match/model";
 
 const COLORS: Record<Team, { fill: string; dark: string; light: string }> = {
@@ -16,6 +17,7 @@ export class GameRenderer {
   private offsetY = 0;
   private ballTrail: Array<{ position: Vec2; height: number; time: number }> = [];
   private lastTrailTime = -1;
+  private elapsed = 0;
 
   constructor(private readonly canvas: HTMLCanvasElement) {
     const context = canvas.getContext("2d");
@@ -51,6 +53,7 @@ export class GameRenderer {
 
   render(state: MatchState): void {
     if (this.width === 0) this.resize();
+    this.elapsed = state.elapsed;
     const ctx = this.context;
     ctx.clearRect(0, 0, this.width, this.height);
     this.drawSurroundings();
@@ -191,27 +194,17 @@ export class GameRenderer {
     const radius = player.radius * this.scale;
 
     ctx.save();
+    // An airborne keeper is drawn lifted off his own shadow, so a dive reads as a dive
+    // instead of a body sliding across the grass.
     const saveAttempt = player.goalkeeperAttempt;
-    if (player.profile.position === "goalkeeper" && saveAttempt && saveAttempt.action !== "standingSave") {
-      const resolvedAlpha = saveAttempt.outcome ? 0.32 : 0.72;
-      ctx.strokeStyle = player.team === "blue" ? `rgba(147,197,253,${resolvedAlpha})` : `rgba(253,164,175,${resolvedAlpha})`;
-      ctx.lineWidth = Math.max(2, radius * 0.28);
-      ctx.lineCap = "round";
-      ctx.setLineDash([radius * 0.5, radius * 0.34]);
-      ctx.beginPath();
-      ctx.moveTo(this.x(saveAttempt.origin.x), this.y(saveAttempt.origin.y));
-      ctx.lineTo(x, y);
-      ctx.stroke();
-      ctx.setLineDash([]);
-      ctx.fillStyle = player.team === "blue" ? "rgba(191,219,254,0.18)" : "rgba(254,205,211,0.18)";
-      ctx.beginPath();
-      ctx.arc(this.x(saveAttempt.target.x), this.y(saveAttempt.target.y) - saveAttempt.targetHeight * this.scale * 0.34, radius * 1.25, 0, Math.PI * 2);
-      ctx.fill();
-    }
-    ctx.fillStyle = "rgba(0, 0, 0, 0.24)";
+    const lift = saveAttempt && saveAttempt.outcome === null
+      ? goalkeeperJumpHeight(saveAttempt, this.elapsed) * this.scale * 0.9
+      : 0;
+    ctx.fillStyle = `rgba(0, 0, 0, ${lift > 0 ? 0.16 : 0.24})`;
     ctx.beginPath();
     ctx.ellipse(x + radius * 0.18, y + radius * 0.58, radius * 0.95, radius * 0.46, 0, 0, Math.PI * 2);
     ctx.fill();
+    if (lift > 0) ctx.translate(0, -lift);
 
     if (hasPossession || isBallTarget) {
       ctx.strokeStyle = colors.light;
