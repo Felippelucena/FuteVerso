@@ -3,7 +3,10 @@ import type { GameProfile } from "../../domain/roster/model";
 import { migrateSaveDocument } from "./migrations";
 import { decodeSaveDocument, toGameProfile, toSaveDocument } from "./save-schema";
 
-export const STORAGE_KEY = "autoball.save";
+export const STORAGE_KEY = "futeverso.save";
+
+// Chaves de versões anteriores do jogo, lidas apenas para migrar o save existente.
+export const LEGACY_STORAGE_KEYS = ["autoball.save"] as const;
 
 export class LocalStorageSaveRepository implements SaveRepository {
   constructor(
@@ -14,18 +17,30 @@ export class LocalStorageSaveRepository implements SaveRepository {
   load(): GameProfile {
     if (!this.storage) return this.createDefaultProfile();
     try {
-      const raw = this.storage.getItem(STORAGE_KEY);
+      const key = this.resolveKey(this.storage);
+      if (!key) return this.createDefaultProfile();
+      const raw = this.storage.getItem(key);
       if (!raw) return this.createDefaultProfile();
       const parsed: unknown = JSON.parse(raw);
       if (parsed && typeof parsed === "object" && (parsed as { schemaVersion?: unknown }).schemaVersion === 1) {
-        this.storage.removeItem(STORAGE_KEY);
+        this.storage.removeItem(key);
         return this.createDefaultProfile();
       }
       const document = decodeSaveDocument(migrateSaveDocument(parsed));
-      return document ? toGameProfile(document) : this.createDefaultProfile();
+      if (!document) return this.createDefaultProfile();
+      if (key !== STORAGE_KEY) {
+        this.storage.setItem(STORAGE_KEY, raw);
+        this.storage.removeItem(key);
+      }
+      return toGameProfile(document);
     } catch {
       return this.createDefaultProfile();
     }
+  }
+
+  private resolveKey(storage: Storage): string | null {
+    if (storage.getItem(STORAGE_KEY) !== null) return STORAGE_KEY;
+    return LEGACY_STORAGE_KEYS.find((key) => storage.getItem(key) !== null) ?? null;
   }
 
   save(profile: GameProfile): void {

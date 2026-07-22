@@ -84,7 +84,7 @@ Na camada application:
 - `GameApplication` expõe os comandos consumidos pela apresentação.
 - `SaveRepository` define a porta síncrona de persistência.
 
-O adapter atual usa `localStorage`, chave `autoball.save` e schema 2. Novas versões devem ser adicionadas ao registro sequencial de migrações.
+O adapter atual usa `localStorage`, chave `futeverso.save` e schema 2. Saves gravados sob chaves antigas (`autoball.save`) são migrados para a chave atual no primeiro carregamento. Novas versões devem ser adicionadas ao registro sequencial de migrações.
 
 ## Evolução planejada
 

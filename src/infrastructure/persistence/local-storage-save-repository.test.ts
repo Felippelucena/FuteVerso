@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { createDefaultProfile } from "../../application/profile/create-default-profile";
 import { DEFAULT_MATCH_SEED } from "../../domain/match/config";
-import { LocalStorageSaveRepository, STORAGE_KEY } from "./local-storage-save-repository";
+import { LEGACY_STORAGE_KEYS, LocalStorageSaveRepository, STORAGE_KEY } from "./local-storage-save-repository";
 import { toSaveDocument } from "./save-schema";
 
 class MemoryStorage implements Storage {
@@ -56,6 +56,20 @@ describe("LocalStorageSaveRepository", () => {
 
     expect(loaded.players).toHaveLength(8);
     expect(storage.getItem(STORAGE_KEY)).toBeNull();
+  });
+
+  it("migra saves da chave antiga para a chave atual", () => {
+    const storage = new MemoryStorage();
+    const profile = createDefaultProfile();
+    profile.memories["nilo-fw"].stats.goals = 4;
+    const raw = JSON.stringify(toSaveDocument(profile));
+    storage.setItem(LEGACY_STORAGE_KEYS[0], raw);
+
+    const loaded = createRepository(storage).load();
+
+    expect(loaded).toEqual(profile);
+    expect(storage.getItem(STORAGE_KEY)).toBe(raw);
+    expect(storage.getItem(LEGACY_STORAGE_KEYS[0])).toBeNull();
   });
 
   it("usa o fallback sem uma API de navegador", () => {
