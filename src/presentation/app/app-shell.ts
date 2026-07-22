@@ -17,7 +17,7 @@ export class AppShell {
     root.innerHTML = `
       <main class="app-shell">
         <header class="topbar">
-          <div class="brand-lockup"><span class="brand-mark" aria-hidden="true"></span><div><h1>Autoball Lab</h1><p>SIMULADOR 4 × 4</p></div></div>
+          <div class="brand-lockup"><span class="brand-mark" aria-hidden="true"></span><div><h1>FuteVerso</h1><p>SIMULADOR de Futebol 2D</p></div></div>
           <section class="scoreboard" aria-label="Placar">
             <div class="score-team score-team--blue"><span>NILO</span><strong id="score-blue">0</strong></div>
             <div class="match-clock"><span id="match-time">00:00</span><small id="match-state">EM CURSO</small></div>
