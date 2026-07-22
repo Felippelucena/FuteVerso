@@ -45,6 +45,8 @@ export const updateCognition = (state: MatchState): Map<string, AgentDecision> =
           && (current.target.kind !== "player" || candidate.target.kind !== "player" || current.target.playerId === candidate.target.playerId);
         const sameBallAction = current.ballAction.kind === candidate.ballAction.kind
           && (current.ballAction.kind !== "dribble" || candidate.ballAction.kind !== "dribble" || current.ballAction.style === candidate.ballAction.style)
+          && (current.ballAction.kind !== "dribble" || candidate.ballAction.kind !== "dribble"
+            || current.ballAction.touchRange === candidate.ballAction.touchRange)
           && (current.ballAction.kind !== "pass" || candidate.ballAction.kind !== "pass" || current.ballAction.receiverId === candidate.ballAction.receiverId);
         const sameIdea = current.intent === candidate.intent
           && current.reason === candidate.reason

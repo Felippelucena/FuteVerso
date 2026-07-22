@@ -71,6 +71,7 @@ export const clearDribbleOwner = (state: MatchState): void => {
   state.ball.dribbleOwnerId = null;
   state.ball.dribbleTarget = null;
   state.ball.dribbleStyle = null;
+  state.ball.dribbleTouchRange = null;
   state.ball.dribbleStartedAt = 0;
 };
 

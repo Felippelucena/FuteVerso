@@ -16,6 +16,7 @@ const updatePlayer = (player: PlayerRuntime, decision: AgentDecision, controlsBa
   player.decisionReason = decision.reason;
   player.kickCooldown = Math.max(0, player.kickCooldown - dt);
   player.sprintCooldown = Math.max(0, player.sprintCooldown - dt);
+  player.dribbleTouchCooldown = Math.max(0, player.dribbleTouchCooldown - dt);
   player.sprintTimer = Math.max(0, player.sprintTimer - dt);
   player.reactionTimer = Math.max(0, player.reactionTimer - dt);
   player.duelCooldown = Math.max(0, player.duelCooldown - dt);
@@ -51,11 +52,12 @@ const updatePlayer = (player: PlayerRuntime, decision: AgentDecision, controlsBa
   if (speed > 0.3 && (!controlsBall || decision.ballAction.kind === "dribble")) player.facing = normalize(player.velocity);
   const stamina = player.profile.skills.stamina / 100;
   const effortCost = 0.85 + player.profile.mental.intensity / 200;
+  const recovery = 0.038 + stamina * 0.012 + clamp((0.72 - player.energy) * 0.38, 0, 0.11);
   const energyDelta = player.sprintTimer > 0
-    ? -(0.14 - stamina * 0.045)
+    ? -(0.04 - stamina * 0.015)
     : running
-      ? -(0.026 - stamina * 0.018)
-      : 0.032 + stamina * 0.012;
+      ? -(0.003 - stamina * 0.002)
+      : recovery;
   player.energy = clamp(player.energy + energyDelta * (energyDelta < 0 ? effortCost : 1) * dt, 0.35, 1);
   player.position.x = clamp(player.position.x, player.radius, FIELD.width - player.radius);
   player.position.y = clamp(player.position.y, player.radius, FIELD.height - player.radius);

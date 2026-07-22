@@ -1,7 +1,7 @@
 import { formationAnchor } from "../ai";
 import { FIELD, PHYSICS } from "../config";
 import { add, clamp, distance, dot, lerp, length, limit, normalize, rotate, scale, subtract } from "../../shared/math";
-import type { AgentDecision, BallAction, DribbleStyle, MatchState, PlayerRuntime, Team, Vec2 } from "../model";
+import type { AgentDecision, BallAction, DribbleStyle, DribbleTouchRange, MatchState, PlayerRuntime, Team, Vec2 } from "../model";
 import {
   adaptPlayerPolicy,
   clearDribbleOwner,
@@ -16,6 +16,7 @@ import { solvePassTrajectory, targetAlongDirection } from "../runtime/pass-traje
 const dribbleTravelPlan = (
   player: PlayerRuntime,
   style: DribbleStyle,
+  touchRange: DribbleTouchRange | undefined,
   target: Vec2,
   quality: number,
 ): { launchSpeed: number; chaseDuration: number } => {
@@ -28,13 +29,19 @@ const dribbleTravelPlan = (
       ? PHYSICS.runSpeedFactor
       : PHYSICS.controlledSpeedFactor;
   const expectedPlayerSpeed = playerSkillSpeed(player) * speedFactor * (0.78 + quality * 0.14);
-  const minimumDuration = style === "knockOn" ? 0.86 : style === "feint" ? 0.72 : style === "controlledSprint" ? 0.56 : 0.38;
-  const maximumDuration = style === "knockOn" ? 1.45 : style === "feint" ? 1.2 : style === "controlledSprint" ? 1.05 : 0.76;
+  const minimumDuration = style === "knockOn"
+    ? touchRange === "short" ? 0.42 : touchRange === "medium" ? 0.62 : 0.86
+    : style === "feint" ? 0.72 : style === "controlledSprint" ? 0.56 : 0.38;
+  const maximumDuration = style === "knockOn"
+    ? touchRange === "short" ? 0.68 : touchRange === "medium" ? 0.96 : 1.35
+    : style === "feint" ? 1.2 : style === "controlledSprint" ? 1.05 : 0.76;
   const chaseDuration = clamp(intendedDistance / Math.max(1, expectedPlayerSpeed) + 0.12, minimumDuration, maximumDuration);
   const ballTravelTime = chaseDuration * (style === "carry" ? 0.82 : 0.72);
   const dragDistanceFactor = 1 - Math.exp(-PHYSICS.ballDrag * ballTravelTime);
   const distanceMatchedSpeed = ballTravelDistance * PHYSICS.ballDrag / Math.max(0.01, dragDistanceFactor);
-  const minimumLaunchSpeed = style === "knockOn" ? 30 : style === "feint" ? 25 : style === "controlledSprint" ? 19 : 17;
+  const minimumLaunchSpeed = style === "knockOn"
+    ? touchRange === "short" ? 18 : touchRange === "medium" ? 24 : 30
+    : style === "feint" ? 25 : style === "controlledSprint" ? 19 : 17;
   return {
     launchSpeed: clamp(distanceMatchedSpeed, minimumLaunchSpeed, PHYSICS.maxBallSpeed),
     chaseDuration,
@@ -59,6 +66,7 @@ export const executeBallAction = (state: MatchState, player: PlayerRuntime, acti
   const rawPressure = pressureAt(state, player);
   const pressure = rawPressure * (1.16 - player.profile.mental.composure / 190);
   if (action.kind === "dribble") {
+    if (action.style === "knockOn" && player.dribbleTouchCooldown > 0) return;
     const controlStartedAt = state.ball.controlStartedAt || state.elapsed;
     const quality = (player.profile.skills.control * 0.75 + player.profile.skills.burst * 0.25) / 100;
     const targetDirection = normalize(subtract(action.target, player.position));
@@ -86,6 +94,12 @@ export const executeBallAction = (state: MatchState, player: PlayerRuntime, acti
       errorFactor = 0.58 + pressure * 0.42 + (1 - player.energy) * 0.35;
       speed = 25 + quality * 9;
       state.stats[player.team].sprintDribbles += 1;
+      const touchRange = action.touchRange ?? "medium";
+      const touchCooldown = touchRange === "short" ? 100 : touchRange === "medium" ? 115 : 175;
+      player.dribbleTouchCooldown = Math.max(player.dribbleTouchCooldown, touchCooldown);
+      if (touchRange === "short") state.stats[player.team].shortSprintDribbles += 1;
+      else if (touchRange === "medium") state.stats[player.team].mediumSprintDribbles += 1;
+      else state.stats[player.team].longSprintDribbles += 1;
     } else if (action.style === "feint") {
       defender = [...state.players]
         .filter((candidate) => candidate.team !== player.team
@@ -131,7 +145,7 @@ export const executeBallAction = (state: MatchState, player: PlayerRuntime, acti
       speed = success ? 23 + quality * 7 : 11.5;
     }
     if (action.style !== "feint" || success) {
-      const travelPlan = dribbleTravelPlan(player, action.style, dribbleTarget, quality);
+      const travelPlan = dribbleTravelPlan(player, action.style, action.touchRange, dribbleTarget, quality);
       speed = travelPlan.launchSpeed;
       if (action.style === "knockOn" || action.style === "feint") {
         player.sprintTimer = Math.max(player.sprintTimer, travelPlan.chaseDuration);
@@ -151,6 +165,7 @@ export const executeBallAction = (state: MatchState, player: PlayerRuntime, acti
       state.ball.dribbleOwnerId = player.profile.id;
       state.ball.dribbleTarget = { ...dribbleTarget };
       state.ball.dribbleStyle = action.style;
+      state.ball.dribbleTouchRange = action.style === "knockOn" ? action.touchRange ?? "medium" : null;
       state.ball.dribbleStartedAt = state.elapsed;
       state.ball.controlStartedAt = controlStartedAt;
       registerControlledTeam(state, player.team);
@@ -278,6 +293,7 @@ const resetPositions = (state: MatchState, kickoffTeam: Team): void => {
     player.kickCooldown = 0;
     player.sprintTimer = 0;
     player.sprintCooldown = 0;
+    player.dribbleTouchCooldown = 0;
     player.reactionTimer = 0;
     player.duelCooldown = 0;
     player.controlCooldown = 0;

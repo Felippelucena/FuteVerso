@@ -1,4 +1,4 @@
-import type { DecisionReason, MovementPace, TacticalPhase } from "../../domain/match/model";
+import type { DecisionReason, DribbleRangeReason, DribbleTouchRange, MovementPace, TacticalPhase } from "../../domain/match/model";
 import type { PlayerPosition, PlayerRole } from "../../domain/roster/model";
 import type { Team } from "../../domain/shared/model";
 
@@ -19,7 +19,7 @@ export const ROLE_LABELS: Record<PlayerRole, string> = {
 export const INTENT_LABELS = {
   carrying: "Conduzindo",
   sprinting: "Sprint controlado",
-  knockingOn: "Toque longo",
+  knockingOn: "Pique com a bola",
   feinting: "Fintando",
   passing: "Passando",
   shooting: "Finalizando",
@@ -30,6 +30,20 @@ export const INTENT_LABELS = {
   covering: "Cobrindo",
   goalkeeping: "Protegendo o gol",
 } as const;
+
+export const DRIBBLE_TOUCH_LABELS: Record<DribbleTouchRange, string> = {
+  short: "Pique curto",
+  medium: "Pique médio",
+  long: "Pique longo",
+};
+
+export const DRIBBLE_RANGE_REASON_LABELS: Record<DribbleRangeReason, string> = {
+  clearRunway: "Corredor frontal livre",
+  reducedForEnergy: "Faixa reduzida pela energia",
+  reducedForRace: "Faixa reduzida pela disputa",
+  touchCooldown: "Preparando o próximo pique",
+  insufficientRunway: "Corredor insuficiente",
+};
 
 export const PACE_LABELS: Record<MovementPace, string> = {
   walk: "Caminhada",

@@ -2,12 +2,21 @@ import type { GameApplication } from "../../application/game-application";
 import { SIMULATION_SPEEDS, type SimulationSpeed } from "../../application/match/match-session";
 import { ANALYTICS_GRID, FIELD } from "../../domain/match/config";
 import type { MatchState } from "../../domain/match";
+import type { PlayerRuntime } from "../../domain/match/model";
 import type { Team } from "../../domain/shared/model";
 import type { GameRenderer } from "../canvas/game-renderer";
-import { escapeHtml, formatClock, INTENT_LABELS, PACE_LABELS, percentage, PHASE_LABELS, POSITION_LABELS, REASON_LABELS, ROLE_LABELS, teamLabel } from "../app/labels";
+import { DRIBBLE_RANGE_REASON_LABELS, DRIBBLE_TOUCH_LABELS, escapeHtml, formatClock, INTENT_LABELS, PACE_LABELS, percentage, PHASE_LABELS, POSITION_LABELS, REASON_LABELS, ROLE_LABELS, teamLabel } from "../app/labels";
 import { hydrateIcons } from "../app/icons";
 import { formatMatchEvent } from "./format-match-event";
 import { createContestMetric, createMatchHeaderViewModel, createMatchSummary } from "./match-view-model";
+
+const intentLabel = (state: MatchState, player: PlayerRuntime): string => {
+  if (player.intent !== "knockingOn") return INTENT_LABELS[player.intent];
+  const range = state.ball.dribbleOwnerId === player.profile.id
+    ? state.ball.dribbleTouchRange
+    : player.plan?.ballAction.kind === "dribble" ? player.plan.ballAction.touchRange : null;
+  return range ? DRIBBLE_TOUCH_LABELS[range] : INTENT_LABELS.knockingOn;
+};
 
 export const matchScreenTemplate = (): string => `
   <section id="match-view" class="workspace">
@@ -219,7 +228,7 @@ export class MatchScreen {
       <div class="roster-team"><span class="roster-team-name roster-team-name--${team}">${teamLabel(team)}</span>
         ${state.players.filter((player) => player.team === team).map((player) => `
           <button type="button" class="roster-player ${this.selectedPlayerId === player.profile.id ? "is-selected" : ""}" data-inspect-player="${player.profile.id}">
-            <span class="shirt shirt--${team}">${player.profile.number}</span><span><strong>${escapeHtml(player.profile.name)}</strong><small>${POSITION_LABELS[player.profile.position]} · ${INTENT_LABELS[player.intent]}</small></span><i>${Math.round(player.energy * 100)}</i>
+            <span class="shirt shirt--${team}">${player.profile.number}</span><span><strong>${escapeHtml(player.profile.name)}</strong><small>${POSITION_LABELS[player.profile.position]} · ${intentLabel(state, player)}</small></span><i>${Math.round(player.energy * 100)}</i>
           </button>`).join("")}
       </div>`).join("");
     const selected = state.players.find((player) => player.profile.id === this.selectedPlayerId) ?? state.players[0];
@@ -232,10 +241,15 @@ export class MatchScreen {
       && (pendingPass.receiverId === selected.profile.id || pendingPass.passerId === selected.profile.id)
       ? `<div class="decision-explanation"><small>RECEPÇÃO</small><strong>${pendingPass.range === "long" ? "Longo" : "Curto"} ${pendingPass.trajectory === "air" ? "aéreo" : "rasteiro"} para ${pendingPass.targeting === "space" ? "o espaço" : "os pés"} · ${REASON_LABELS[pendingPass.selectionReason]}<br>Ponto ${pendingPass.landingPoint.x.toFixed(1)}, ${pendingPass.landingPoint.y.toFixed(1)} · ETA ${pendingPass.receiverEta.toFixed(2)}s / rival ${pendingPass.opponentEta.toFixed(2)}s</strong></div>`
       : "";
+    const dribbleAction = selected.plan?.ballAction.kind === "dribble" ? selected.plan.ballAction : null;
+    const dribbleDiagnostic = dribbleAction?.runway !== undefined
+      ? `<div class="decision-explanation"><small>CONDUÇÃO</small><strong>${dribbleAction.touchRange ? DRIBBLE_TOUCH_LABELS[dribbleAction.touchRange] : "Sem pique"} · ${DRIBBLE_RANGE_REASON_LABELS[dribbleAction.rangeReason ?? "insufficientRunway"]}<br>Corredor ${dribbleAction.runway.toFixed(1)} · ETA ${dribbleAction.carrierEta?.toFixed(2) ?? "–"}s / rival ${Number.isFinite(dribbleAction.opponentEta) ? dribbleAction.opponentEta?.toFixed(2) : "livre"}s</strong></div>`
+      : "";
     this.find("#player-detail").innerHTML = `
-      <div class="detail-title"><div><strong>${escapeHtml(selected.profile.name)}</strong><span>${POSITION_LABELS[selected.profile.position]} · ${ROLE_LABELS[selected.profile.role]}</span></div><span class="intent intent--${selected.team}">${INTENT_LABELS[selected.intent]}</span></div>
+      <div class="detail-title"><div><strong>${escapeHtml(selected.profile.name)}</strong><span>${POSITION_LABELS[selected.profile.position]} · ${ROLE_LABELS[selected.profile.role]}</span></div><span class="intent intent--${selected.team}">${intentLabel(state, selected)}</span></div>
       <div class="decision-explanation"><small>POR QUÊ</small><strong>${REASON_LABELS[selected.decisionReason]}</strong></div>
       ${receptionDiagnostic}
+      ${dribbleDiagnostic}
       <div class="detail-metrics"><span><small>POSTURA</small><strong>${selected.posture === "inPossession" ? "COM POSSE" : "SEM POSSE"}</strong></span><span><small>RITMO</small><strong>${PACE_LABELS[selected.pace]}</strong></span><span><small>PLANO</small><strong>${planAge.toFixed(1)}s</strong></span><span><small>GOLS</small><strong>${stats.goals}</strong></span><span><small>PASSES</small><strong>${stats.completedPasses}</strong></span></div>`;
   }
 

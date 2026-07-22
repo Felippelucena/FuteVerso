@@ -68,7 +68,7 @@ const firstTouchOutcome = (
   const passControlDifficulty = state.pendingPass?.team === player.team
     ? state.pendingPass.trajectory === "air"
       ? state.pendingPass.range === "long" ? 0.24 : 0.16
-      : state.pendingPass.range === "long" ? 0.17 : 0.035
+      : state.pendingPass.range === "long" ? 0.17 : 0.075
     : 0;
   const dribbleBonus = continuesOwnDribble ? 0.18 : 0;
   const receptionBonus = preparedReceiver
@@ -237,7 +237,7 @@ export const expirePendingPass = (state: MatchState): void => {
   if (!state.pendingPass) return;
   const controlWindow = state.pendingPass.trajectory === "air"
     ? state.pendingPass.range === "long" ? 0.16 : 0.35
-    : state.pendingPass.range === "long" ? 0.48 : 1.25;
+    : state.pendingPass.range === "long" ? 0.48 : 0.75;
   if (state.elapsed <= state.pendingPass.expectedArrivalAt + controlWindow) return;
   const passer = state.players.find((player) => player.profile.id === state.pendingPass?.passerId);
   if (passer) passer.memory.stats.failedPasses += 1;

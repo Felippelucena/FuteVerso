@@ -79,6 +79,7 @@ export interface PlayerRuntime {
   kickCooldown: number;
   sprintTimer: number;
   sprintCooldown: number;
+  dribbleTouchCooldown: number;
   reactionTimer: number;
   duelCooldown: number;
   controlCooldown: number;
@@ -105,6 +106,7 @@ export interface Ball {
   dribbleOwnerId: string | null;
   dribbleTarget: Vec2 | null;
   dribbleStyle: DribbleStyle | null;
+  dribbleTouchRange: DribbleTouchRange | null;
   dribbleStartedAt: number;
   controlStartedAt: number;
 }
@@ -113,10 +115,21 @@ export type PassTrajectory = "ground" | "air";
 export type PassRange = "short" | "long";
 export type PassTargeting = "feet" | "space";
 export type DribbleStyle = "carry" | "controlledSprint" | "knockOn" | "feint";
+export type DribbleTouchRange = "short" | "medium" | "long";
+export type DribbleRangeReason = "clearRunway" | "reducedForEnergy" | "reducedForRace" | "touchCooldown" | "insufficientRunway";
 
 export type BallAction =
   | { kind: "none" }
-  | { kind: "dribble"; target: Vec2; style: DribbleStyle }
+  | {
+    kind: "dribble";
+    target: Vec2;
+    style: DribbleStyle;
+    touchRange?: DribbleTouchRange;
+    runway?: number;
+    carrierEta?: number;
+    opponentEta?: number;
+    rangeReason?: DribbleRangeReason;
+  }
   | { kind: "shot"; target: Vec2; power: number }
   | {
     kind: "pass";
@@ -200,6 +213,9 @@ export interface TeamStats {
   feintsAttempted: number;
   feintsCompleted: number;
   sprintDribbles: number;
+  shortSprintDribbles: number;
+  mediumSprintDribbles: number;
+  longSprintDribbles: number;
   tacklesAttempted: number;
   tacklesWon: number;
   goalsFromShots: number;
