@@ -61,16 +61,27 @@ export const executeBallAction = (state: MatchState, player: PlayerRuntime, acti
     const controlStartedAt = state.ball.controlStartedAt || state.elapsed;
     const quality = (player.profile.skills.control * 0.75 + player.profile.skills.burst * 0.25) / 100;
     const targetDirection = normalize(subtract(action.target, player.position));
+    if (action.style === "carry" || action.style === "controlledSprint") {
+      state.ball.lastAction = "dribble";
+      state.ball.lastShotOnTarget = false;
+      state.ball.lastTouch = player.team;
+      state.ball.lastTouchPlayerId = player.profile.id;
+      state.ball.controlStartedAt = controlStartedAt;
+      clearDribbleOwner(state);
+      registerControlledTeam(state, player.team);
+      if (action.style === "controlledSprint" && player.energy > 0.44) {
+        player.sprintTimer = Math.max(player.sprintTimer, 0.36 + quality * 0.18);
+        player.kickCooldown = 0.18;
+      }
+      return;
+    }
     let success = true;
     let errorFactor = 0.32 + pressure * 0.28;
     let speed = 13.5 + quality * 3.5;
     let chosenDirection = targetDirection;
     let dribbleTarget = action.target;
     let defender: PlayerRuntime | null = null;
-    if (action.style === "controlledSprint") {
-      errorFactor = 0.44 + pressure * 0.34 + (1 - player.energy) * 0.22;
-      speed = 18 + quality * 5;
-    } else if (action.style === "knockOn") {
+    if (action.style === "knockOn") {
       errorFactor = 0.58 + pressure * 0.42 + (1 - player.energy) * 0.35;
       speed = 25 + quality * 9;
       state.stats[player.team].sprintDribbles += 1;

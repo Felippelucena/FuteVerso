@@ -8,6 +8,9 @@ export const pressureAt = (state: MatchState, player: PlayerRuntime): number => 
   return clamp(1 - closest / 10, 0, 1);
 };
 
+export const activeBallPlayerId = (state: MatchState): string | null =>
+  state.ball.controllerId ?? state.ball.dribbleOwnerId ?? state.pendingPass?.receiverId ?? null;
+
 export const adaptPlayerPolicy = (
   player: PlayerRuntime,
   key: keyof PlayerRuntime["memory"]["policy"],

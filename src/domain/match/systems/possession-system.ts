@@ -91,9 +91,9 @@ export const updatePossession = (state: MatchState, dt: number): void => {
       .filter((player) => player.team !== current.team
         && player.reactionTimer <= 0
         && !isEvadedDefender(state, player)
-        && distance(player.position, current.position) < current.radius + player.radius + 0.38)
+        && distance(player.position, current.position) < current.radius + player.radius + 0.75)
       .sort((a, b) => distance(a.position, current.position) - distance(b.position, current.position))[0];
-    if (challenger && current.duelCooldown <= 0 && challenger.duelCooldown <= 0) {
+    if (challenger) {
       state.stats[challenger.team].tacklesAttempted += 1;
       const holderScore = (current.profile.skills.control * 0.64 + current.profile.skills.burst * 0.2) / 100
         + current.energy * 0.16 + current.profile.mental.composure / 1000;
@@ -126,12 +126,17 @@ export const updatePossession = (state: MatchState, dt: number): void => {
         state.contestedSeconds += dt;
         return;
       }
-      const separationDirection = normalize(subtract(challenger.position, current.position));
-      challenger.reactionTimer = Math.max(challenger.reactionTimer, 0.52);
-      challenger.velocity = add(challenger.velocity, scale(separationDirection, 7));
-      current.velocity = add(current.velocity, scale(separationDirection, -4.5));
-      challenger.position = add(challenger.position, scale(separationDirection, 0.32));
-      current.position = subtract(current.position, scale(separationDirection, 0.32));
+      const rawSeparation = subtract(challenger.position, current.position);
+      const separationDirection = length(rawSeparation) > 0.01
+        ? normalize(rawSeparation)
+        : { x: -current.facing.y, y: current.facing.x };
+      challenger.reactionTimer = Math.max(challenger.reactionTimer, 0.92);
+      challenger.velocity = add(challenger.velocity, scale(separationDirection, 9));
+      current.velocity = add(current.velocity, scale(separationDirection, -6));
+      const minimumGap = current.radius + challenger.radius + 1.45;
+      const separation = Math.max(0.72, (minimumGap - length(rawSeparation)) / 2 + 0.08);
+      challenger.position = add(challenger.position, scale(separationDirection, separation));
+      current.position = subtract(current.position, scale(separationDirection, separation));
     }
     registerControlledTeam(state, current.team);
     state.stats[current.team].possessionSeconds += dt;

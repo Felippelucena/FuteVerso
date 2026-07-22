@@ -1,6 +1,15 @@
 import { COGNITION, FIELD, PHYSICS, TACTICS } from "./config";
 import { add, clamp, distance, dot, normalize, scale, subtract } from "../shared/math";
 import type { AgentDecision, BallAction, DecisionReason, DribbleStyle, MatchState, PlanTarget, PlayerPlan, PlayerRuntime, Team, Vec2 } from "./model";
+import { activeBallPlayerId } from "./runtime/control";
+import {
+  estimateBallTravelTime,
+  interceptionThreat,
+  predictBallPosition,
+  predictPlayerPosition,
+  predictedSpaceAt,
+  predictionHorizon,
+} from "./runtime/prediction";
 
 export const PASS_VARIANTS = (["ground", "air"] as const).flatMap((trajectory) =>
   (["short", "long"] as const).flatMap((range) =>
@@ -38,6 +47,11 @@ const edgeRisk = (position: Vec2): number => {
 
 const centrality = (position: Vec2): number => 1 - clamp(Math.abs(position.y - FIELD.height / 2) / (FIELD.height / 2), 0, 1);
 
+const channelAffinity = (position: Vec2, channel: "left" | "center" | "right"): number => {
+  const targetY = channel === "left" ? FIELD.height * 0.22 : channel === "right" ? FIELD.height * 0.78 : FIELD.height * 0.5;
+  return 1 - clamp(Math.abs(position.y - targetY) / (FIELD.height * 0.42), 0, 1);
+};
+
 const decisionNoise = (player: PlayerRuntime, state: MatchState, salt: number): number => {
   let hash = (state.randomSeed ^ Math.imul(Math.floor(state.elapsed / COGNITION.teamTickSeconds) + salt, 2654435761)) >>> 0;
   for (let index = 0; index < player.profile.id.length; index += 1) hash = Math.imul(hash ^ player.profile.id.charCodeAt(index), 16777619) >>> 0;
@@ -71,9 +85,6 @@ const distanceToSegment = (point: Vec2, start: Vec2, end: Vec2): number => {
   const amount = clamp(dot(subtract(point, start), segment) / squared, 0, 1);
   return distance(point, add(start, scale(segment, amount)));
 };
-
-const nearestOpponentDistance = (player: PlayerRuntime, opponents: PlayerRuntime[]): number =>
-  Math.min(...opponents.map((opponent) => distance(player.position, opponent.position)));
 
 const nearestPlayer = (origin: Vec2, players: PlayerRuntime[]): PlayerRuntime | null =>
   [...players].sort((a, b) => distance(origin, a.position) - distance(origin, b.position))[0] ?? null;
@@ -116,17 +127,21 @@ interface PassOption {
 const choosePass = (player: PlayerRuntime, teammates: PlayerRuntime[], opponents: PlayerRuntime[], state: MatchState): PassOption | null => {
   const direction = attackDirection(player.team);
   const carrierEdgeRisk = edgeRisk(player.position);
+  const collective = state.tactics[player.team].collectivePlan;
   const candidates = teammates
     .filter((teammate) => teammate.profile.id !== player.profile.id)
     .map((teammate) => {
-      const passDistance = distance(player.position, teammate.position);
-      const progress = direction * (teammate.position.x - player.position.x);
-      const openness = nearestOpponentDistance(teammate, opponents);
+      const initialDistance = distance(player.position, teammate.position);
+      const travelTime = estimateBallTravelTime(initialDistance);
+      const predictedTarget = predictPlayerPosition(teammate, travelTime * (0.72 + player.profile.mental.anticipation / 360));
+      const passDistance = distance(player.position, predictedTarget);
+      const progress = direction * (predictedTarget.x - player.position.x);
+      const openness = predictedSpaceAt(predictedTarget, opponents, travelTime);
       const lanePressure = opponents.reduce((risk, opponent) => {
-        const laneDistance = distanceToSegment(opponent.position, player.position, teammate.position);
+        const laneDistance = distanceToSegment(predictPlayerPosition(opponent, travelTime * 0.62), player.position, predictedTarget);
         return risk + clamp(1 - laneDistance / fieldY(4), 0, 1);
-      }, 0);
-      const blocked = lanePressure > 0.72;
+      }, 0) + interceptionThreat(player.position, predictedTarget, opponents, travelTime) * 0.72;
+      const blocked = lanePressure > 0.82;
       const phase = state.tactics[player.team].phase;
       const passerTechnique = (player.profile.skills.passing + player.profile.skills.vision) / 200;
       const longProgression = progress > fieldX(18) && (phase === "buildUp" || phase === "progression" || phase === "counterAttack");
@@ -136,6 +151,17 @@ const choosePass = (player: PlayerRuntime, teammates: PlayerRuntime[], opponents
       const wallPassBonus = wallPass ? 0.64 : 0;
       const roleBonus = teammate.profile.role === "finisher" ? Math.max(0, progress) / fieldX(35) : 0;
       const backwardsSafety = progress < 0 && openness > fieldX(7) ? 0.22 : 0;
+      const collectiveBonus = collective
+        ? (collective.primaryRunnerId === teammate.profile.id ? 0.34 + collective.risk * 0.18 : 0)
+          + (collective.secondaryRunnerId === teammate.profile.id ? 0.18 : 0)
+          + channelAffinity(predictedTarget, collective.attackChannel) * 0.2
+          + (collective.safetyPlayerId === teammate.profile.id && progress < 0 ? (1 - collective.risk) * 0.3 : 0)
+          + (collective.buildUpStyle === "direct"
+            ? clamp(progress / fieldX(24), -0.12, 0.3)
+            : collective.buildUpStyle === "short"
+              ? clamp(1 - passDistance / fieldX(24), 0, 1) * 0.24
+              : 0)
+        : 0;
       const score = clamp(progress / fieldX(24), -0.8, 1.45)
         + clamp(openness / fieldX(14), 0, 1.18)
         + centrality(teammate.position) * 0.18
@@ -143,6 +169,7 @@ const choosePass = (player: PlayerRuntime, teammates: PlayerRuntime[], opponents
         + switchValue
         + wallPassBonus
         + backwardsSafety
+        + collectiveBonus
         + (longProgression ? passerTechnique * 0.36 : 0)
         + (player.profile.mental.teamwork - 50) / 100 * 0.22
         + (player.profile.mental.decisionMaking - 50) / 100 * 0.16
@@ -150,7 +177,7 @@ const choosePass = (player: PlayerRuntime, teammates: PlayerRuntime[], opponents
         - passDistance / fieldX(72)
         - lanePressure * (passDistance > fieldX(18) ? 0.58 : 0.86) * (1.08 - player.profile.mental.creativity / 500);
       const reason: DecisionReason = wallPass ? "wallPass" : switchValue > 0.52 ? "switchPlay" : "progressivePass";
-      return { teammate, passDistance, blocked, lanePressure, progress, longProgression, score, reason };
+      return { teammate, predictedTarget, passDistance, blocked, lanePressure, progress, longProgression, score, reason };
     })
     .sort((a, b) => b.score - a.score);
   const best = candidates[0];
@@ -160,14 +187,14 @@ const choosePass = (player: PlayerRuntime, teammates: PlayerRuntime[], opponents
   const trajectory = best.blocked && best.passDistance > fieldX(9) && (range === "long" || best.lanePressure > 1.08) ? "air" : "ground";
   const anticipationFactor = 0.72 + player.profile.mental.anticipation / 250;
   const leadMultiplier = (range === "long" ? 1.18 : 0.82) * anticipationFactor;
-  const lead = targeting === "space" ? scale(best.teammate.velocity, clamp(best.passDistance / 24, 0.25, leadMultiplier)) : { x: 0, y: 0 };
+  const lead = targeting === "space" ? scale(best.teammate.velocity, clamp(best.passDistance / 48, 0.08, leadMultiplier * 0.35)) : { x: 0, y: 0 };
   return {
     score: best.score,
     reason: best.reason,
     action: {
       kind: "pass",
       receiverId: best.teammate.profile.id,
-      target: clampToField(add(best.teammate.position, lead), 4),
+      target: clampToField(add(best.predictedTarget, lead), 4),
       trajectory,
       range,
       targeting,
@@ -176,19 +203,23 @@ const choosePass = (player: PlayerRuntime, teammates: PlayerRuntime[], opponents
   };
 };
 
-const chooseDribbleTarget = (player: PlayerRuntime, opponents: PlayerRuntime[]): Vec2 => {
+const chooseDribbleTarget = (player: PlayerRuntime, opponents: PlayerRuntime[], state: MatchState): Vec2 => {
   const direction = attackDirection(player.team);
-  const stride = fieldX(7);
-  const lateral = fieldY(8);
+  const stride = fieldX(12);
+  const lateral = fieldY(13);
+  const collective = state.tactics[player.team].collectivePlan;
+  const horizon = predictionHorizon(player, 0.58) * 0.72;
   const candidates = [-1, -0.45, 0, 0.45, 1].map((offset) => clampToField({
     x: player.position.x + direction * stride * (1 - Math.abs(offset) * 0.16),
     y: player.position.y + offset * lateral,
   }, 5));
   return candidates.sort((a, b) => {
     const utility = (target: Vec2): number => {
-      const space = Math.min(...opponents.map((opponent) => distance(target, opponent.position)));
+      const space = predictedSpaceAt(target, opponents, horizon);
       const progress = direction * (target.x - player.position.x);
-      return space / fieldX(10) + progress / fieldX(16) + centrality(target) * edgeRisk(player.position) * 1.2 - edgeRisk(target) * 1.35;
+      const collectiveLane = collective ? channelAffinity(target, collective.attackChannel) * (0.24 + collective.risk * 0.18) : 0;
+      return space / fieldX(10) + progress / fieldX(16) + centrality(target) * edgeRisk(player.position) * 1.2
+        + collectiveLane - edgeRisk(target) * 1.35;
     };
     return utility(b) - utility(a);
   })[0];
@@ -217,7 +248,9 @@ const carrierDecision = (
   const closestOpponent = duelOpponent ? distance(player.position, duelOpponent.position) : FIELD.width;
   const opponentToCarrier = duelOpponent ? normalize(subtract(player.position, duelOpponent.position)) : { x: 0, y: 0 };
   const closingSpeed = duelOpponent ? dot(subtract(duelOpponent.velocity, player.velocity), opponentToCarrier) : 0;
-  const shotLaneBlocked = opponents.some((opponent) => distanceToSegment(opponent.position, player.position, targetGoal) < 3.2);
+  const shotLaneBlocked = opponents.some((opponent) => distanceToSegment(
+    predictPlayerPosition(opponent, 0.32), player.position, targetGoal,
+  ) < 3.2);
   const pass = choosePass(player, teammates, opponents, state);
   const policy = player.memory.policy;
   const pressure = clamp(1 - closestOpponent / fieldX(7), 0, 1);
@@ -230,7 +263,7 @@ const carrierDecision = (
   const escapeConfidence = clamp((duelQuality - 0.52) / 0.35, 0, 1);
   const shootingRange = fieldX(21 + policy.shoot * 8);
   const finalThirdUrgency = state.tactics[player.team].phase === "finalThird"
-    ? clamp(state.stats[player.team].finalThirdEntries / Math.max(1, state.stats[player.team].shots + 1), 0, 4) * 0.2
+    ? clamp((state.elapsed - state.tactics[player.team].phaseStartedAt) / 6, 0, 1) * 0.22
     : 0;
   const shotUtility = goalDistance < shootingRange
     ? 0.85 + (1 - goalDistance / shootingRange) * 1.25 + policy.shoot * 0.4 + finalThirdUrgency
@@ -239,8 +272,8 @@ const carrierDecision = (
   const passUtility = pass ? pass.score + policy.pass * 0.52 + pressure * (0.58 + composure * 0.2)
     + edgeRisk(player.position) * 0.62 + teamwork * 0.14 + decisions * 0.1 + decisionNoise(player, state, 23) : -1;
   const controlAge = Math.max(0, state.elapsed - state.ball.controlStartedAt);
-  const baseDribbleTarget = chooseDribbleTarget(player, opponents);
-  const dribbleSpace = Math.min(...opponents.map((opponent) => distance(baseDribbleTarget, opponent.position)));
+  const baseDribbleTarget = chooseDribbleTarget(player, opponents, state);
+  const dribbleSpace = predictedSpaceAt(baseDribbleTarget, opponents, predictionHorizon(player, pressure));
   const dribbleUtility = policy.dribble * 0.62
     + clamp(dribbleSpace / fieldX(15), 0, 1.4)
     + creativity * 0.22 + aggression * 0.08
@@ -290,12 +323,12 @@ const carrierDecision = (
         ? "controlledSprint"
         : "carry";
   const touchDistance = style === "knockOn"
-    ? clamp(laneSpace * 0.62, fieldX(10), fieldX(17))
+    ? clamp(laneSpace * 0.78, fieldX(14), fieldX(24))
     : style === "controlledSprint"
-      ? clamp(laneSpace * 0.38, fieldX(5.5), fieldX(8))
+      ? clamp(laneSpace * 0.58, fieldX(9), fieldX(14))
       : style === "feint"
-        ? clamp(laneSpace * 0.48, fieldX(7.5), fieldX(11.5))
-        : clamp(laneSpace * 0.22, fieldX(3.2), fieldX(4.8));
+        ? clamp(laneSpace * 0.62, fieldX(10), fieldX(16))
+        : clamp(laneSpace * 0.66, fieldX(9.6), fieldX(14.4));
   const dribbleTarget = clampToField(add(player.position, scale(normalize(subtract(baseDribbleTarget, player.position)), touchDistance)), 5);
   const intent: AgentDecision["intent"] = style === "knockOn"
     ? "knockingOn"
@@ -323,29 +356,42 @@ const supportTarget = (
   const anchor = formationAnchor(player);
   const supportDepth = perceptionDepth(player, state.ball.position);
   const phase = state.tactics[player.team].phase;
+  const collective = state.tactics[player.team].collectivePlan;
   const phaseIsFast = phase === "counterAttack";
   const phaseIsFinal = phase === "finalThird";
+  const primaryRunner = collective?.primaryRunnerId === player.profile.id;
+  const secondaryRunner = collective?.secondaryRunnerId === player.profile.id;
+  const safetyPlayer = collective?.safetyPlayerId === player.profile.id;
   const side = player.profile.role === "playmaker"
     ? (controller.position.y < FIELD.height / 2 ? 1 : -1)
     : (player.lineupIndex % 2 === 0 ? 1 : -1);
   const controllerNearEdge = edgeRisk(controller.position);
-  const roleDepth = player.profile.role === "finisher"
+  const roleDepth = primaryRunner
+    ? fieldX(phaseIsFast ? 33 : phaseIsFinal ? 28 : 23)
+    : safetyPlayer
+      ? -fieldX(phaseIsFinal ? 24 : 18)
+      : player.profile.role === "finisher"
     ? fieldX(phaseIsFast ? 27 : phaseIsFinal ? 23 : 19)
     : player.profile.role === "defender"
       ? -fieldX(phaseIsFinal ? 21 : 15)
       : fieldX(phaseIsFast ? 12 : phaseIsFinal ? 9 : 7);
   const anticipatedRoleDepth = roleDepth * (0.86 + player.profile.mental.anticipation / 500);
   const roleWidth = player.profile.role === "defender" ? fieldY(10) : player.profile.role === "finisher" ? fieldY(16) : fieldY(21);
-  const reason: DecisionReason = player.profile.role === "defender"
+  const reason: DecisionReason = safetyPlayer || player.profile.role === "defender"
     ? "restDefense"
-    : player.profile.role === "finisher" && phase !== "buildUp"
+    : primaryRunner || player.profile.role === "finisher" && phase !== "buildUp"
       ? "runInBehind"
-      : player.profile.role === "playmaker"
+      : secondaryRunner || player.profile.role === "playmaker"
         ? "thirdManSupport"
         : "giveWidth";
+  const horizon = predictionHorizon(player, phaseIsFast ? 0.82 : 0.42);
+  const predictedController = predictPlayerPosition(controller, horizon * 0.55);
+  const preferredY = collective
+    ? collective.attackChannel === "left" ? FIELD.height * 0.22 : collective.attackChannel === "right" ? FIELD.height * 0.78 : FIELD.height * 0.5
+    : controller.position.y + side * roleWidth;
   const passingPocket = {
-    x: controller.position.x + direction * anticipatedRoleDepth,
-    y: controller.position.y + side * roleWidth,
+    x: predictedController.x + direction * anticipatedRoleDepth,
+    y: blend({ x: 0, y: predictedController.y + side * roleWidth }, { x: 0, y: preferredY }, primaryRunner ? 0.72 : secondaryRunner ? 0.42 : 0.18).y,
   };
   const base = {
     x: anchor.x + (state.ball.position.x - FIELD.width / 2) * (player.profile.role === "defender" ? 0.2 : 0.42),
@@ -372,7 +418,7 @@ const supportTarget = (
     && player.profile.role !== "defender"
     && forwardProgress > fieldX(7)
     && targetGap > fieldX(10);
-  const depthRun = player.profile.role === "finisher"
+  const depthRun = (primaryRunner || player.profile.role === "finisher")
     && phase !== "buildUp"
     && forwardProgress > fieldX(8)
     && targetGap > fieldX(11)
@@ -393,14 +439,21 @@ const defensiveTarget = (
   const thinkingTime = perceptionDepth(player, state.ball.position);
   const ownGoal = goalCenter(player.team, true);
   const phase = state.tactics[player.team].phase;
+  const collective = state.tactics[player.team].collectivePlan;
   const markWeight = player.memory.policy.mark * (player.profile.role === "defender" ? 0.68 : 0.46);
   const coverWeight = player.memory.policy.cover * (player.profile.role === "defender" ? 0.38 : 0.24);
-  const phaseDistance = phase === "lowBlock" ? 10 : phase === "counterPress" || phase === "highPress" ? 15 : 12;
+  const phaseDistance = collective?.defensiveBlock === "low" || phase === "lowBlock"
+    ? 9
+    : collective?.defensiveBlock === "high" || phase === "counterPress" || phase === "highPress"
+      ? 16
+      : 12;
   const coverDistance = fieldX(phaseDistance + coverSlot * 4.5);
-  const coverPoint = add(state.ball.position, scale(normalize(subtract(ownGoal, state.ball.position)), coverDistance));
+  const predictedBall = predictBallPosition(state, predictionHorizon(player, 0.7) * 0.5);
+  const coverPoint = add(predictedBall, scale(normalize(subtract(ownGoal, predictedBall)), coverDistance));
+  const predictedMark = mark ? predictPlayerPosition(mark, predictionHorizon(player, 0.55) * 0.48) : null;
   const markSide = mark ? {
-    x: mark.position.x - direction * fieldX(player.profile.role === "defender" ? 5 : 3),
-    y: mark.position.y + Math.sign(anchor.y - mark.position.y || (coverSlot % 2 ? 1 : -1)) * fieldY(3),
+    x: predictedMark!.x - direction * fieldX(player.profile.role === "defender" ? 5 : 3),
+    y: predictedMark!.y + Math.sign(anchor.y - predictedMark!.y || (coverSlot % 2 ? 1 : -1)) * fieldY(3),
   } : anchor;
   const roleCoverBias = player.profile.role === "defender" ? 0.3 : player.profile.role === "playmaker" ? 0.46 : 0.62;
   const medium = blend(coverPoint, markSide, roleCoverBias + markWeight * 0.18 - coverWeight * 0.1);
@@ -432,7 +485,9 @@ export const decideAll = (state: MatchState): Map<string, AgentDecision> => {
     const teammates = state.players.filter((player) => player.team === team);
     const opponents = state.players.filter((player) => player.team !== team);
     const teamHasPossession = controller?.team === team;
-    const presser = choosePresser(team, teammates, state.ball.position);
+    const plannedPresserId = state.tactics[team].collectivePlan?.presserId;
+    const presser = teammates.find((player) => player.profile.id === plannedPresserId)
+      ?? choosePresser(team, teammates, state.ball.position);
     const ownGoal = goalCenter(team, true);
     const threats = [...opponents].sort((a, b) => {
       const threat = (opponent: PlayerRuntime): number => distance(opponent.position, ownGoal) * 0.54
@@ -447,8 +502,8 @@ export const decideAll = (state: MatchState): Map<string, AgentDecision> => {
           decisions.set(player.profile.id, carrierDecision(player, teammates, opponents, state));
         } else if (dribbleOwner) {
           const style = state.ball.dribbleStyle ?? "carry";
-          const lookAhead = style === "knockOn" ? 0.34 : style === "controlledSprint" ? 0.22 : style === "feint" ? 0.28 : 0.12;
-          const chaseTarget = clampToField(add(state.ball.position, scale(state.ball.velocity, lookAhead)), 3);
+          const lookAhead = style === "knockOn" ? 0.72 : style === "controlledSprint" ? 0.48 : style === "feint" ? 0.58 : 0.36;
+          const chaseTarget = clampToField(predictBallPosition(state, lookAhead), 3);
           const intent: AgentDecision["intent"] = style === "knockOn"
             ? "knockingOn"
             : style === "controlledSprint"
@@ -465,7 +520,7 @@ export const decideAll = (state: MatchState): Map<string, AgentDecision> => {
             ballAction: { kind: "none" },
           });
         } else {
-          const receiveTarget = clampToField(add(state.ball.position, scale(state.ball.velocity, 0.22)), 3);
+          const receiveTarget = clampToField(predictBallPosition(state, predictionHorizon(player, 0.9) * 0.55), 3);
           decisions.set(player.profile.id, {
             movementTarget: receiveTarget,
             burst: false,
@@ -497,9 +552,14 @@ export const decideAll = (state: MatchState): Map<string, AgentDecision> => {
         continue;
       }
       if (presser.profile.id === player.profile.id) {
-        const prediction = add(state.ball.position, scale(state.ball.velocity, clamp(distance(player.position, state.ball.position) / 35, 0.08, 0.45)));
+        const predictedPressSpeed = (8.5 + player.profile.skills.sprintSpeed * 0.06) * PHYSICS.runSpeedFactor;
+        const pressHorizon = clamp(distance(player.position, state.ball.position) / Math.max(12, predictedPressSpeed), 0.18, 1.2);
+        const prediction = predictBallPosition(state, pressHorizon);
         const aggressivePress = state.tactics[team].phase === "counterPress" || state.tactics[team].phase === "highPress";
         const goalSide = add(prediction, scale(normalize(subtract(ownGoal, prediction)), player.radius * (aggressivePress ? 0.95 : 1.75)));
+        if (state.tactics[team].collectivePlan?.pressTrigger === "touchline") {
+          goalSide.y += (prediction.y < FIELD.height / 2 ? 1 : -1) * player.radius * 0.9;
+        }
         const rivalBallDistance = Math.min(...opponents.map((opponent) => distance(opponent.position, state.ball.position)));
         const looseBallRace = !actualController
           && distance(player.position, state.ball.position) < fieldX(28)
@@ -520,12 +580,22 @@ export const decideAll = (state: MatchState): Map<string, AgentDecision> => {
 };
 
 const planTarget = (player: PlayerRuntime, decision: AgentDecision, state: MatchState): PlanTarget => {
+  if (state.ball.dribbleOwnerId === player.profile.id || state.pendingPass?.receiverId === player.profile.id) {
+    return { kind: "ball", offset: subtract(decision.movementTarget, state.ball.position) };
+  }
   if (decision.intent === "pressing") {
     return { kind: "ball", offset: subtract(decision.movementTarget, state.ball.position) };
   }
   if (decision.intent === "marking") {
     const opponent = nearestPlayer(decision.movementTarget, state.players.filter((candidate) => candidate.team !== player.team));
     if (opponent) return { kind: "player", playerId: opponent.profile.id, offset: subtract(decision.movementTarget, opponent.position) };
+  }
+  if (decision.intent === "supporting") {
+    const actorId = activeBallPlayerId(state);
+    const actor = state.players.find((candidate) => candidate.profile.id === actorId);
+    if (actor && actor.profile.id !== player.profile.id) {
+      return { kind: "player", playerId: actor.profile.id, offset: subtract(decision.movementTarget, actor.position) };
+    }
   }
   if (decision.intent === "goalkeeping") return { kind: "goalkeeper" };
   return { kind: "point", position: { ...decision.movementTarget } };
@@ -553,6 +623,8 @@ export const planAll = (state: MatchState): Map<string, PlayerPlan> => {
       expiresAt: state.elapsed + duration,
       possessionTeam: state.possessionTeam,
       controllerId: state.ball.controllerId,
+      ballActorId: activeBallPlayerId(state),
+      collectivePlanStartedAt: state.tactics[player.team].collectivePlan?.startedAt ?? 0,
       duringRestart: state.kickoffTimer > 0,
     } satisfies PlayerPlan];
   }));
@@ -568,7 +640,13 @@ export const resolvePlanDecision = (player: PlayerRuntime, state: MatchState): A
     };
   }
   let movementTarget: Vec2;
-  if (plan.target.kind === "point") movementTarget = plan.target.position;
+  if (state.ball.dribbleOwnerId === player.profile.id) {
+    const style = state.ball.dribbleStyle ?? "carry";
+    const lookAhead = style === "knockOn" ? 0.72 : style === "controlledSprint" ? 0.48 : style === "feint" ? 0.58 : 0.36;
+    movementTarget = predictBallPosition(state, lookAhead);
+  } else if (state.pendingPass?.receiverId === player.profile.id && !state.ball.controllerId) {
+    movementTarget = predictBallPosition(state, predictionHorizon(player, 0.9) * 0.55);
+  } else if (plan.target.kind === "point") movementTarget = plan.target.position;
   else if (plan.target.kind === "ball") movementTarget = add(state.ball.position, plan.target.offset);
   else if (plan.target.kind === "goalkeeper") movementTarget = goalkeeperTarget(player, state);
   else {

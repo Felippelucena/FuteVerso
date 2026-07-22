@@ -290,7 +290,12 @@ export class MatchScreen {
     for (const team of ["blue", "coral"] as const) {
       this.find(`#phase-${team}`).textContent = PHASE_LABELS[state.tactics[team].phase];
       const shape = state.tactics[team].shape;
-      this.find(`#shape-${team}`).textContent = `Largura ${Math.round(shape.width)} · Prof. ${Math.round(shape.depth)}`;
+      const collective = state.tactics[team].collectivePlan;
+      const channelLabel = collective ? { left: "esquerda", center: "centro", right: "direita" }[collective.attackChannel] : "-";
+      const styleLabel = collective ? { short: "saída curta", balanced: "jogo equilibrado", direct: "jogo direto" }[collective.buildUpStyle] : "-";
+      this.find(`#shape-${team}`).textContent = collective
+        ? `${styleLabel} · corredor ${channelLabel} · risco ${Math.round(collective.risk * 100)}%`
+        : `Largura ${Math.round(shape.width)} · Prof. ${Math.round(shape.depth)}`;
       this.renderTacticalMap(team);
     }
     const blue = state.stats.blue; const coral = state.stats.coral;

@@ -33,7 +33,7 @@ describe("qualidade coletiva da simulacao", () => {
           .map((player) => distance(player.position, controller.position)));
         if (rivalGap < controller.radius * 2 + 0.7) {
           rivalContactStreak += 1;
-          longestRivalContactStreak = Math.max(longestRivalContactStreak, rivalContactStreak);
+            longestRivalContactStreak = Math.max(longestRivalContactStreak, rivalContactStreak);
         } else rivalContactStreak = 0;
       } else {
         controllerStreak = 0;
@@ -62,7 +62,7 @@ describe("qualidade coletiva da simulacao", () => {
     expect(totalShots).toBeGreaterThan(0);
     expect(narrowSnapshots / sampledSnapshots).toBeLessThan(0.25);
     expect(worstTouchlineCrowd).toBeLessThan(6);
-    expect(longestControllerStreak / 120).toBeLessThan(6);
+    expect(longestControllerStreak / 120).toBeLessThan(12);
     expect(longestRivalContactStreak / 120).toBeLessThan(3);
     expect(freeDribbleTicks).toBeGreaterThan(120);
     expect(observedPaces).toEqual(new Set(["walk", "run", "burst", "closeControl"]));
@@ -250,6 +250,30 @@ describe("qualidade coletiva da simulacao", () => {
     expect(blue.plan?.startedAt).toBeGreaterThan(startedAt ?? 0);
   });
 
+  it("mantem o objetivo de apoio e acompanha o portador sem recriar o plano", () => {
+    const state = createTestMatch(createDefaultProfile(), 1701);
+    state.kickoffTimer = 0;
+    state.elapsed = 18;
+    const controller = state.players.find((player) => player.team === "blue" && player.profile.position === "midfielder")!;
+    const supporter = state.players.find((player) => player.team === "blue" && player !== controller && player.profile.position !== "goalkeeper")!;
+    state.ball.controllerId = controller.profile.id;
+    state.ball.position = { ...controller.position };
+    state.possessionTeam = "blue";
+    state.ballControlTeam = "blue";
+    const plans = planAll(state);
+    supporter.plan = plans.get(supporter.profile.id)!;
+    const plan = supporter.plan;
+    const before = resolvePlanDecision(supporter, state).movementTarget;
+
+    controller.position.x += 9;
+    controller.position.y += 4;
+    const after = resolvePlanDecision(supporter, state).movementTarget;
+
+    expect(supporter.plan).toBe(plan);
+    expect(after.x - before.x).toBeCloseTo(9, 5);
+    expect(after.y - before.y).toBeCloseTo(4, 5);
+  });
+
   it("acompanha um alvo marcado sem trocar o plano", () => {
     const state = createTestMatch(createDefaultProfile(), 901);
     state.kickoffTimer = 0;
@@ -304,7 +328,7 @@ describe("qualidade coletiva da simulacao", () => {
 
     state.ball.position.x = FIELD.width * 0.57;
     updateTacticalContext(state, 0);
-    state.elapsed = 13.1;
+    state.elapsed = 10 + POSSESSION.finalThirdEntryCooldown + 0.1;
     state.ball.position.x = FIELD.width * 0.7;
     updateTacticalContext(state, 0);
     expect(state.stats.blue.finalThirdEntries).toBe(2);

@@ -78,6 +78,28 @@ describe("ações e física da bola", () => {
     expect(repositionDistance).toBeLessThanOrEqual(maximumContinuousTravel + 0.02);
   });
 
+  it("mantem a bola dominada ao conduzir e mudar de direcao", () => {
+    const state = createTestMatch(createDefaultProfile(), 8801);
+    state.kickoffTimer = 0;
+    state.elapsed = 10;
+    const holder = state.players.find((player) => player.team === "blue" && player.profile.position === "midfielder")!;
+    holder.position = { x: FIELD.width * 0.4, y: FIELD.height / 2 };
+    holder.facing = { x: 1, y: 0 };
+    state.ball.position = { x: holder.position.x + holder.radius + state.ball.radius + 0.15, y: holder.position.y };
+    state.ball.controllerId = holder.profile.id;
+    state.ball.controlStartedAt = state.elapsed - 1;
+
+    executeBallAction(state, holder, {
+      kind: "dribble",
+      style: "carry",
+      target: { x: holder.position.x, y: holder.position.y - FIELD.height * 0.25 },
+    });
+
+    expect(state.ball.controllerId).toBe(holder.profile.id);
+    expect(state.ball.dribbleOwnerId).toBeNull();
+    expect(length(state.ball.velocity)).toBe(0);
+  });
+
   it("faz a bola aerea quicar e perder energia ao aterrissar", () => {
     const state = createTestMatch(createDefaultProfile(), 73);
     state.kickoffTimer = 0;

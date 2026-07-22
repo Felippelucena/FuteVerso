@@ -31,6 +31,10 @@ export type TeamPosture = "inPossession" | "outOfPossession";
 export type InPossessionPhase = "buildUp" | "progression" | "finalThird" | "counterAttack";
 export type OutOfPossessionPhase = "highPress" | "midBlock" | "lowBlock" | "counterPress" | "recovery";
 export type TacticalPhase = InPossessionPhase | OutOfPossessionPhase;
+export type AttackChannel = "left" | "center" | "right";
+export type BuildUpStyle = "short" | "balanced" | "direct";
+export type DefensiveBlock = "high" | "mid" | "low";
+export type PressTrigger = "looseBall" | "counterPress" | "touchline" | "compact";
 export type DecisionReason =
   | "shootingWindow"
   | "progressivePass"
@@ -150,6 +154,8 @@ export interface PlayerPlan {
   expiresAt: number;
   possessionTeam: Team | null;
   controllerId: string | null;
+  ballActorId: string | null;
+  collectivePlanStartedAt: number;
   duringRestart: boolean;
 }
 
@@ -216,6 +222,24 @@ export interface TeamTacticalState {
   shape: TeamShape;
   finalThirdLatched: boolean;
   lastFinalThirdEntryAt: number;
+  collectivePlan: TeamCollectivePlan | null;
+}
+
+export interface TeamCollectivePlan {
+  startedAt: number;
+  expiresAt: number;
+  phase: TacticalPhase;
+  posture: TeamPosture;
+  ballActorId: string | null;
+  buildUpStyle: BuildUpStyle;
+  attackChannel: AttackChannel;
+  defensiveBlock: DefensiveBlock;
+  risk: number;
+  primaryRunnerId: string | null;
+  secondaryRunnerId: string | null;
+  safetyPlayerId: string | null;
+  presserId: string | null;
+  pressTrigger: PressTrigger;
 }
 
 interface MatchEventBase {

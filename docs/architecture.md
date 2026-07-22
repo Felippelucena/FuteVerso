@@ -63,6 +63,8 @@ Os sistemas ficam em `domain/match/systems`:
 - collision resolve contatos entre entidades;
 - possession controla disputa, domínio e confirmação da posse;
 - ball executa ações, trajetória, gols e reinícios;
+- tactics mantém a fase e um plano coletivo persistente com corredor, risco, opções de passe, defesa de segurança e gatilho de pressão;
+- runtime/prediction projeta bola e jogadores em horizontes curtos, sem avançar nem alterar o estado real da partida;
 - tactics mede forma e fases coletivas.
 
 `domain/match/runtime` contém somente primitivas compartilhadas de eventos, RNG, controle, aprendizado e métricas dos jogadores. Todo sistema recebe e muta `MatchState`; não há ECS ou estado duplicado.

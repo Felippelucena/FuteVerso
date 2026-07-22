@@ -64,6 +64,6 @@ describe("caracterizacao deterministica", () => {
       short: hashFingerprint(actual.short),
       long: hashFingerprint(actual.long),
     };
-    expect(hashes).toEqual({ short: "32f247b4", long: "01f85d61" });
+    expect(hashes).toEqual({ short: "62a8402a", long: "2ad3b374" });
   });
 });

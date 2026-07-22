@@ -61,6 +61,9 @@ export const TACTICS = {
   recoveryWindow: 7,
   finalThirdStart: 0.68,
   buildUpEnd: 0.34,
+  collectivePlanSeconds: 2.2,
+  predictionMinSeconds: 0.5,
+  predictionMaxSeconds: 1.8,
 } as const;
 
 export const POSSESSION = {
@@ -70,7 +73,7 @@ export const POSSESSION = {
   minimumPhaseSeconds: 0.75,
   finalThirdEnter: 0.68,
   finalThirdRearm: 0.58,
-  finalThirdEntryCooldown: 3,
+  finalThirdEntryCooldown: 5,
 } as const;
 
 export const COGNITION = {
