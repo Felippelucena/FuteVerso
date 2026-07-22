@@ -15,6 +15,7 @@ Abra `http://localhost:5173/`. Para validar o projeto:
 
 ```bash
 npm test
+npx tsc --noEmit
 npm run build
 ```
 
@@ -48,16 +49,18 @@ npm run build
 
 ## Estrutura
 
-- `src/game/model.ts`: contratos persistentes e estado da partida.
-- `src/game/roster.ts`: elenco inicial e validação das escalações.
-- `src/game/storage.ts`: repositório versionado em `localStorage`.
-- `src/game/ai.ts`: formação, posturas e decisões coletivas.
-- `src/game/tactics.ts`: detecção de fases, forma da equipe e métricas espaciais.
-- `src/game/engine.ts`: física, posse, ações, gols e aprendizado.
-- `src/game/renderer.ts`: desenho do campo e das entidades no Canvas.
-- `src/main.ts`: loop, abas, inspetor e gerenciamento de jogadores.
+- `src/domain`: regras de elenco e partida, IA, tática e simulação determinística.
+- `src/application`: casos de uso, criação de perfil e portas externas.
+- `src/content`: jogadores e escalações disponibilizados pelo jogo.
+- `src/infrastructure`: persistência versionada e adapters de armazenamento.
+- `src/presentation`: Canvas e formatação dos dados para a interface.
+- `src/main.ts`: composition root, loop visual e telas atuais.
 
-O armazenamento usa uma interface de repositório para permitir uma futura troca
+O motor recebe um `MatchConfig` independente do save e expõe uma fachada pequena
+para criar, avançar e extrair resultados de uma partida. As regras de dependência
+e as APIs públicas estão descritas em [`docs/architecture.md`](docs/architecture.md).
+
+O armazenamento implementa a porta `SaveRepository`, permitindo uma futura troca
 por IndexedDB quando replays e históricos maiores forem adicionados.
 O schema atual é a versão 2; saves da versão 1 são descartados para inicializar os
 novos perfis mentais de forma consistente.

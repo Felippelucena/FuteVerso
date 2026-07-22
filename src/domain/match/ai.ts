@@ -1,6 +1,6 @@
 import { COGNITION, FIELD, PHYSICS, TACTICS } from "./config";
-import { add, clamp, distance, dot, normalize, scale, subtract } from "./math";
-import type { AgentDecision, BallAction, DecisionReason, DribbleStyle, GameState, PlanTarget, PlayerPlan, PlayerRuntime, Team, Vec2 } from "./model";
+import { add, clamp, distance, dot, normalize, scale, subtract } from "../shared/math";
+import type { AgentDecision, BallAction, DecisionReason, DribbleStyle, MatchState, PlanTarget, PlayerPlan, PlayerRuntime, Team, Vec2 } from "./model";
 
 export const PASS_VARIANTS = (["ground", "air"] as const).flatMap((trajectory) =>
   (["short", "long"] as const).flatMap((range) =>
@@ -38,7 +38,7 @@ const edgeRisk = (position: Vec2): number => {
 
 const centrality = (position: Vec2): number => 1 - clamp(Math.abs(position.y - FIELD.height / 2) / (FIELD.height / 2), 0, 1);
 
-const decisionNoise = (player: PlayerRuntime, state: GameState, salt: number): number => {
+const decisionNoise = (player: PlayerRuntime, state: MatchState, salt: number): number => {
   let hash = (state.randomSeed ^ Math.imul(Math.floor(state.elapsed / COGNITION.teamTickSeconds) + salt, 2654435761)) >>> 0;
   for (let index = 0; index < player.profile.id.length; index += 1) hash = Math.imul(hash ^ player.profile.id.charCodeAt(index), 16777619) >>> 0;
   const normalized = hash / 0xffff_ffff * 2 - 1;
@@ -96,7 +96,7 @@ const choosePresser = (team: Team, players: PlayerRuntime[], ballPosition: Vec2)
   })[0];
 };
 
-const goalkeeperTarget = (player: PlayerRuntime, state: GameState): Vec2 => {
+const goalkeeperTarget = (player: PlayerRuntime, state: MatchState): Vec2 => {
   const direction = attackDirection(player.team);
   const ownX = direction > 0 ? 0 : FIELD.width;
   const ballDepth = direction > 0 ? state.ball.position.x : FIELD.width - state.ball.position.x;
@@ -113,7 +113,7 @@ interface PassOption {
   reason: DecisionReason;
 }
 
-const choosePass = (player: PlayerRuntime, teammates: PlayerRuntime[], opponents: PlayerRuntime[], state: GameState): PassOption | null => {
+const choosePass = (player: PlayerRuntime, teammates: PlayerRuntime[], opponents: PlayerRuntime[], state: MatchState): PassOption | null => {
   const direction = attackDirection(player.team);
   const carrierEdgeRisk = edgeRisk(player.position);
   const candidates = teammates
@@ -209,7 +209,7 @@ const carrierDecision = (
   player: PlayerRuntime,
   teammates: PlayerRuntime[],
   opponents: PlayerRuntime[],
-  state: GameState,
+  state: MatchState,
 ): AgentDecision => {
   const targetGoal = goalCenter(player.team, false);
   const goalDistance = distance(player.position, targetGoal);
@@ -317,7 +317,7 @@ const carrierDecision = (
 const supportTarget = (
   player: PlayerRuntime,
   controller: PlayerRuntime,
-  state: GameState,
+  state: MatchState,
 ): { target: Vec2; reason: DecisionReason; burst: boolean } => {
   const direction = attackDirection(player.team);
   const anchor = formationAnchor(player);
@@ -385,7 +385,7 @@ const supportTarget = (
 const defensiveTarget = (
   player: PlayerRuntime,
   mark: PlayerRuntime | null,
-  state: GameState,
+  state: MatchState,
   coverSlot: number,
 ): { target: Vec2; intent: AgentDecision["intent"]; burst: boolean; reason: DecisionReason } => {
   const anchor = formationAnchor(player);
@@ -418,7 +418,7 @@ const defensiveTarget = (
   return { target, intent, reason, burst: defensiveBurst };
 };
 
-export const decideAll = (state: GameState): Map<string, AgentDecision> => {
+export const decideAll = (state: MatchState): Map<string, AgentDecision> => {
   const decisions = new Map<string, AgentDecision>();
   const actualController = state.players.find((player) => player.profile.id === state.ball.controllerId) ?? null;
   const dribbleOwner = !actualController
@@ -519,7 +519,7 @@ export const decideAll = (state: GameState): Map<string, AgentDecision> => {
   return decisions;
 };
 
-const planTarget = (player: PlayerRuntime, decision: AgentDecision, state: GameState): PlanTarget => {
+const planTarget = (player: PlayerRuntime, decision: AgentDecision, state: MatchState): PlanTarget => {
   if (decision.intent === "pressing") {
     return { kind: "ball", offset: subtract(decision.movementTarget, state.ball.position) };
   }
@@ -536,7 +536,7 @@ export const thinkingInterval = (player: PlayerRuntime): number => {
   return COGNITION.slowestThinkSeconds + (COGNITION.fastestThinkSeconds - COGNITION.slowestThinkSeconds) * quality;
 };
 
-export const planAll = (state: GameState): Map<string, PlayerPlan> => {
+export const planAll = (state: MatchState): Map<string, PlayerPlan> => {
   const decisions = decideAll(state);
   return new Map(state.players.map((player) => {
     const decision = decisions.get(player.profile.id)!;
@@ -558,7 +558,7 @@ export const planAll = (state: GameState): Map<string, PlayerPlan> => {
   }));
 };
 
-export const resolvePlanDecision = (player: PlayerRuntime, state: GameState): AgentDecision => {
+export const resolvePlanDecision = (player: PlayerRuntime, state: MatchState): AgentDecision => {
   const plan = player.plan;
   if (!plan) {
     return {

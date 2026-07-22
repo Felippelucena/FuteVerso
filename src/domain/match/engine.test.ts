@@ -1,9 +1,14 @@
 import { describe, expect, it } from "vitest";
+import { buildMatchConfig } from "../../application/match/build-match-config";
+import { createDefaultProfile } from "../../application/profile/create-default-profile";
 import { PASS_VARIANTS, decideAll, formationAnchor } from "./ai";
 import { FIELD, PHYSICS } from "./config";
-import { createGameState, executeBallAction, playerSpeedLimit, stepGame } from "./engine";
-import { distance, length } from "./math";
-import { createDefaultSave, validateLineups } from "./roster";
+import { createMatchState, executeBallAction, playerSpeedLimit, stepMatch } from "./engine";
+import type { GameProfile } from "../roster/model";
+import { validateLineups } from "../roster/rules";
+import { distance, length } from "../shared/math";
+
+const createTestMatch = (profile: GameProfile = createDefaultProfile(), seed?: number) => createMatchState(buildMatchConfig(profile, seed));
 
 describe("escalações 4 x 4", () => {
   it("usa campo e gol escalados", () => {
@@ -14,8 +19,8 @@ describe("escalações 4 x 4", () => {
   });
 
   it("cria oito titulares com um goleiro por time", () => {
-    const save = createDefaultSave();
-    const state = createGameState(save);
+    const save = createDefaultProfile();
+    const state = createTestMatch(save);
     expect(validateLineups(save.players, save.lineups)).toBe(true);
     expect(state.players).toHaveLength(8);
     for (const team of ["blue", "coral"] as const) {
@@ -24,13 +29,13 @@ describe("escalações 4 x 4", () => {
   });
 
   it("recusa um jogador repetido nas duas equipes", () => {
-    const save = createDefaultSave();
+    const save = createDefaultProfile();
     save.lineups.coral.fieldPlayerIds[0] = save.lineups.blue.fieldPlayerIds[0];
     expect(validateLineups(save.players, save.lineups)).toBe(false);
   });
 
   it("faz posição e função alterarem a âncora", () => {
-    const state = createGameState(createDefaultSave());
+    const state = createTestMatch(createDefaultProfile());
     const defender = state.players.find((player) => player.profile.position === "centerBack")!;
     const original = formationAnchor(defender);
     defender.profile.role = "finisher";
@@ -45,7 +50,7 @@ describe("ações e física", () => {
   });
 
   it("diferencia condução, pique com bola e explosão sem a bola", () => {
-    const player = createGameState(createDefaultSave()).players[3];
+    const player = createTestMatch(createDefaultProfile()).players[3];
     const walk = playerSpeedLimit(player, false);
     const run = playerSpeedLimit(player, false, true);
     const controlled = playerSpeedLimit(player, true);
@@ -62,7 +67,7 @@ describe("ações e física", () => {
 
   it("dimensiona a força do toque e a duração do pique pela distância pretendida", () => {
     const performKnockOn = (targetDistance: number) => {
-      const state = createGameState(createDefaultSave(), 812);
+      const state = createTestMatch(createDefaultProfile(), 812);
       state.kickoffTimer = 0;
       const attacker = state.players.find((player) => player.team === "blue" && player.profile.position === "midfielder")!;
       attacker.position = { x: FIELD.width * 0.35, y: FIELD.height / 2 };
@@ -94,7 +99,7 @@ describe("ações e física", () => {
   });
 
   it("faz o defensor sustentar a explosão numa disputa por um toque longo", () => {
-    const state = createGameState(createDefaultSave(), 913);
+    const state = createTestMatch(createDefaultProfile(), 913);
     state.kickoffTimer = 0;
     const attacker = state.players.find((player) => player.team === "blue" && player.profile.position === "midfielder")!;
     const defender = state.players.find((player) => player.team === "coral" && player.profile.position === "centerBack")!;
@@ -114,13 +119,13 @@ describe("ações e física", () => {
 
     expect(decision.burst).toBe(true);
     expect(decision.burstDuration).toBeGreaterThan(PHYSICS.burstDuration);
-    stepGame(state, 1 / 120);
+    stepMatch(state, 1 / 120);
     expect(defender.sprintTimer).toBeGreaterThan(PHYSICS.burstDuration);
     expect(defender.pace).toBe("burst");
   });
 
   it("evita tirar o goleiro do gol para pressionar longe da area", () => {
-    const state = createGameState(createDefaultSave());
+    const state = createTestMatch(createDefaultProfile());
     state.kickoffTimer = 0;
     state.ball.position = { x: FIELD.width / 2, y: FIELD.height / 2 };
     const goalkeeper = state.players.find((player) => player.team === "blue" && player.profile.position === "goalkeeper")!;
@@ -133,7 +138,7 @@ describe("ações e física", () => {
   });
 
   it("usa defesa e controle para decidir uma bola dividida", () => {
-    const state = createGameState(createDefaultSave());
+    const state = createTestMatch(createDefaultProfile());
     state.kickoffTimer = 0;
     state.ball.position = { x: FIELD.width / 2, y: FIELD.height / 2 };
     state.ball.velocity = { x: 0, y: 0 };
@@ -146,12 +151,12 @@ describe("ações e física", () => {
     blue.profile.skills.control = 25;
     coral.profile.skills.defending = 95;
     coral.profile.skills.control = 95;
-    stepGame(state, 1 / 120);
+    stepMatch(state, 1 / 120);
     expect(state.ball.controllerId ?? state.ball.dribbleOwnerId).toBe(coral.profile.id);
   });
 
   it("encerra contato prolongado com uma tentativa real de desarme", () => {
-    const state = createGameState(createDefaultSave(), 42);
+    const state = createTestMatch(createDefaultProfile(), 42);
     state.kickoffTimer = 0;
     const holder = state.players.find((player) => player.team === "blue" && player.profile.position === "midfielder")!;
     const challenger = state.players.find((player) => player.team === "coral" && player.profile.position === "centerBack")!;
@@ -166,7 +171,7 @@ describe("ações e física", () => {
     state.ball.lastTouch = holder.team;
     state.ball.lastTouchPlayerId = holder.profile.id;
 
-    stepGame(state, 1 / 120);
+    stepMatch(state, 1 / 120);
 
     expect(state.ball.controllerId).not.toBe(holder.profile.id);
     expect(state.stats.coral.tacklesAttempted).toBe(1);
@@ -174,7 +179,7 @@ describe("ações e física", () => {
   });
 
   it("limita o reposicionamento da bola em uma mudanca de 180 graus", () => {
-    const state = createGameState(createDefaultSave(), 1245296397);
+    const state = createTestMatch(createDefaultProfile(), 1245296397);
     state.kickoffTimer = 0;
     const holder = state.players.find((player) => player.team === "coral" && player.profile.position === "centerBack")!;
     holder.position = { x: FIELD.width / 2, y: FIELD.height / 2 };
@@ -194,7 +199,7 @@ describe("ações e física", () => {
     state.ball.lastTouchPlayerId = holder.profile.id;
 
     const initialBallPosition = { ...state.ball.position };
-    stepGame(state, 1 / 120);
+    stepMatch(state, 1 / 120);
     const repositionDistance = distance(initialBallPosition, state.ball.position);
 
     expect(state.ball.controllerId ?? state.ball.dribbleOwnerId).toBe(holder.profile.id);
@@ -203,7 +208,7 @@ describe("ações e física", () => {
   });
 
   it("faz a bola aerea quicar e perder energia ao aterrissar", () => {
-    const state = createGameState(createDefaultSave(), 73);
+    const state = createTestMatch(createDefaultProfile(), 73);
     state.kickoffTimer = 0;
     state.ball.controllerId = null;
     state.ball.position = { x: FIELD.width / 2, y: FIELD.height / 2 };
@@ -212,7 +217,7 @@ describe("ações e física", () => {
     state.ball.verticalVelocity = -8;
     state.players.forEach((player) => { player.kickCooldown = 10; });
 
-    stepGame(state, 1 / 60);
+    stepMatch(state, 1 / 60);
 
     expect(state.ball.height).toBe(0);
     expect(state.ball.verticalVelocity).toBeCloseTo((8 + PHYSICS.gravity / 60) * PHYSICS.ballBounce, 5);
@@ -221,7 +226,7 @@ describe("ações e física", () => {
   });
 
   it("faz uma finalizacao viajar claramente mais rapido que um passe longo", () => {
-    const shotState = createGameState(createDefaultSave(), 515);
+    const shotState = createTestMatch(createDefaultProfile(), 515);
     shotState.kickoffTimer = 0;
     const shooter = shotState.players.find((player) => player.team === "blue" && player.profile.role === "finisher")!;
     shooter.position = { x: FIELD.width / 2, y: FIELD.height / 2 };
@@ -237,7 +242,7 @@ describe("ações e física", () => {
     });
     const shotSpeed = length(shotState.ball.velocity);
 
-    const passState = createGameState(createDefaultSave(), 515);
+    const passState = createTestMatch(createDefaultProfile(), 515);
     passState.kickoffTimer = 0;
     const passer = passState.players.find((player) => player.profile.id === shooter.profile.id)!;
     const receiver = passState.players.find((player) => player.team === passer.team && player !== passer)!;
@@ -263,7 +268,7 @@ describe("ações e física", () => {
   });
 
   it("reflete a bola que encontra um jogador de frente", () => {
-    const state = createGameState(createDefaultSave(), 91);
+    const state = createTestMatch(createDefaultProfile(), 91);
     state.kickoffTimer = 0;
     state.ball.controllerId = null;
     const target = state.players[0];
@@ -279,7 +284,7 @@ describe("ações e física", () => {
     };
     state.ball.velocity = { x: -30, y: 0 };
 
-    stepGame(state, 1 / 60);
+    stepMatch(state, 1 / 60);
 
     expect(state.ball.velocity.x).toBeGreaterThan(target.velocity.x);
     expect(state.ball.lastTouchPlayerId).toBe(target.profile.id);
@@ -287,7 +292,7 @@ describe("ações e física", () => {
   });
 
   it("deixa uma bola forte escapar de um jogador sem controle para domina-la", () => {
-    const state = createGameState(createDefaultSave(), 812);
+    const state = createTestMatch(createDefaultProfile(), 812);
     state.kickoffTimer = 0;
     const receiver = state.players.find((player) => player.team === "blue" && player.profile.position === "midfielder")!;
     receiver.position = { x: FIELD.width / 2, y: FIELD.height / 2 };
@@ -304,14 +309,14 @@ describe("ações e física", () => {
     state.ball.velocity = { x: 60, y: 0 };
     state.ball.controllerId = null;
 
-    stepGame(state, 1 / 120);
+    stepMatch(state, 1 / 120);
 
     expect(state.ball.controllerId).not.toBe(receiver.profile.id);
     expect(receiver.controlCooldown).toBeGreaterThan(0);
   });
 
   it("transforma um passe dificil em toque pesado em vez de controle magnetico", () => {
-    const state = createGameState(createDefaultSave(), 42);
+    const state = createTestMatch(createDefaultProfile(), 42);
     state.kickoffTimer = 0;
     const receiver = state.players.find((player) => player.team === "blue" && player.profile.position === "midfielder")!;
     const passer = state.players.find((player) => player.team === "blue" && player !== receiver)!;
@@ -337,7 +342,7 @@ describe("ações e física", () => {
       range: "short",
     };
 
-    stepGame(state, 1 / 120);
+    stepMatch(state, 1 / 120);
 
     expect(state.ball.controllerId).toBeNull();
     expect(state.ball.lastTouchPlayerId).toBe(receiver.profile.id);
@@ -347,7 +352,7 @@ describe("ações e física", () => {
   });
 
   it("nao usa todo o raio visual do jogador como uma parede", () => {
-    const state = createGameState(createDefaultSave(), 913);
+    const state = createTestMatch(createDefaultProfile(), 913);
     state.kickoffTimer = 0;
     const target = state.players[0];
     target.position = { x: FIELD.width / 2, y: FIELD.height / 2 };
@@ -365,13 +370,13 @@ describe("ações e física", () => {
     state.ball.lastTouch = null;
     state.ball.lastTouchPlayerId = null;
 
-    stepGame(state, 1 / 120);
+    stepMatch(state, 1 / 120);
 
     expect(state.ball.lastTouchPlayerId).toBeNull();
   });
 
   it("faz a finta vencedora passar pelo defensor sem permitir resposta imediata", () => {
-    const state = createGameState(createDefaultSave(), 2026);
+    const state = createTestMatch(createDefaultProfile(), 2026);
     state.kickoffTimer = 0;
     state.elapsed = 20;
     const attacker = state.players.find((player) => player.team === "blue" && player.profile.position === "midfielder")!;
@@ -409,7 +414,7 @@ describe("ações e física", () => {
     expect(defender.controlCooldown).toBeGreaterThan(0);
 
     for (let tick = 0; tick < 60; tick += 1) {
-      stepGame(state, 1 / 120);
+      stepMatch(state, 1 / 120);
       expect(state.ball.controllerId).not.toBe(defender.profile.id);
     }
     expect(state.stats.coral.feintsAttempted).toBe(0);
@@ -417,7 +422,7 @@ describe("ações e física", () => {
   });
 
   it("nao permite finta antes de o jogador estabilizar a posse", () => {
-    const state = createGameState(createDefaultSave(), 77);
+    const state = createTestMatch(createDefaultProfile(), 77);
     state.kickoffTimer = 0;
     state.elapsed = 12;
     const attacker = state.players.find((player) => player.team === "blue" && player.profile.position === "midfielder")!;
@@ -437,7 +442,7 @@ describe("ações e física", () => {
   });
 
   it("antecipa o corte quando um defensor se aproxima em velocidade", () => {
-    const state = createGameState(createDefaultSave(), 78);
+    const state = createTestMatch(createDefaultProfile(), 78);
     state.kickoffTimer = 0;
     state.elapsed = 12;
     const attacker = state.players.find((player) => player.team === "blue" && player.profile.position === "midfielder")!;
@@ -467,7 +472,7 @@ describe("ações e física", () => {
   });
 
   it("resolve a chegada simultanea na bola antes de liberar qualquer finta", () => {
-    const state = createGameState(createDefaultSave(), 144);
+    const state = createTestMatch(createDefaultProfile(), 144);
     state.kickoffTimer = 0;
     state.elapsed = 10;
     const blue = state.players.find((player) => player.team === "blue" && player.profile.position === "midfielder")!;
@@ -494,37 +499,37 @@ describe("ações e física", () => {
     state.ball.velocity = { x: 0, y: 0 };
     state.ball.controllerId = null;
 
-    for (let tick = 0; tick < 24; tick += 1) stepGame(state, 1 / 120);
+    for (let tick = 0; tick < 24; tick += 1) stepMatch(state, 1 / 120);
 
     expect(state.stats.blue.feintsAttempted + state.stats.coral.feintsAttempted).toBe(0);
   });
 
   it("reproduz a partida quando a semente é igual", () => {
-    const save = createDefaultSave();
-    const first = createGameState(save, 12345);
-    const second = createGameState(save, 12345);
+    const save = createDefaultProfile();
+    const first = createTestMatch(save, 12345);
+    const second = createTestMatch(save, 12345);
     for (let tick = 0; tick < 2400; tick += 1) {
-      stepGame(first, 1 / 120);
-      stepGame(second, 1 / 120);
+      stepMatch(first, 1 / 120);
+      stepMatch(second, 1 / 120);
     }
     expect(second).toEqual(first);
   });
 
   it("produz trajetorias diferentes quando a semente muda", () => {
-    const save = createDefaultSave();
-    const first = createGameState(save, 12_345);
-    const second = createGameState(save, 54_321);
+    const save = createDefaultProfile();
+    const first = createTestMatch(save, 12_345);
+    const second = createTestMatch(save, 54_321);
     for (let tick = 0; tick < 2400; tick += 1) {
-      stepGame(first, 1 / 120);
-      stepGame(second, 1 / 120);
+      stepMatch(first, 1 / 120);
+      stepMatch(second, 1 / 120);
     }
     expect(second.players.map((player) => player.position))
       .not.toEqual(first.players.map((player) => player.position));
   });
 
   it("simula dez minutos sem valores inválidos ou atletas fora do campo", () => {
-    const state = createGameState(createDefaultSave(), 98765);
-    for (let tick = 0; tick < 72_000; tick += 1) stepGame(state, 1 / 120);
+    const state = createTestMatch(createDefaultProfile(), 98765);
+    for (let tick = 0; tick < 72_000; tick += 1) stepMatch(state, 1 / 120);
     for (const player of state.players) {
       expect(Number.isFinite(player.position.x) && Number.isFinite(player.position.y)).toBe(true);
       expect(player.position.x).toBeGreaterThanOrEqual(player.radius);

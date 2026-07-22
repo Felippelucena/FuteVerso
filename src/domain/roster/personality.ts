@@ -1,4 +1,4 @@
-import { clamp } from "./math";
+import { clamp } from "../shared/math";
 import type { PlayerMentalAttributes, PlayerPolicy, PlayerProfile, PlayerRole } from "./model";
 
 export type MentalPreset = "balanced" | "cerebral" | "bold" | "intense" | "disciplined" | "creative";

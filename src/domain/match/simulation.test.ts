@@ -1,14 +1,18 @@
 import { describe, expect, it } from "vitest";
+import { buildMatchConfig } from "../../application/match/build-match-config";
+import { createDefaultProfile } from "../../application/profile/create-default-profile";
 import { FIELD, POSSESSION } from "./config";
 import { decideAll, planAll, resolvePlanDecision } from "./ai";
-import { createGameState, stepGame } from "./engine";
-import { distance } from "./math";
-import { createDefaultSave } from "./roster";
+import { createMatchState, stepMatch } from "./engine";
+import type { GameProfile } from "../roster/model";
+import { distance } from "../shared/math";
 import { updateTacticalContext } from "./tactics";
+
+const createTestMatch = (profile: GameProfile = createDefaultProfile(), seed?: number) => createMatchState(buildMatchConfig(profile, seed));
 
 describe("qualidade coletiva da simulacao", () => {
   it("produz uma partida ativa sem colapso permanente em uma lateral", () => {
-    const state = createGameState(createDefaultSave(), 98_765);
+    const state = createTestMatch(createDefaultProfile(), 98_765);
     let narrowSnapshots = 0;
     let sampledSnapshots = 0;
     let worstTouchlineCrowd = 0;
@@ -20,7 +24,7 @@ describe("qualidade coletiva da simulacao", () => {
     const observedPaces = new Set<string>();
 
     for (let tick = 0; tick < 72_000; tick += 1) {
-      stepGame(state, 1 / 120);
+      stepMatch(state, 1 / 120);
       const controller = state.players.find((player) => player.profile.id === state.ball.controllerId);
       if (controller) {
         controllerStreak += 1;
@@ -63,7 +67,7 @@ describe("qualidade coletiva da simulacao", () => {
     expect(freeDribbleTicks).toBeGreaterThan(120);
     expect(observedPaces).toEqual(new Set(["walk", "run", "burst", "closeControl"]));
     expect(state.finished).toBe(true);
-    expect(state.events.some((event) => event.label === "Fim de partida")).toBe(true);
+    expect(state.events.some((event) => event.type === "match-finished")).toBe(true);
     expect(state.stats.blue.spatialSeconds).toBeGreaterThan(590);
     expect(state.heatmaps.blue.some((value) => value > 0)).toBe(true);
     expect(Object.keys(state.passNetwork.blue).length + Object.keys(state.passNetwork.coral).length).toBeGreaterThan(0);
@@ -89,8 +93,8 @@ describe("qualidade coletiva da simulacao", () => {
     const totals = { passes: 0, shots: 0, expressiveDribbles: 0 };
     const signatures = new Set<string>();
     for (let seed = 1; seed <= 8; seed += 1) {
-      const state = createGameState(createDefaultSave(), seed * 997);
-      for (let tick = 0; tick < 90 * 120; tick += 1) stepGame(state, 1 / 120);
+      const state = createTestMatch(createDefaultProfile(), seed * 997);
+      for (let tick = 0; tick < 90 * 120; tick += 1) stepMatch(state, 1 / 120);
       const passes = state.stats.blue.passes + state.stats.coral.passes;
       const shots = state.stats.blue.shots + state.stats.coral.shots;
       const expressiveDribbles = state.stats.blue.feintsAttempted + state.stats.coral.feintsAttempted
@@ -108,7 +112,7 @@ describe("qualidade coletiva da simulacao", () => {
   }, 15_000);
 
   it("muda a fase e coordena funções ofensivas conforme o contexto", () => {
-    const state = createGameState(createDefaultSave(), 456);
+    const state = createTestMatch(createDefaultProfile(), 456);
     state.kickoffTimer = 0;
     const carrier = state.players.find((player) => player.team === "blue" && player.profile.role === "playmaker")!;
     carrier.position = { x: FIELD.width * 0.2, y: FIELD.height / 2 };
@@ -138,7 +142,7 @@ describe("qualidade coletiva da simulacao", () => {
   });
 
   it("faz o atacante arrancar para oferecer passe depois de uma retomada defensiva", () => {
-    const state = createGameState(createDefaultSave(), 654);
+    const state = createTestMatch(createDefaultProfile(), 654);
     state.kickoffTimer = 0;
     state.elapsed = 30;
     const carrier = state.players.find((player) => player.team === "blue" && player.profile.role === "defender" && player.profile.position !== "goalkeeper")!;
@@ -166,13 +170,13 @@ describe("qualidade coletiva da simulacao", () => {
     expect(decision.burst).toBe(true);
     expect(decision.movementTarget.x).toBeGreaterThan(forward.position.x + FIELD.width * 0.07);
 
-    stepGame(state, 1 / 120);
+    stepMatch(state, 1 / 120);
     expect(forward.sprintTimer).toBeGreaterThan(0);
     expect(forward.pace).toBe("burst");
   });
 
   it("confirma a troca de posse somente depois de controle sustentado", () => {
-    const state = createGameState(createDefaultSave(), 3210);
+    const state = createTestMatch(createDefaultProfile(), 3210);
     state.kickoffTimer = 0;
     state.elapsed = 20;
     state.possessionTeam = "blue";
@@ -189,18 +193,18 @@ describe("qualidade coletiva da simulacao", () => {
     state.ball.position = { ...holder.position };
     state.ball.controlStartedAt = state.elapsed;
 
-    for (let tick = 0; tick < Math.floor(POSSESSION.confirmationSeconds * 120) - 2; tick += 1) stepGame(state, 1 / 120);
+    for (let tick = 0; tick < Math.floor(POSSESSION.confirmationSeconds * 120) - 2; tick += 1) stepMatch(state, 1 / 120);
     expect(state.possessionTeam).toBe("blue");
     expect(state.stats.coral.turnoversWon).toBe(0);
 
-    for (let tick = 0; tick < 6; tick += 1) stepGame(state, 1 / 120);
+    for (let tick = 0; tick < 6; tick += 1) stepMatch(state, 1 / 120);
     expect(state.possessionTeam).toBe("coral");
     expect(state.stats.coral.turnoversWon).toBe(1);
     expect(state.tactics.coral.phase).toBe("counterAttack");
   });
 
   it("mantem a posse confirmada durante um passe em transito", () => {
-    const state = createGameState(createDefaultSave(), 411);
+    const state = createTestMatch(createDefaultProfile(), 411);
     state.kickoffTimer = 0;
     state.elapsed = 12;
     state.possessionTeam = "blue";
@@ -211,7 +215,7 @@ describe("qualidade coletiva da simulacao", () => {
     state.ball.position = { x: FIELD.width * 0.45, y: FIELD.height * 0.42 };
     state.ball.velocity = { x: 16, y: 0 };
 
-    for (let tick = 0; tick < 24; tick += 1) stepGame(state, 1 / 120);
+    for (let tick = 0; tick < 24; tick += 1) stepMatch(state, 1 / 120);
 
     expect(state.possessionTeam).toBe("blue");
     expect(state.ballControlTeam).toBe("blue");
@@ -219,7 +223,7 @@ describe("qualidade coletiva da simulacao", () => {
   });
 
   it("mantem um plano entre ciclos e o invalida quando o controlador muda", () => {
-    const state = createGameState(createDefaultSave(), 701);
+    const state = createTestMatch(createDefaultProfile(), 701);
     state.kickoffTimer = 0;
     state.elapsed = 8;
     const blue = state.players.find((player) => player.team === "blue" && player.profile.position === "midfielder")!;
@@ -233,21 +237,21 @@ describe("qualidade coletiva da simulacao", () => {
     state.ballControlTeam = "blue";
     state.lastControlledTeam = "blue";
 
-    stepGame(state, 1 / 120);
+    stepMatch(state, 1 / 120);
     const startedAt = blue.plan?.startedAt;
-    for (let tick = 0; tick < 8; tick += 1) stepGame(state, 1 / 120);
+    for (let tick = 0; tick < 8; tick += 1) stepMatch(state, 1 / 120);
     expect(blue.plan?.startedAt).toBe(startedAt);
 
     state.ball.controllerId = coral.profile.id;
     state.ball.position = { ...coral.position };
     state.ball.controlStartedAt = state.elapsed;
-    stepGame(state, 1 / 120);
+    stepMatch(state, 1 / 120);
     expect(blue.plan?.controllerId).toBe(coral.profile.id);
     expect(blue.plan?.startedAt).toBeGreaterThan(startedAt ?? 0);
   });
 
   it("acompanha um alvo marcado sem trocar o plano", () => {
-    const state = createGameState(createDefaultSave(), 901);
+    const state = createTestMatch(createDefaultProfile(), 901);
     state.kickoffTimer = 0;
     state.elapsed = 15;
     const controller = state.players.find((player) => player.team === "coral" && player.profile.position === "midfielder")!;
@@ -282,7 +286,7 @@ describe("qualidade coletiva da simulacao", () => {
   });
 
   it("usa latch e cooldown nas entradas do terco final", () => {
-    const state = createGameState(createDefaultSave(), 1001);
+    const state = createTestMatch(createDefaultProfile(), 1001);
     state.kickoffTimer = 0;
     state.elapsed = 10;
     state.possessionTeam = "blue";
@@ -307,38 +311,38 @@ describe("qualidade coletiva da simulacao", () => {
   });
 
   it("aplica lateral para o adversario do ultimo toque", () => {
-    const state = createGameState(createDefaultSave(), 123);
+    const state = createTestMatch(createDefaultProfile(), 123);
     state.kickoffTimer = 0;
     state.ball.controllerId = null;
     state.ball.lastTouch = "blue";
     state.ball.position = { x: FIELD.width * 0.7, y: -FIELD.ballRadius - 0.1 };
     state.ball.velocity = { x: 0, y: 0 };
 
-    stepGame(state, 1 / 120);
+    stepMatch(state, 1 / 120);
 
     expect(state.possessionTeam).toBe("coral");
-    expect(state.events[0].label).toContain("Lateral para MAYA");
+    expect(state.events[0]).toMatchObject({ type: "restart-awarded", team: "coral", restartKind: "throwIn" });
     expect(state.ball.position.y).toBeGreaterThan(0);
   });
 
   it("diferencia escanteio de tiro de meta pelo ultimo toque", () => {
-    const corner = createGameState(createDefaultSave(), 321);
+    const corner = createTestMatch(createDefaultProfile(), 321);
     corner.kickoffTimer = 0;
     corner.ball.controllerId = null;
     corner.ball.lastTouch = "coral";
     corner.ball.position = { x: FIELD.width + FIELD.ballRadius + 0.1, y: FIELD.goalTop - 4 };
     corner.ball.velocity = { x: 0, y: 0 };
-    stepGame(corner, 1 / 120);
+    stepMatch(corner, 1 / 120);
 
-    const goalKick = createGameState(createDefaultSave(), 321);
+    const goalKick = createTestMatch(createDefaultProfile(), 321);
     goalKick.kickoffTimer = 0;
     goalKick.ball.controllerId = null;
     goalKick.ball.lastTouch = "blue";
     goalKick.ball.position = { x: FIELD.width + FIELD.ballRadius + 0.1, y: FIELD.goalTop - 4 };
     goalKick.ball.velocity = { x: 0, y: 0 };
-    stepGame(goalKick, 1 / 120);
+    stepMatch(goalKick, 1 / 120);
 
-    expect(corner.events[0].label).toContain("Escanteio para NILO");
-    expect(goalKick.events[0].label).toContain("Tiro de meta para MAYA");
+    expect(corner.events[0]).toMatchObject({ type: "restart-awarded", team: "blue", restartKind: "corner" });
+    expect(goalKick.events[0]).toMatchObject({ type: "restart-awarded", team: "coral", restartKind: "goalKick" });
   });
 });

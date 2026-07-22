@@ -1,6 +1,6 @@
-import { FIELD, PHYSICS } from "./config";
-import { clamp, distance, length } from "./math";
-import type { GameState, PlayerRuntime, Team, Vec2 } from "./model";
+import { FIELD, PHYSICS } from "../../domain/match/config";
+import { clamp, distance, length } from "../../domain/shared/math";
+import type { MatchState, PlayerRuntime, Team, Vec2 } from "../../domain/match/model";
 
 const COLORS: Record<Team, { fill: string; dark: string; light: string }> = {
   blue: { fill: "#3b82f6", dark: "#172b4d", light: "#dbeafe" },
@@ -49,7 +49,7 @@ export class GameRenderer {
     return this.offsetY + value * this.scale;
   }
 
-  render(state: GameState): void {
+  render(state: MatchState): void {
     if (this.width === 0) this.resize();
     const ctx = this.context;
     ctx.clearRect(0, 0, this.width, this.height);
@@ -69,7 +69,7 @@ export class GameRenderer {
     if (state.kickoffTimer > 0) this.drawKickoff(state.kickoffTimer);
   }
 
-  private updateBallTrail(state: GameState): void {
+  private updateBallTrail(state: MatchState): void {
     const current = { position: { ...state.ball.position }, height: state.ball.height, time: state.elapsed };
     if (state.ball.controllerId) {
       this.ballTrail = [current];
@@ -232,7 +232,7 @@ export class GameRenderer {
     ctx.restore();
   }
 
-  private drawBall(state: GameState): void {
+  private drawBall(state: MatchState): void {
     const ctx = this.context;
     const speed = length(state.ball.velocity);
     const x = this.x(state.ball.position.x);

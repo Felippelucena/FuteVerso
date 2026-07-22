@@ -1,10 +1,8 @@
 import { formationAnchor, planAll, resolvePlanDecision, thinkingInterval } from "./ai";
 import { ANALYTICS_GRID, COGNITION, DEFAULT_MATCH_SEED, FIELD, MATCH_DURATION, PHYSICS, POSSESSION } from "./config";
-import { add, clamp, distance, dot, lerp, length, limit, normalize, rotate, scale, subtract } from "./math";
-import type { AgentDecision, AutoballSave, BallAction, DribbleStyle, GameState, MatchEvent, PlayerRuntime, Team, Vec2 } from "./model";
-import { createMemory } from "./roster";
-import { policyLearningBounds } from "./personality";
-import { lineupIds } from "./storage";
+import { add, clamp, distance, dot, lerp, length, limit, normalize, rotate, scale, subtract } from "../shared/math";
+import type { AgentDecision, BallAction, DribbleStyle, MatchConfig, MatchEvent, MatchEventData, MatchParticipant, MatchState, PlayerRuntime, Team, Vec2 } from "./model";
+import { policyLearningBounds } from "../roster/personality";
 import { createPhaseSeconds, createTacticalState, updateTacticalContext } from "./tactics";
 
 const clone = <T>(value: T): T => JSON.parse(JSON.stringify(value)) as T;
@@ -20,9 +18,10 @@ const teamStats = () => ({
   phaseSeconds: createPhaseSeconds(),
 });
 
-const makePlayer = (save: AutoballSave, team: Team, id: string, lineupIndex: number): PlayerRuntime => {
-  const profile = clone(save.players.find((candidate) => candidate.id === id)!);
-  const memory = clone(save.memories[id] ?? createMemory(profile));
+const makePlayer = (participant: MatchParticipant): PlayerRuntime => {
+  const profile = clone(participant.profile);
+  const memory = clone(participant.memory);
+  const { team, lineupIndex } = participant;
   const player: PlayerRuntime = {
     profile,
     memory,
@@ -51,10 +50,8 @@ const makePlayer = (save: AutoballSave, team: Team, id: string, lineupIndex: num
   return player;
 };
 
-export function createGameState(save: AutoballSave, randomSeed = DEFAULT_MATCH_SEED): GameState {
-  const players = (["blue", "coral"] as const).flatMap((team) =>
-    lineupIds(save, team).map((id, index) => makePlayer(save, team, id, index)),
-  );
+export function createMatchState(config: MatchConfig): MatchState {
+  const players = config.participants.map(makePlayer);
   return {
     players,
     ball: {
@@ -64,7 +61,7 @@ export function createGameState(save: AutoballSave, randomSeed = DEFAULT_MATCH_S
       dribbleOwnerId: null, dribbleTarget: null, dribbleStyle: null, dribbleStartedAt: 0, controlStartedAt: 0,
     },
     stats: { blue: teamStats(), coral: teamStats() },
-    events: [{ id: 1, time: 0, team: null, label: "Simulacao 4 x 4 iniciada" }],
+    events: [{ id: 1, time: 0, type: "match-started" }],
     elapsed: 0,
     kickoffTimer: 1.1,
     ballControlTeam: null,
@@ -73,8 +70,8 @@ export function createGameState(save: AutoballSave, randomSeed = DEFAULT_MATCH_S
     possessionCandidateSince: 0,
     lastPossessionChangeAt: 0,
     eventCounter: 1,
-    randomSeed,
-    learningEnabled: save.settings.learningEnabled,
+    randomSeed: config.seed ?? DEFAULT_MATCH_SEED,
+    learningEnabled: config.learningEnabled,
     pendingPass: null,
     feintEvasion: null,
     lastAssist: null,
@@ -94,18 +91,18 @@ export function createGameState(save: AutoballSave, randomSeed = DEFAULT_MATCH_S
   };
 }
 
-const addEvent = (state: GameState, team: Team | null, label: string): void => {
-  const event: MatchEvent = { id: ++state.eventCounter, time: state.elapsed, team, label };
+const addEvent = (state: MatchState, data: MatchEventData): void => {
+  const event = { ...data, id: ++state.eventCounter, time: state.elapsed } as MatchEvent;
   state.events.unshift(event);
   state.events = state.events.slice(0, 7);
 };
 
-const nextRandom = (state: GameState): number => {
+const nextRandom = (state: MatchState): number => {
   state.randomSeed = (Math.imul(state.randomSeed, 1664525) + 1013904223) >>> 0;
   return state.randomSeed / 0x100000000;
 };
 
-const signedNoise = (state: GameState): number => nextRandom(state) - nextRandom(state);
+const signedNoise = (state: MatchState): number => nextRandom(state) - nextRandom(state);
 const skillSpeed = (player: PlayerRuntime): number => 8.5 + player.profile.skills.sprintSpeed * 0.06;
 const skillAcceleration = (player: PlayerRuntime): number => 22 + player.profile.skills.acceleration * 0.38;
 
@@ -144,12 +141,12 @@ export const playerSpeedLimit = (player: PlayerRuntime, controlsBall: boolean, r
   return skillSpeed(player) * factor;
 };
 
-const pressureAt = (state: GameState, player: PlayerRuntime): number => {
+const pressureAt = (state: MatchState, player: PlayerRuntime): number => {
   const closest = Math.min(...state.players.filter((other) => other.team !== player.team).map((other) => distance(other.position, player.position)));
   return clamp(1 - closest / 10, 0, 1);
 };
 
-const ballClaimQuality = (state: GameState, player: PlayerRuntime, ownBox: boolean): number => {
+const ballClaimQuality = (state: MatchState, player: PlayerRuntime, ownBox: boolean): number => {
   const skills = player.profile.skills;
   const value = ownBox && player.profile.position === "goalkeeper"
     ? skills.goalkeeping * 0.72 + skills.defending * 0.18 + skills.control * 0.1
@@ -170,7 +167,7 @@ const adapt = (player: PlayerRuntime, key: keyof PlayerRuntime["memory"]["policy
   player.memory.version += 1;
 };
 
-const registerPassOutcome = (state: GameState, controller: PlayerRuntime): void => {
+const registerPassOutcome = (state: MatchState, controller: PlayerRuntime): void => {
   const pending = state.pendingPass;
   if (!pending) return;
   const passer = state.players.find((player) => player.profile.id === pending.passerId);
@@ -193,7 +190,7 @@ const registerPassOutcome = (state: GameState, controller: PlayerRuntime): void 
   state.pendingPass = null;
 };
 
-const sampleSpatialAnalytics = (state: GameState): void => {
+const sampleSpatialAnalytics = (state: MatchState): void => {
   if (state.elapsed + 0.0001 < state.nextAnalyticsSample) return;
   state.nextAnalyticsSample += ANALYTICS_GRID.sampleInterval;
   for (const player of state.players) {
@@ -204,7 +201,7 @@ const sampleSpatialAnalytics = (state: GameState): void => {
   }
 };
 
-const confirmPossession = (state: GameState, team: Team): void => {
+const confirmPossession = (state: MatchState, team: Team): void => {
   const previous = state.lastControlledTeam;
   if (previous !== team) {
     if (previous) state.stats[team].turnoversWon += 1;
@@ -219,7 +216,7 @@ const confirmPossession = (state: GameState, team: Team): void => {
   state.nextCognitionAt = state.elapsed;
 };
 
-const registerControlledTeam = (state: GameState, team: Team, force = false): void => {
+const registerControlledTeam = (state: MatchState, team: Team, force = false): void => {
   if (state.ballControlTeam !== team) state.ballControlTeam = team;
   if (force || state.possessionTeam === team) {
     if (state.possessionTeam !== team) confirmPossession(state, team);
@@ -237,7 +234,7 @@ const registerControlledTeam = (state: GameState, team: Team, force = false): vo
   if (state.elapsed - state.possessionCandidateSince >= POSSESSION.confirmationSeconds) confirmPossession(state, team);
 };
 
-const registerLooseBall = (state: GameState): void => {
+const registerLooseBall = (state: MatchState): void => {
   if (state.ballControlTeam !== null) {
     state.ballControlTeam = null;
     state.possessionCandidateTeam = null;
@@ -248,18 +245,18 @@ const registerLooseBall = (state: GameState): void => {
   }
 };
 
-const clearDribbleOwner = (state: GameState): void => {
+const clearDribbleOwner = (state: MatchState): void => {
   state.ball.dribbleOwnerId = null;
   state.ball.dribbleTarget = null;
   state.ball.dribbleStyle = null;
   state.ball.dribbleStartedAt = 0;
 };
 
-const isEvadedDefender = (state: GameState, player: PlayerRuntime): boolean =>
+const isEvadedDefender = (state: MatchState, player: PlayerRuntime): boolean =>
   state.feintEvasion?.defenderId === player.profile.id && state.elapsed < state.feintEvasion.expiresAt;
 
 const firstTouchOutcome = (
-  state: GameState,
+  state: MatchState,
   player: PlayerRuntime,
   quality: number,
   ownBox: boolean,
@@ -280,7 +277,7 @@ const firstTouchOutcome = (
   return "miss";
 };
 
-const applyHeavyTouch = (state: GameState, player: PlayerRuntime, quality: number): void => {
+const applyHeavyTouch = (state: MatchState, player: PlayerRuntime, quality: number): void => {
   const ballSpeed = length(state.ball.velocity);
   const incoming = ballSpeed > 0.5 ? normalize(state.ball.velocity) : player.facing;
   const touchDirection = normalize(add(scale(incoming, 0.72), scale(player.facing, 0.28)));
@@ -294,7 +291,7 @@ const applyHeavyTouch = (state: GameState, player: PlayerRuntime, quality: numbe
   registerLooseBall(state);
 };
 
-const updatePossession = (state: GameState, dt: number): void => {
+const updatePossession = (state: MatchState, dt: number): void => {
   const current = state.players.find((player) => player.profile.id === state.ball.controllerId);
   if (current && state.ball.height < 1.8 && distance(current.position, state.ball.position) < PHYSICS.kickDistance + 0.7) {
     const challenger = [...state.players]
@@ -407,7 +404,7 @@ const updatePossession = (state: GameState, dt: number): void => {
     && (controller.team === "blue" ? controller.position.x < FIELD.penaltyDepth : controller.position.x > FIELD.width - FIELD.penaltyDepth);
   if (savedShot) {
     state.stats[controller.team].saves += 1;
-    addEvent(state, controller.team, `${controller.profile.name} defendeu`);
+    addEvent(state, { type: "save-made", team: controller.team, playerId: controller.profile.id });
   } else if (shotTeam && state.ball.lastShotOnTarget) {
     state.stats[shotTeam].shotsOnTarget = Math.max(0, state.stats[shotTeam].shotsOnTarget - 1);
   }
@@ -480,7 +477,7 @@ const clampPlayerToField = (player: PlayerRuntime): void => {
   player.position.y = clamp(player.position.y, player.radius, FIELD.height - player.radius);
 };
 
-const resolvePlayerCollision = (state: GameState, a: PlayerRuntime, b: PlayerRuntime): void => {
+const resolvePlayerCollision = (state: MatchState, a: PlayerRuntime, b: PlayerRuntime): void => {
   const evasion = state.feintEvasion;
   if (evasion && state.elapsed < evasion.expiresAt) {
     const isEvasionPair = (a.profile.id === evasion.attackerId && b.profile.id === evasion.defenderId)
@@ -503,7 +500,7 @@ const resolvePlayerCollision = (state: GameState, a: PlayerRuntime, b: PlayerRun
   }
 };
 
-const releaseBall = (state: GameState, player: PlayerRuntime, direction: Vec2, speed: number, lift: number): void => {
+const releaseBall = (state: MatchState, player: PlayerRuntime, direction: Vec2, speed: number, lift: number): void => {
   state.ball.velocity = limit(scale(direction, speed), PHYSICS.maxBallSpeed);
   state.ball.verticalVelocity = lift;
   state.ball.height = 0;
@@ -516,7 +513,7 @@ const releaseBall = (state: GameState, player: PlayerRuntime, direction: Vec2, s
   state.possessionCandidateSince = state.elapsed;
 };
 
-export const executeBallAction = (state: GameState, player: PlayerRuntime, action: BallAction): void => {
+export const executeBallAction = (state: MatchState, player: PlayerRuntime, action: BallAction): void => {
   if (action.kind === "none" || player.kickCooldown > 0 || player.reactionTimer > 0) return;
   const rawPressure = pressureAt(state, player);
   const pressure = rawPressure * (1.16 - player.profile.mental.composure / 190);
@@ -630,7 +627,7 @@ export const executeBallAction = (state: GameState, player: PlayerRuntime, actio
     const projectedY = state.ball.position.y + direction.y * travel;
     state.ball.lastShotOnTarget = travel > 0 && projectedY > FIELD.goalTop && projectedY < FIELD.goalBottom;
     if (state.ball.lastShotOnTarget) state.stats[player.team].shotsOnTarget += 1;
-    addEvent(state, player.team, `${player.profile.name} finalizou`);
+    addEvent(state, { type: "shot-taken", team: player.team, playerId: player.profile.id });
     return;
   }
   const baseQuality = (player.profile.skills.passing * 0.68 + player.profile.skills.vision * 0.32) / 100;
@@ -666,7 +663,7 @@ export const executeBallAction = (state: GameState, player: PlayerRuntime, actio
   };
 };
 
-const attachControlledBall = (state: GameState, player: PlayerRuntime, dt: number): void => {
+const attachControlledBall = (state: MatchState, player: PlayerRuntime, dt: number): void => {
   const facing = length(player.facing) > 0 ? player.facing : { x: player.team === "blue" ? 1 : -1, y: 0 };
   const target = add(player.position, scale(facing, player.radius + state.ball.radius + 0.15));
   const error = subtract(target, state.ball.position);
@@ -703,7 +700,7 @@ const prepareControlledBall = (player: PlayerRuntime, decision: AgentDecision, d
   return dot(player.facing, desired) > PHYSICS.ballActionAlignment;
 };
 
-const resolveBallPlayerCollision = (state: GameState): void => {
+const resolveBallPlayerCollision = (state: MatchState): void => {
   if (state.ball.height > 1.8 || state.ball.controllerId) return;
   const nearest = state.players
     .filter((player) => !isEvadedDefender(state, player))
@@ -729,7 +726,7 @@ const resolveBallPlayerCollision = (state: GameState): void => {
   state.ball.lastTouchPlayerId = nearest.profile.id;
 };
 
-const resetPositions = (state: GameState, kickoffTeam: Team): void => {
+const resetPositions = (state: MatchState, kickoffTeam: Team): void => {
   const restartOffset = signedNoise(state) * 5;
   for (const player of state.players) {
     player.position = formationAnchor(player);
@@ -771,7 +768,7 @@ const resetPositions = (state: GameState, kickoffTeam: Team): void => {
 const otherTeam = (team: Team): Team => team === "blue" ? "coral" : "blue";
 
 const restartPlay = (
-  state: GameState,
+  state: MatchState,
   team: Team,
   kind: "throwIn" | "corner" | "goalKick",
   exitPosition: Vec2,
@@ -818,13 +815,12 @@ const restartPlay = (
   state.pendingPass = null;
   state.feintEvasion = null;
   state.kickoffTimer = 0.72;
-  const label = kind === "throwIn" ? "Lateral" : kind === "corner" ? "Escanteio" : "Tiro de meta";
-  addEvent(state, team, `${label} para ${team === "blue" ? "NILO" : "MAYA"}`);
+  addEvent(state, { type: "restart-awarded", team, restartKind: kind });
 };
 
 const fieldRestartMargin = (): number => Math.max(8, FIELD.goalAreaDepth * 0.55);
 
-const registerGoal = (state: GameState, scorerTeam: Team): void => {
+const registerGoal = (state: MatchState, scorerTeam: Team): void => {
   const conceding: Team = scorerTeam === "blue" ? "coral" : "blue";
   const scorer = state.players.find((player) => player.profile.id === state.ball.lastTouchPlayerId && player.team === scorerTeam);
   const origin = state.ball.lastAction ?? "dribble";
@@ -843,13 +839,12 @@ const registerGoal = (state: GameState, scorerTeam: Team): void => {
     ? state.players.find((player) => player.profile.id === state.lastAssist?.playerId)
     : null;
   if (assist && assist.profile.id !== scorer?.profile.id) assist.memory.stats.assists += 1;
-  const originLabel = origin === "shot" ? "finalização" : origin === "pass" ? "passe" : "condução";
-  addEvent(state, scorerTeam, `Gol de ${scorer?.profile.name ?? (scorerTeam === "blue" ? "NILO" : "MAYA")} (${originLabel})`);
+  addEvent(state, { type: "goal-scored", team: scorerTeam, playerId: scorer?.profile.id ?? null, origin });
   state.lastAssist = null;
   resetPositions(state, conceding);
 };
 
-const updateBall = (state: GameState, dt: number): void => {
+const updateBall = (state: MatchState, dt: number): void => {
   const ball = state.ball;
   const airborne = ball.height > 0 || ball.verticalVelocity > 0;
   const drag = airborne ? PHYSICS.airBallDrag : PHYSICS.ballDrag;
@@ -891,7 +886,7 @@ const updateBall = (state: GameState, dt: number): void => {
   }
 };
 
-const planNeedsRefresh = (player: PlayerRuntime, state: GameState): boolean => {
+const planNeedsRefresh = (player: PlayerRuntime, state: MatchState): boolean => {
   const plan = player.plan;
   if (!plan || state.elapsed >= plan.expiresAt) return true;
   if (plan.possessionTeam !== state.possessionTeam || plan.controllerId !== state.ball.controllerId) return true;
@@ -907,7 +902,7 @@ const planNeedsRefresh = (player: PlayerRuntime, state: GameState): boolean => {
   return looseBallClose && plan.target.kind !== "ball";
 };
 
-const updateCognition = (state: GameState): Map<string, AgentDecision> => {
+const updateCognition = (state: MatchState): Map<string, AgentDecision> => {
   const immediateRefresh = state.players.some((player) => {
     const plan = player.plan;
     return !plan || plan.possessionTeam !== state.possessionTeam || plan.controllerId !== state.ball.controllerId;
@@ -937,7 +932,7 @@ const updateCognition = (state: GameState): Map<string, AgentDecision> => {
   return new Map(state.players.map((player) => [player.profile.id, resolvePlanDecision(player, state)]));
 };
 
-export function stepGame(state: GameState, dt: number): void {
+export function stepMatch(state: MatchState, dt: number): void {
   if (state.finished) return;
   const nextElapsed = state.elapsed + dt;
   state.elapsed = nextElapsed >= MATCH_DURATION - 0.000_001 ? MATCH_DURATION : nextElapsed;
@@ -949,7 +944,7 @@ export function stepGame(state: GameState, dt: number): void {
     updateTacticalContext(state, dt);
     if (state.elapsed >= MATCH_DURATION) {
       state.finished = true;
-      addEvent(state, null, "Fim de partida");
+      addEvent(state, { type: "match-finished" });
     }
     return;
   }
@@ -983,8 +978,8 @@ export function stepGame(state: GameState, dt: number): void {
   }
   if (state.elapsed >= MATCH_DURATION) {
     state.finished = true;
-    addEvent(state, null, "Fim de partida");
+    addEvent(state, { type: "match-finished" });
   }
 }
 
-export const matchMemories = (state: GameState) => state.players.map((player) => clone(player.memory));
+export const extractPlayerMemories = (state: MatchState) => state.players.map((player) => clone(player.memory));

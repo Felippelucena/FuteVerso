@@ -12,24 +12,30 @@ import {
   Users,
   X,
 } from "lucide";
-import { ANALYTICS_GRID, FIELD, FIXED_STEP } from "./game/config";
-import { createGameState, matchMemories, stepGame } from "./game/engine";
+import { buildMatchConfig } from "./application/match/build-match-config";
+import { createDefaultProfile } from "./application/profile/create-default-profile";
+import { updateProfileMemories } from "./application/profile/update-profile-memories";
+import { ANALYTICS_GRID, FIELD, FIXED_STEP } from "./domain/match/config";
+import { createMatchState, extractPlayerMemories, stepMatch } from "./domain/match";
 import type {
-  AutoballSave,
   DecisionReason,
   MovementPace,
+  TacticalPhase,
+} from "./domain/match/model";
+import type {
+  GameProfile,
   PlayerMentalAttributes,
   PlayerPosition,
   PlayerProfile,
   PlayerRole,
   PlayerSkills,
-  Team,
-  TacticalPhase,
-} from "./game/model";
-import { createMentalAttributes, dominantMentalTraits, MENTAL_PRESET_LABELS, MENTAL_PRESETS, type MentalPreset } from "./game/personality";
-import { GameRenderer } from "./game/renderer";
-import { createMemory, validateLineups } from "./game/roster";
-import { PlayerRepository, updateSaveMemories } from "./game/storage";
+} from "./domain/roster/model";
+import { createMentalAttributes, dominantMentalTraits, MENTAL_PRESET_LABELS, MENTAL_PRESETS, type MentalPreset } from "./domain/roster/personality";
+import { createMemory, validateLineups } from "./domain/roster/rules";
+import type { Team } from "./domain/shared/model";
+import { LocalStorageSaveRepository } from "./infrastructure/persistence/local-storage-save-repository";
+import { GameRenderer } from "./presentation/canvas/game-renderer";
+import { formatMatchEvent } from "./presentation/match/format-match-event";
 import "./style.css";
 
 const UI_ICONS = { Dices, Pause, Pencil, Play, Plus, RotateCcw, Save, SlidersHorizontal, Trash2, Users, X };
@@ -202,9 +208,9 @@ app.innerHTML = `
 
 createIcons({ icons: UI_ICONS });
 
-const repository = new PlayerRepository();
-let saveData = repository.load();
-let state = createGameState(saveData, saveData.settings.randomSeed);
+const repository = new LocalStorageSaveRepository(window.localStorage, createDefaultProfile);
+let profileData = repository.load();
+let state = createMatchState(buildMatchConfig(profileData));
 let selectedPlayerId = state.players[0].profile.id;
 let editingPlayerId: string | null = null;
 let paused = false;
@@ -226,9 +232,9 @@ const teamLabel = (team: Team): string => team === "blue" ? "NILO" : "MAYA";
 const formatClock = (seconds: number): string => `${Math.floor(seconds / 60).toString().padStart(2, "0")}:${Math.floor(seconds % 60).toString().padStart(2, "0")}`;
 
 const persistMemory = (): void => {
-  saveData = updateSaveMemories(saveData, matchMemories(state));
-  saveData.settings.learningEnabled = state.learningEnabled;
-  repository.save(saveData);
+  profileData = updateProfileMemories(profileData, extractPlayerMemories(state));
+  profileData.settings.learningEnabled = state.learningEnabled;
+  repository.save(profileData);
   lastMemorySave = performance.now();
 };
 
@@ -364,13 +370,16 @@ const updateUi = (): void => {
   renderMatchRoster();
   renderAnalysis();
   bySelector<HTMLButtonElement>("#pause-button").disabled = state.finished;
-  bySelector<HTMLOListElement>("#event-list").innerHTML = state.events.map((event) => `<li class="event-item ${event.team ? `event-item--${event.team}` : ""}"><time>${formatClock(event.time)}</time><span>${escapeHtml(event.label)}</span></li>`).join("");
+  bySelector<HTMLOListElement>("#event-list").innerHTML = state.events.map((event) => {
+    const team = "team" in event ? event.team : null;
+    return `<li class="event-item ${team ? `event-item--${team}` : ""}"><time>${formatClock(event.time)}</time><span>${escapeHtml(formatMatchEvent(event, profileData.players))}</span></li>`;
+  }).join("");
 };
 
-const usedPlayerIds = (): string[] => (["blue", "coral"] as const).flatMap((team) => [saveData.lineups[team].goalkeeperId, ...saveData.lineups[team].fieldPlayerIds]);
+const usedPlayerIds = (): string[] => (["blue", "coral"] as const).flatMap((team) => [profileData.lineups[team].goalkeeperId, ...profileData.lineups[team].fieldPlayerIds]);
 
 const playerOptions = (currentId: string, goalkeeper: boolean): string => {
-  return saveData.players
+  return profileData.players
     .filter((player) => goalkeeper ? player.position === "goalkeeper" : player.position !== "goalkeeper")
     .map((player) => `<option value="${player.id}" ${player.id === currentId ? "selected" : ""}>${escapeHtml(player.name)} · ${POSITION_LABELS[player.position]}</option>`)
     .join("");
@@ -378,7 +387,7 @@ const playerOptions = (currentId: string, goalkeeper: boolean): string => {
 
 const renderManager = (): void => {
   bySelector("#lineup-grid").innerHTML = (["blue", "coral"] as const).map((team) => {
-    const lineup = saveData.lineups[team];
+    const lineup = profileData.lineups[team];
     const slots = [
       { label: "Goleiro", value: lineup.goalkeeperId, slot: "goalkeeper", goalkeeper: true },
       ...lineup.fieldPlayerIds.map((value, index) => ({ label: `Linha ${index + 1}`, value, slot: String(index), goalkeeper: false })),
@@ -386,8 +395,8 @@ const renderManager = (): void => {
     return `<section class="lineup-panel lineup-panel--${team}"><div class="lineup-title"><span></span><div><small>TIME</small><h3>${teamLabel(team)}</h3></div></div>
       <div class="lineup-slots">${slots.map((slot) => `<label><span>${slot.label}</span><select class="lineup-select" data-team="${team}" data-slot="${slot.slot}">${playerOptions(slot.value, slot.goalkeeper)}</select></label>`).join("")}</div></section>`;
   }).join("");
-  bySelector("#player-count").textContent = `${saveData.players.length} jogadores`;
-  bySelector("#players-table").innerHTML = saveData.players.map((player) => `
+  bySelector("#player-count").textContent = `${profileData.players.length} jogadores`;
+  bySelector("#players-table").innerHTML = profileData.players.map((player) => `
     <div class="player-table-row"><span class="shirt shirt--neutral">${player.number}</span><div class="player-table-name"><strong>${escapeHtml(player.name)}</strong><span>${POSITION_LABELS[player.position]} · ${ROLE_LABELS[player.role]} · ${dominantMentalTraits(player.mental).join(" / ")}</span></div>
       <div class="player-rating"><span>CON <strong>${player.skills.control}</strong></span><span>PAS <strong>${player.skills.passing}</strong></span><span>VEL <strong>${player.skills.sprintSpeed}</strong></span></div>
       <div class="row-actions"><button class="icon-button" type="button" data-edit-player="${player.id}" aria-label="Editar ${escapeHtml(player.name)}" title="Editar"><i data-lucide="pencil"></i></button><button class="icon-button icon-button--danger" type="button" data-delete-player="${player.id}" aria-label="Excluir ${escapeHtml(player.name)}" title="Excluir"><i data-lucide="trash-2"></i></button></div></div>`).join("");
@@ -402,7 +411,7 @@ const setManagerMessage = (message: string, error = false): void => {
 
 const resetMatch = (): void => {
   persistMemory();
-  state = createGameState(saveData, saveData.settings.randomSeed);
+  state = createMatchState(buildMatchConfig(profileData));
   selectedPlayerId = state.players[0].profile.id;
   accumulator = 0;
   updateUi();
@@ -414,7 +423,7 @@ const frame = (now: number): void => {
   if (!paused && !state.finished) {
     accumulator += realDelta * simulationSpeed;
     let safety = 0;
-    while (accumulator >= FIXED_STEP && safety < 140) { stepGame(state, FIXED_STEP); accumulator -= FIXED_STEP; safety += 1; }
+    while (accumulator >= FIXED_STEP && safety < 140) { stepMatch(state, FIXED_STEP); accumulator -= FIXED_STEP; safety += 1; }
   }
   renderer.render(state);
   if (now - lastUiUpdate > 140) { updateUi(); lastUiUpdate = now; }
@@ -461,17 +470,17 @@ pauseButton.addEventListener("click", () => {
 bySelector("#reset-button").addEventListener("click", resetMatch);
 const settingsDialog = bySelector<HTMLDialogElement>("#match-settings-dialog");
 const seedInput = bySelector<HTMLInputElement>("#settings-seed-input");
-seedInput.value = String(saveData.settings.randomSeed);
+seedInput.value = String(profileData.settings.randomSeed);
 const applySeed = (rawValue: string): void => {
   const parsed = Number(rawValue);
   if (!Number.isFinite(parsed)) {
-    seedInput.value = String(saveData.settings.randomSeed);
+    seedInput.value = String(profileData.settings.randomSeed);
     return;
   }
   const nextSeed = Math.min(0xffff_ffff, Math.max(0, Math.trunc(parsed)));
-  saveData.settings.randomSeed = nextSeed;
+  profileData.settings.randomSeed = nextSeed;
   seedInput.value = String(nextSeed);
-  repository.save(saveData);
+  repository.save(profileData);
   resetMatch();
 };
 seedInput.addEventListener("change", () => applySeed(seedInput.value));
@@ -481,25 +490,25 @@ seedInput.addEventListener("keydown", (event) => {
 bySelector("#settings-random-seed").addEventListener("click", () => {
   const values = new Uint32Array(1);
   crypto.getRandomValues(values);
-  const nextSeed = values[0] === saveData.settings.randomSeed ? (values[0] + 1) >>> 0 : values[0];
+  const nextSeed = values[0] === profileData.settings.randomSeed ? (values[0] + 1) >>> 0 : values[0];
   applySeed(String(nextSeed));
 });
 for (const button of document.querySelectorAll<HTMLButtonElement>("[data-open-match-settings]")) {
   button.addEventListener("click", () => {
-    seedInput.value = String(saveData.settings.randomSeed);
+    seedInput.value = String(profileData.settings.randomSeed);
     bySelector<HTMLInputElement>("#learning-toggle").checked = state.learningEnabled;
     settingsDialog.showModal();
   });
 }
 bySelector<HTMLInputElement>("#learning-toggle").addEventListener("change", (event) => {
   state.learningEnabled = (event.currentTarget as HTMLInputElement).checked;
-  saveData.settings.learningEnabled = state.learningEnabled;
+  profileData.settings.learningEnabled = state.learningEnabled;
   persistMemory();
 });
 bySelector("#reset-learning").addEventListener("click", () => {
-  saveData.memories = Object.fromEntries(saveData.players.map((player) => [player.id, createMemory(player)]));
-  repository.save(saveData);
-  state = createGameState(saveData, saveData.settings.randomSeed);
+  profileData.memories = Object.fromEntries(profileData.players.map((player) => [player.id, createMemory(player)]));
+  repository.save(profileData);
+  state = createMatchState(buildMatchConfig(profileData));
   updateUi();
 });
 for (const button of document.querySelectorAll<HTMLButtonElement>("[data-speed]")) {
@@ -522,20 +531,20 @@ bySelector("#lineup-grid").addEventListener("change", (event) => {
   if (!select) return;
   const team = select.dataset.team as Team;
   const slot = select.dataset.slot!;
-  const previous = JSON.parse(JSON.stringify(saveData.lineups)) as AutoballSave["lineups"];
+  const previous = JSON.parse(JSON.stringify(profileData.lineups)) as GameProfile["lineups"];
   const replacedId = slot === "goalkeeper" ? previous[team].goalkeeperId : previous[team].fieldPlayerIds[Number(slot)];
   for (const otherTeam of ["blue", "coral"] as const) {
-    if (previous[otherTeam].goalkeeperId === select.value) saveData.lineups[otherTeam].goalkeeperId = replacedId;
+    if (previous[otherTeam].goalkeeperId === select.value) profileData.lineups[otherTeam].goalkeeperId = replacedId;
     const otherIndex = previous[otherTeam].fieldPlayerIds.indexOf(select.value);
-    if (otherIndex >= 0) saveData.lineups[otherTeam].fieldPlayerIds[otherIndex] = replacedId;
+    if (otherIndex >= 0) profileData.lineups[otherTeam].fieldPlayerIds[otherIndex] = replacedId;
   }
-  if (slot === "goalkeeper") saveData.lineups[team].goalkeeperId = select.value;
-  else saveData.lineups[team].fieldPlayerIds[Number(slot)] = select.value;
-  if (!validateLineups(saveData.players, saveData.lineups)) {
-    saveData.lineups = previous;
+  if (slot === "goalkeeper") profileData.lineups[team].goalkeeperId = select.value;
+  else profileData.lineups[team].fieldPlayerIds[Number(slot)] = select.value;
+  if (!validateLineups(profileData.players, profileData.lineups)) {
+    profileData.lineups = previous;
     setManagerMessage("Essa troca deixaria a escalação inválida ou duplicaria um jogador.", true);
   } else {
-    repository.save(saveData);
+    repository.save(profileData);
     setManagerMessage("Escalação salva. Ela entra em campo no próximo reinício.");
   }
   renderManager();
@@ -591,16 +600,16 @@ bySelector("#players-table").addEventListener("click", (event) => {
   const edit = (event.target as HTMLElement).closest<HTMLButtonElement>("[data-edit-player]");
   const remove = (event.target as HTMLElement).closest<HTMLButtonElement>("[data-delete-player]");
   if (edit) {
-    const profile = saveData.players.find((player) => player.id === edit.dataset.editPlayer);
+    const profile = profileData.players.find((player) => player.id === edit.dataset.editPlayer);
     if (profile) openPlayerDialog(profile);
   }
   if (remove) {
     const id = remove.dataset.deletePlayer!;
     if (usedPlayerIds().includes(id)) setManagerMessage("Substitua esse jogador na escalação antes de excluí-lo.", true);
     else {
-      saveData.players = saveData.players.filter((player) => player.id !== id);
-      delete saveData.memories[id];
-      repository.save(saveData);
+      profileData.players = profileData.players.filter((player) => player.id !== id);
+      delete profileData.memories[id];
+      repository.save(profileData);
       setManagerMessage("Jogador excluído.");
       renderManager();
     }
@@ -621,23 +630,23 @@ playerForm.addEventListener("submit", (event) => {
     skills: Object.fromEntries(SKILL_FIELDS.map(({ key }) => [key, Number(data.get(key))])) as unknown as PlayerSkills,
     mental: Object.fromEntries(MENTAL_FIELDS.map(({ key }) => [key, Number(data.get(`mental-${key}`))])) as unknown as PlayerMentalAttributes,
   };
-  const previousPlayers = saveData.players;
-  const previousProfile = editingPlayerId ? saveData.players.find((player) => player.id === editingPlayerId) : null;
-  saveData.players = editingPlayerId ? saveData.players.map((player) => player.id === editingPlayerId ? profile : player) : [...saveData.players, profile];
-  if (!validateLineups(saveData.players, saveData.lineups)) {
-    saveData.players = previousPlayers;
+  const previousPlayers = profileData.players;
+  const previousProfile = editingPlayerId ? profileData.players.find((player) => player.id === editingPlayerId) : null;
+  profileData.players = editingPlayerId ? profileData.players.map((player) => player.id === editingPlayerId ? profile : player) : [...profileData.players, profile];
+  if (!validateLineups(profileData.players, profileData.lineups)) {
+    profileData.players = previousPlayers;
     setManagerMessage("Essa alteração é incompatível com a escalação atual.", true);
     return;
   }
-  if (!saveData.memories[profile.id]) saveData.memories[profile.id] = createMemory(profile);
+  if (!profileData.memories[profile.id]) profileData.memories[profile.id] = createMemory(profile);
   else if (previousProfile && (previousProfile.role !== profile.role || JSON.stringify(previousProfile.mental) !== JSON.stringify(profile.mental))) {
-    const previousMemory = saveData.memories[profile.id];
+    const previousMemory = profileData.memories[profile.id];
     const recalibrated = createMemory(profile);
     recalibrated.stats = { ...previousMemory.stats };
     recalibrated.version = previousMemory.version + 1;
-    saveData.memories[profile.id] = recalibrated;
+    profileData.memories[profile.id] = recalibrated;
   }
-  repository.save(saveData);
+  repository.save(profileData);
   dialog.close();
   setManagerMessage(editingPlayerId ? "Jogador atualizado. A partida atual não foi alterada." : "Jogador criado e disponível para escalação.");
   renderManager();

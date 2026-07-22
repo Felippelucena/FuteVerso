@@ -1,12 +1,32 @@
-export type Team = "blue" | "coral";
+import type { PlayerMemory, PlayerProfile } from "../roster/model";
+import type { Team, Vec2 } from "../shared/model";
 
-export interface Vec2 {
-  x: number;
-  y: number;
+export type { Team, Vec2 } from "../shared/model";
+export type {
+  Lineup,
+  PlayerCareerStats,
+  PlayerMemory,
+  PlayerMentalAttributes,
+  PlayerPolicy,
+  PlayerPosition,
+  PlayerProfile,
+  PlayerRole,
+  PlayerSkills,
+} from "../roster/model";
+
+export interface MatchParticipant {
+  team: Team;
+  lineupIndex: number;
+  profile: PlayerProfile;
+  memory: PlayerMemory;
 }
 
-export type PlayerPosition = "goalkeeper" | "centerBack" | "fullBack" | "midfielder" | "forward";
-export type PlayerRole = "finisher" | "playmaker" | "defender";
+export interface MatchConfig {
+  seed: number;
+  learningEnabled: boolean;
+  participants: MatchParticipant[];
+}
+
 export type TeamPosture = "inPossession" | "outOfPossession";
 export type InPossessionPhase = "buildUp" | "progression" | "finalThird" | "counterAttack";
 export type OutOfPossessionPhase = "highPress" | "midBlock" | "lowBlock" | "counterPress" | "recovery";
@@ -39,84 +59,6 @@ export type PlayerIntent =
   | "covering"
   | "goalkeeping";
 export type MovementPace = "walk" | "run" | "burst" | "closeControl";
-
-export interface PlayerSkills {
-  acceleration: number;
-  sprintSpeed: number;
-  burst: number;
-  stamina: number;
-  control: number;
-  passing: number;
-  vision: number;
-  finishing: number;
-  defending: number;
-  kickPower: number;
-  goalkeeping: number;
-}
-
-export interface PlayerMentalAttributes {
-  decisionMaking: number;
-  anticipation: number;
-  composure: number;
-  aggression: number;
-  teamwork: number;
-  creativity: number;
-  intensity: number;
-  adaptability: number;
-}
-
-export interface PlayerProfile {
-  id: string;
-  name: string;
-  number: number;
-  position: PlayerPosition;
-  role: PlayerRole;
-  skills: PlayerSkills;
-  mental: PlayerMentalAttributes;
-}
-
-export interface PlayerPolicy {
-  shoot: number;
-  pass: number;
-  dribble: number;
-  press: number;
-  mark: number;
-  cover: number;
-}
-
-export interface PlayerCareerStats {
-  matches: number;
-  goals: number;
-  assists: number;
-  completedPasses: number;
-  failedPasses: number;
-  interceptions: number;
-  dribbles: number;
-  shots: number;
-}
-
-export interface PlayerMemory {
-  playerId: string;
-  version: number;
-  policy: PlayerPolicy;
-  stats: PlayerCareerStats;
-}
-
-export interface Lineup {
-  goalkeeperId: string;
-  fieldPlayerIds: [string, string, string];
-}
-
-export interface AutoballSave {
-  schemaVersion: 2;
-  players: PlayerProfile[];
-  lineups: Record<Team, Lineup>;
-  memories: Record<string, PlayerMemory>;
-  settings: {
-    learningEnabled: boolean;
-    randomSeed: number;
-  };
-}
 
 export interface PlayerRuntime {
   profile: PlayerProfile;
@@ -276,14 +218,56 @@ export interface TeamTacticalState {
   lastFinalThirdEntryAt: number;
 }
 
-export interface MatchEvent {
+interface MatchEventBase {
   id: number;
   time: number;
-  team: Team | null;
-  label: string;
 }
 
-export interface GameState {
+export interface MatchStartedEvent extends MatchEventBase {
+  type: "match-started";
+}
+
+export interface SaveMadeEvent extends MatchEventBase {
+  type: "save-made";
+  team: Team;
+  playerId: string;
+}
+
+export interface ShotTakenEvent extends MatchEventBase {
+  type: "shot-taken";
+  team: Team;
+  playerId: string;
+}
+
+export interface RestartAwardedEvent extends MatchEventBase {
+  type: "restart-awarded";
+  team: Team;
+  restartKind: "throwIn" | "corner" | "goalKick";
+}
+
+export interface GoalScoredEvent extends MatchEventBase {
+  type: "goal-scored";
+  team: Team;
+  playerId: string | null;
+  origin: "shot" | "pass" | "dribble";
+}
+
+export interface MatchFinishedEvent extends MatchEventBase {
+  type: "match-finished";
+}
+
+export type MatchEvent =
+  | MatchStartedEvent
+  | SaveMadeEvent
+  | ShotTakenEvent
+  | RestartAwardedEvent
+  | GoalScoredEvent
+  | MatchFinishedEvent;
+
+type WithoutEventMetadata<T> = T extends MatchEvent ? Omit<T, "id" | "time"> : never;
+export type MatchEventData = WithoutEventMetadata<MatchEvent>;
+
+export interface MatchState {
   players: PlayerRuntime[];
   ball: Ball;
   stats: Record<Team, TeamStats>;

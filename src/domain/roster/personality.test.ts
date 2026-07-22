@@ -1,13 +1,17 @@
 import { describe, expect, it } from "vitest";
-import { decideAll, thinkingInterval } from "./ai";
-import { FIELD } from "./config";
-import { createGameState } from "./engine";
+import { buildMatchConfig } from "../../application/match/build-match-config";
+import { createDefaultProfile } from "../../application/profile/create-default-profile";
+import { decideAll, thinkingInterval } from "../match/ai";
+import { FIELD } from "../match/config";
+import { createMatchState } from "../match";
 import { createInitialPolicy, createMentalAttributes, policyLearningBounds } from "./personality";
-import { createDefaultSave, isValidProfile } from "./roster";
+import { isValidProfile } from "./rules";
+
+const createTestMatch = (seed: number) => createMatchState(buildMatchConfig(createDefaultProfile(), seed));
 
 describe("personalidade dos jogadores", () => {
   it("faz perfis cerebrais e ousados partirem de preferencias diferentes", () => {
-    const profile = createDefaultSave().players[2];
+    const profile = createDefaultProfile().players[2];
     const cerebral = { ...profile, mental: createMentalAttributes("cerebral") };
     const bold = { ...profile, mental: createMentalAttributes("bold") };
 
@@ -16,7 +20,7 @@ describe("personalidade dos jogadores", () => {
   });
 
   it("faz jogadores mais decisivos pensarem em intervalos menores", () => {
-    const state = createGameState(createDefaultSave(), 10);
+    const state = createTestMatch(10);
     const player = state.players[0];
     player.profile.mental = createMentalAttributes("balanced", { decisionMaking: 95, anticipation: 90 });
     const fast = thinkingInterval(player);
@@ -26,7 +30,7 @@ describe("personalidade dos jogadores", () => {
   });
 
   it("prioriza o jogador intenso quando dois defensores podem pressionar", () => {
-    const state = createGameState(createDefaultSave(), 11);
+    const state = createTestMatch(11);
     state.kickoffTimer = 0;
     const candidates = state.players.filter((player) => player.team === "blue" && player.profile.position !== "goalkeeper").slice(0, 2);
     candidates[0].position = { x: FIELD.width * 0.42, y: FIELD.height * 0.45 };
@@ -49,7 +53,7 @@ describe("personalidade dos jogadores", () => {
   });
 
   it("da mais amplitude de aprendizado a jogadores adaptaveis", () => {
-    const profile = createDefaultSave().players[2];
+    const profile = createDefaultProfile().players[2];
     const low = { ...profile, mental: createMentalAttributes("balanced", { adaptability: 10 }) };
     const high = { ...profile, mental: createMentalAttributes("balanced", { adaptability: 95 }) };
     const lowBounds = policyLearningBounds(low, "pass");
@@ -59,7 +63,7 @@ describe("personalidade dos jogadores", () => {
   });
 
   it("rejeita atributos mentais fora da escala", () => {
-    const profile = structuredClone(createDefaultSave().players[0]);
+    const profile = structuredClone(createDefaultProfile().players[0]);
     profile.mental.composure = 101;
 
     expect(isValidProfile(profile)).toBe(false);

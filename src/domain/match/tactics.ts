@@ -1,6 +1,6 @@
 import { FIELD, POSSESSION, TACTICS } from "./config";
-import { distance } from "./math";
-import type { GameState, TacticalPhase, Team, TeamShape, TeamTacticalState } from "./model";
+import { distance } from "../shared/math";
+import type { MatchState, TacticalPhase, Team, TeamShape, TeamTacticalState } from "./model";
 
 export const TACTICAL_PHASES: TacticalPhase[] = [
   "buildUp", "progression", "finalThird", "counterAttack",
@@ -23,7 +23,7 @@ export const createTacticalState = (team: Team): TeamTacticalState => ({
 
 const attackingProgress = (team: Team, x: number): number => team === "blue" ? x / FIELD.width : (FIELD.width - x) / FIELD.width;
 
-const measureShape = (state: GameState, team: Team): TeamShape => {
+const measureShape = (state: MatchState, team: Team): TeamShape => {
   const players = state.players.filter((player) => player.team === team && player.profile.position !== "goalkeeper");
   if (players.length === 0) return { width: 0, depth: 0, compactness: 0, lineHeight: 0 };
   const xs = players.map((player) => player.position.x);
@@ -40,7 +40,7 @@ const measureShape = (state: GameState, team: Team): TeamShape => {
   };
 };
 
-const detectPhase = (state: GameState, team: Team, shape: TeamShape): TacticalPhase => {
+const detectPhase = (state: MatchState, team: Team, shape: TeamShape): TacticalPhase => {
   const progress = attackingProgress(team, state.ball.position.x);
   const sinceControlChange = state.elapsed - state.controlChangedAt;
   if (state.possessionTeam === team) {
@@ -58,7 +58,7 @@ const detectPhase = (state: GameState, team: Team, shape: TeamShape): TacticalPh
   return "midBlock";
 };
 
-export const updateTacticalContext = (state: GameState, dt: number): void => {
+export const updateTacticalContext = (state: MatchState, dt: number): void => {
   for (const team of ["blue", "coral"] as const) {
     const tactical = state.tactics[team];
     const shape = measureShape(state, team);
