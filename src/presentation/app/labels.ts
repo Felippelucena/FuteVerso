@@ -30,6 +30,11 @@ export const INTENT_LABELS = {
   pressing: "Pressionando",
   marking: "Marcando",
   covering: "Cobrindo",
+  preparingSave: "Preparando defesa",
+  diving: "Mergulhando",
+  jumping: "Saltando alto",
+  claimingHighBall: "Saindo no cruzamento",
+  recoveringSave: "Recuperando da defesa",
   goalkeeping: "Protegendo o gol",
 } as const;
 
@@ -101,6 +106,9 @@ export const REASON_LABELS: Record<DecisionReason, string> = {
   firstTimeAction: "Ação de primeira",
   aggressiveBreak: "Avanço agressivo",
   longShot: "Finalização de longe",
+  reactToShot: "Reagir ao chute",
+  attackCross: "Atacar o cruzamento",
+  recoverFromSave: "Recuperar após a defesa",
   protectGoal: "Proteger o gol",
 };
 

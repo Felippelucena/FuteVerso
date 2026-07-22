@@ -6,7 +6,9 @@ import { createPhaseSeconds, createTacticalState } from "./systems/tactics-syste
 const clone = <T>(value: T): T => JSON.parse(JSON.stringify(value)) as T;
 
 const teamStats = () => ({
-  goals: 0, shots: 0, shotsOnTarget: 0, saves: 0, passes: 0, completedPasses: 0,
+  goals: 0, shots: 0, shotsOnTarget: 0, saves: 0, saveAttempts: 0,
+  catches: 0, parries: 0, glancingTouches: 0, highBallClaims: 0, punches: 0,
+  passes: 0, completedPasses: 0,
   longPasses: 0, completedLongPasses: 0, aerialPasses: 0, completedAerialPasses: 0,
   feintsAttempted: 0, feintsCompleted: 0, sprintDribbles: 0,
   shortSprintDribbles: 0, mediumSprintDribbles: 0, longSprintDribbles: 0,
@@ -51,6 +53,8 @@ const makePlayer = (participant: MatchParticipant): PlayerRuntime => {
     lastCognitiveEventId: 0,
     objective: null,
     objectiveExpiresAt: 0,
+    goalkeeperAttempt: null,
+    goalkeeperRecoveryUntil: 0,
   };
   player.position = formationAnchor(player);
   return player;
@@ -80,9 +84,11 @@ export function createMatchState(config: MatchConfig): MatchState {
     eventCounter: 1,
     cognitiveEventCounter: 0,
     passCounter: 0,
+    shotCounter: 0,
     randomSeed: config.seed ?? DEFAULT_MATCH_SEED,
     learningEnabled: config.learningEnabled,
     pendingPass: null,
+    activeShot: null,
     feintEvasion: null,
     lastAssist: null,
     previousControlledTeam: null,

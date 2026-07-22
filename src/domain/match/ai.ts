@@ -15,6 +15,7 @@ import { playerSkillSpeed } from "./runtime/player-metrics";
 import { chooseDribbleTouch, evaluateForwardRunway } from "./runtime/dribble-runway";
 import { classifyPassPurpose } from "./runtime/pass-purpose";
 import { evaluateShotOpportunity } from "./runtime/shot-opportunity";
+import { goalkeeperDecision } from "./systems/goalkeeper-system";
 import { prepareReceptionAction } from "./runtime/reception-planning";
 
 export const PASS_VARIANTS = (["ground", "air"] as const).flatMap((trajectory) =>
@@ -117,7 +118,7 @@ const goalkeeperTarget = (player: PlayerRuntime, state: MatchState): Vec2 => {
   const direction = attackDirection(player.team);
   const ownX = direction > 0 ? 0 : FIELD.width;
   const ballDepth = direction > 0 ? state.ball.position.x : FIELD.width - state.ball.position.x;
-  const advance = clamp(fieldX(4) + ballDepth * 0.08, fieldX(4), fieldX(13));
+  const advance = clamp(fieldX(4) + ballDepth * 0.08, fieldX(4), FIELD.penaltyDepth - player.radius);
   return {
     x: ownX + direction * advance,
     y: clamp(FIELD.height / 2 + (state.ball.position.y - FIELD.height / 2) * 0.42, FIELD.goalTop + 2, FIELD.goalBottom - 2),
@@ -600,6 +601,13 @@ export const decideAll = (state: MatchState): Map<string, AgentDecision> => {
     });
     const coveringPlayers = teammates.filter((player) => player.profile.position !== "goalkeeper" && player.profile.id !== presser.profile.id);
     for (const player of teammates) {
+      const keeperReaction = player.profile.position === "goalkeeper" && actualController?.profile.id !== player.profile.id
+        ? goalkeeperDecision(player, state)
+        : null;
+      if (keeperReaction) {
+        decisions.set(player.profile.id, keeperReaction);
+        continue;
+      }
       if (controller?.profile.id === player.profile.id) {
         if (actualController) {
           decisions.set(player.profile.id, carrierDecision(player, teammates, opponents, state));

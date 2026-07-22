@@ -13,6 +13,8 @@ import { emitCognitiveEvent, relevantPlayersNear } from "../runtime/cognitive-ev
 import { playerSkillSpeed } from "../runtime/player-metrics";
 import { signedMatchNoise } from "../runtime/random";
 import { solvePassTrajectory, targetAlongDirection } from "../runtime/pass-trajectory";
+import { predictShotPoint, solveShotTrajectory } from "../runtime/shot-trajectory";
+import { clearGoalkeeperAttempts, resolveGoalkeeperContact } from "./goalkeeper-system";
 
 const dribbleTravelPlan = (
   player: PlayerRuntime,
@@ -148,7 +150,7 @@ export const executeBallAction = (state: MatchState, player: PlayerRuntime, acti
     if (action.style !== "feint" || success) {
       const travelPlan = dribbleTravelPlan(player, action.style, action.touchRange, dribbleTarget, quality);
       speed = travelPlan.launchSpeed;
-      if (action.style === "knockOn" || action.style === "feint") {
+      if ((action.style === "knockOn" || action.style === "feint") && player.energy > 0.5) {
         player.sprintTimer = Math.max(player.sprintTimer, travelPlan.chaseDuration);
         player.sprintCooldown = Math.max(player.sprintCooldown, PHYSICS.burstCooldown);
       }
@@ -190,11 +192,11 @@ export const executeBallAction = (state: MatchState, player: PlayerRuntime, acti
     const skillFactor = 0.78 + player.profile.skills.kickPower / 220;
     const techniqueSpeed = technique === "header" ? 0.76 : technique === "redirect" ? 0.82 : 1;
     const speed = lerp(58, 98, action.power) * skillFactor * techniqueSpeed;
-    releaseBall(state, player, direction, speed, 0);
-    if (technique === "header" || technique === "volley" || technique === "redirect") {
-      state.ball.height = contactHeight;
-      state.ball.verticalVelocity = technique === "header" ? -1.4 : -0.6;
-    }
+    const executedTarget = targetAlongDirection(state.ball.position, action.target, direction);
+    const requestedHeight = clamp(action.targetHeight ?? (technique === "header" ? 2.9 : technique === "volley" ? 2.65 : 0.35), 0.1, FIELD.goalHeight - 0.25);
+    const solution = solveShotTrajectory(state.ball.position, executedTarget, contactHeight, requestedHeight, speed);
+    releaseBall(state, player, normalize(solution.velocity), length(solution.velocity), solution.verticalVelocity);
+    state.ball.height = contactHeight;
     state.ball.lastAction = "shot";
     player.kickCooldown = 0.48;
     player.memory.stats.shots += 1;
@@ -204,19 +206,38 @@ export const executeBallAction = (state: MatchState, player: PlayerRuntime, acti
     if (technique === "volley") state.stats[player.team].volleys += 1;
     if (distance(player.position, action.target) > FIELD.width * 0.29) state.stats[player.team].longShots += 1;
     const goalLineX = player.team === "blue" ? FIELD.width : 0;
-    const travel = Math.abs(direction.x) > 0.001 ? (goalLineX - state.ball.position.x) / direction.x : -1;
-    const projectedY = state.ball.position.y + direction.y * travel;
-    state.ball.lastShotOnTarget = travel > 0 && projectedY > FIELD.goalTop && projectedY < FIELD.goalBottom;
+    const goalPoint = predictShotPoint(state.ball.position, state.ball.velocity, state.ball.height, state.ball.verticalVelocity, solution.duration);
+    state.ball.lastShotOnTarget = solution.duration > 0
+      && goalPoint.position.y > FIELD.goalTop && goalPoint.position.y < FIELD.goalBottom
+      && goalPoint.height >= 0 && goalPoint.height < FIELD.goalHeight;
     if (state.ball.lastShotOnTarget) state.stats[player.team].shotsOnTarget += 1;
+    const shotId = ++state.shotCounter;
+    state.activeShot = {
+      id: shotId,
+      shooterId: player.profile.id,
+      team: player.team,
+      startedAt: state.elapsed,
+      technique,
+      target: executedTarget,
+      targetHeight: requestedHeight,
+      expectedArrivalAt: state.elapsed + solution.duration,
+      expectedSpeed: solution.arrivalSpeed,
+      goalPoint: { position: { x: goalLineX, y: goalPoint.position.y }, height: goalPoint.height },
+      onTarget: state.ball.lastShotOnTarget,
+      goalkeeperTouched: false,
+    };
+    const goalkeeper = state.players.find((candidate) => candidate.team !== player.team && candidate.profile.position === "goalkeeper");
+    emitCognitiveEvent(state, "shotCommitted", goalkeeper ? [goalkeeper.profile.id] : null, { shotId });
     emitMatchEvent(state, { type: "shot-taken", team: player.team, playerId: player.profile.id });
     return;
   }
   const baseQuality = (player.profile.skills.passing * 0.68 + player.profile.skills.vision * 0.32) / 100;
   const passDistance = distance(state.ball.position, action.target);
-  const distanceDifficulty = action.range === "long" ? clamp(passDistance / FIELD.width, 0.08, 0.34) * 0.42 : 0;
-  const difficulty = distanceDifficulty + (action.trajectory === "air" ? 0.07 : 0) + pressure * 0.2 + (1 - player.energy) * 0.12;
+  const distanceDifficulty = action.range === "long" ? clamp(passDistance / FIELD.width, 0.08, 0.34) * 0.42 + 0.015 : 0;
+  const difficulty = distanceDifficulty + (action.trajectory === "air" ? 0.07 : action.range === "short" ? 0.12 : 0)
+    + pressure * 0.2 + (1 - player.energy) * 0.12;
   const quality = clamp(baseQuality - difficulty, 0.18, 0.97);
-  const angularError = action.range === "long" ? 0.56 : action.trajectory === "air" ? 0.48 : 0.62;
+  const angularError = action.range === "long" ? 0.56 : action.trajectory === "air" ? 0.48 : 0.82;
   const direction = rotate(normalize(subtract(action.target, state.ball.position)), signedMatchNoise(state) * (1 - quality) * angularError);
   const distancePower = clamp(passDistance / (action.range === "long" ? 76 : 48), 0, 1);
   const chosenPower = clamp(Math.max(action.power, 0.44 + distancePower * 0.44), 0.42, 1);
@@ -224,6 +245,7 @@ export const executeBallAction = (state: MatchState, player: PlayerRuntime, acti
   const solution = solvePassTrajectory(state.ball.position, executedTarget, action.trajectory, action.range, action.targeting, chosenPower);
   releaseBall(state, player, normalize(solution.velocity), length(solution.velocity), solution.verticalVelocity);
   state.ball.lastAction = "pass";
+  state.activeShot = null;
   state.ball.lastShotOnTarget = false;
   player.kickCooldown = 0.4;
   state.stats[player.team].passes += 1;
@@ -324,6 +346,8 @@ const resetPositions = (state: MatchState, kickoffTeam: Team): void => {
     player.plan = null;
     player.objective = null;
     player.objectiveExpiresAt = 0;
+    player.goalkeeperAttempt = null;
+    player.goalkeeperRecoveryUntil = 0;
     player.nextThinkAt = state.elapsed;
     player.pace = "walk";
     player.energy = Math.min(1, player.energy + 0.16);
@@ -345,6 +369,8 @@ const resetPositions = (state: MatchState, kickoffTeam: Team): void => {
   state.possessionCandidateSince = state.elapsed;
   if (state.pendingPass) emitCognitiveEvent(state, "passResolved", null, { passId: state.pendingPass.id, outcome: "out" });
   state.pendingPass = null;
+  state.activeShot = null;
+  clearGoalkeeperAttempts(state);
   state.feintEvasion = null;
   state.kickoffTimer = 1.15;
   state.nextCognitionAt = state.elapsed;
@@ -400,6 +426,8 @@ const restartPlay = (
   registerControlledTeam(state, team, true);
   if (state.pendingPass) emitCognitiveEvent(state, "passResolved", null, { passId: state.pendingPass.id, outcome: "out" });
   state.pendingPass = null;
+  state.activeShot = null;
+  clearGoalkeeperAttempts(state);
   state.feintEvasion = null;
   state.kickoffTimer = 0.72;
   emitMatchEvent(state, { type: "restart-awarded", team, restartKind: kind });
@@ -407,8 +435,9 @@ const restartPlay = (
 
 const registerGoal = (state: MatchState, scorerTeam: Team): void => {
   const conceding: Team = scorerTeam === "blue" ? "coral" : "blue";
-  const scorer = state.players.find((player) => player.profile.id === state.ball.lastTouchPlayerId && player.team === scorerTeam);
-  const origin = state.ball.lastAction ?? "dribble";
+  const activeShooter = state.activeShot?.team === scorerTeam ? state.activeShot.shooterId : null;
+  const scorer = state.players.find((player) => player.profile.id === (activeShooter ?? state.ball.lastTouchPlayerId) && player.team === scorerTeam);
+  const origin = state.activeShot?.team === scorerTeam ? "shot" : state.ball.lastAction ?? "dribble";
   state.stats[scorerTeam].goals += 1;
   if (origin === "shot") state.stats[scorerTeam].goalsFromShots += 1;
   else if (origin === "pass") state.stats[scorerTeam].goalsFromPasses += 1;
@@ -431,6 +460,8 @@ const registerGoal = (state: MatchState, scorerTeam: Team): void => {
 
 export const updateBall = (state: MatchState, dt: number): void => {
   const ball = state.ball;
+  const previousPosition = { ...ball.position };
+  const previousHeight = ball.height;
   const airborne = ball.height > 0 || ball.verticalVelocity > 0;
   const drag = airborne ? PHYSICS.airBallDrag : PHYSICS.ballDrag;
   ball.velocity = scale(ball.velocity, Math.exp(-drag * dt));
@@ -438,6 +469,7 @@ export const updateBall = (state: MatchState, dt: number): void => {
   if (airborne) {
     ball.verticalVelocity -= PHYSICS.gravity * dt;
     ball.height += ball.verticalVelocity * dt;
+    if (resolveGoalkeeperContact(state, previousPosition, previousHeight, dt) && ball.controllerId) return;
     if (ball.height <= 0) {
       const impactSpeed = Math.abs(ball.verticalVelocity);
       const reboundSpeed = impactSpeed * PHYSICS.ballBounce;
@@ -448,10 +480,19 @@ export const updateBall = (state: MatchState, dt: number): void => {
         emitCognitiveEvent(state, "ballTrajectoryChanged", relevantPlayersNear(state, ball.position), { passId: state.pendingPass.id });
       }
     }
-  }
-  const inGoal = ball.position.y > FIELD.goalTop && ball.position.y < FIELD.goalBottom;
+  } else if (resolveGoalkeeperContact(state, previousPosition, previousHeight, dt) && ball.controllerId) return;
+  const crossingAt = (goalX: number): { y: number; height: number } => {
+    const travelX = ball.position.x - previousPosition.x;
+    const amount = Math.abs(travelX) > 0.0001 ? clamp((goalX - previousPosition.x) / travelX, 0, 1) : 1;
+    return {
+      y: previousPosition.y + (ball.position.y - previousPosition.y) * amount,
+      height: Math.max(0, previousHeight + (ball.height - previousHeight) * amount),
+    };
+  };
   if (ball.position.x < -ball.radius) {
-    if (inGoal && ball.height < 4.8) registerGoal(state, "coral");
+    const crossing = crossingAt(0);
+    const inGoal = crossing.y > FIELD.goalTop && crossing.y < FIELD.goalBottom;
+    if (inGoal && crossing.height < FIELD.goalHeight) registerGoal(state, "coral");
     else if (!inGoal) {
       const defendingTeam: Team = "blue";
       const restartTeam = ball.lastTouch === defendingTeam ? otherTeam(defendingTeam) : defendingTeam;
@@ -460,7 +501,9 @@ export const updateBall = (state: MatchState, dt: number): void => {
     return;
   }
   if (ball.position.x > FIELD.width + ball.radius) {
-    if (inGoal && ball.height < 4.8) registerGoal(state, "blue");
+    const crossing = crossingAt(FIELD.width);
+    const inGoal = crossing.y > FIELD.goalTop && crossing.y < FIELD.goalBottom;
+    if (inGoal && crossing.height < FIELD.goalHeight) registerGoal(state, "blue");
     else if (!inGoal) {
       const defendingTeam: Team = "coral";
       const restartTeam = ball.lastTouch === defendingTeam ? otherTeam(defendingTeam) : defendingTeam;

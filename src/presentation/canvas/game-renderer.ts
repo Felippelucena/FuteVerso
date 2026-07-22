@@ -191,6 +191,23 @@ export class GameRenderer {
     const radius = player.radius * this.scale;
 
     ctx.save();
+    const saveAttempt = player.goalkeeperAttempt;
+    if (player.profile.position === "goalkeeper" && saveAttempt && saveAttempt.action !== "standingSave") {
+      const resolvedAlpha = saveAttempt.outcome ? 0.32 : 0.72;
+      ctx.strokeStyle = player.team === "blue" ? `rgba(147,197,253,${resolvedAlpha})` : `rgba(253,164,175,${resolvedAlpha})`;
+      ctx.lineWidth = Math.max(2, radius * 0.28);
+      ctx.lineCap = "round";
+      ctx.setLineDash([radius * 0.5, radius * 0.34]);
+      ctx.beginPath();
+      ctx.moveTo(this.x(saveAttempt.origin.x), this.y(saveAttempt.origin.y));
+      ctx.lineTo(x, y);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.fillStyle = player.team === "blue" ? "rgba(191,219,254,0.18)" : "rgba(254,205,211,0.18)";
+      ctx.beginPath();
+      ctx.arc(this.x(saveAttempt.target.x), this.y(saveAttempt.target.y) - saveAttempt.targetHeight * this.scale * 0.34, radius * 1.25, 0, Math.PI * 2);
+      ctx.fill();
+    }
     ctx.fillStyle = "rgba(0, 0, 0, 0.24)";
     ctx.beginPath();
     ctx.ellipse(x + radius * 0.18, y + radius * 0.58, radius * 0.95, radius * 0.46, 0, 0, Math.PI * 2);

@@ -1,4 +1,4 @@
-import { FIELD } from "../config";
+import { FIELD, GOALKEEPING } from "../config";
 import { add, clamp, distance, dot, normalize, scale, subtract } from "../../shared/math";
 import type { BallAction, MatchState, PlayerRuntime, ShotTechnique, Vec2 } from "../model";
 import { predictPlayerPosition } from "./prediction";
@@ -54,6 +54,14 @@ export const evaluateShotOpportunity = (
   const pressure = pressureAt(state, player);
   const technique = preparedTechnique ?? (goalDistance > fieldX(25) ? "power" : goalkeeperGap > 7 ? "placed" : "power");
   const isLong = goalDistance > fieldX(29);
+  const powerful = player.profile.skills.kickPower >= 62;
+  const goalkeeperCoversLane = goalkeeperGap < (FIELD.goalBottom - FIELD.goalTop) * 0.45;
+  const highShot = preparedTechnique === "header"
+    || preparedTechnique === "volley" && goalDistance > fieldX(12)
+    || powerful && goalDistance > fieldX(16) && goalDistance < fieldX(38) && (goalkeeperCoversLane || blockers.length > 0);
+  const targetHeight = highShot
+    ? preparedTechnique === "header" ? 2.9 : preparedTechnique === "volley" ? 2.65 : GOALKEEPING.highHeight
+    : goalDistance > fieldX(18) ? GOALKEEPING.mediumHeight : GOALKEEPING.lowHeight;
   const utility = 0.72 + rangeCloseness * 1.28 + visibleAngle * 0.48
     + player.memory.policy.shoot * 0.38
     + player.profile.skills.finishing / 100 * 0.28
@@ -68,6 +76,7 @@ export const evaluateShotOpportunity = (
     action: {
       kind: "shot",
       target,
+      targetHeight,
       power: clamp(0.58 + goalDistance / fieldX(72) + (technique === "power" ? 0.08 : 0), 0.62, 1),
       technique,
       utility,

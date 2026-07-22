@@ -12,6 +12,7 @@ import {
 import { clampPlayersToField, updatePlayers } from "./systems/movement-system";
 import { expirePendingPass, updatePossession } from "./systems/possession-system";
 import { updateTacticalContext } from "./systems/tactics-system";
+import { updateGoalkeeperAnticipation } from "./systems/goalkeeper-system";
 
 export function stepMatch(state: MatchState, dt: number): void {
   if (state.finished) return;
@@ -28,6 +29,7 @@ export function stepMatch(state: MatchState, dt: number): void {
 
   updatePossession(state, 0);
   updateTacticalContext(state, 0);
+  updateGoalkeeperAnticipation(state);
   const decisions = updateCognition(state);
   updatePlayers(state, decisions, dt);
   resolvePlayerCollisions(state);

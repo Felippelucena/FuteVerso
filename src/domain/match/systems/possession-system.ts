@@ -9,7 +9,6 @@ import {
   registerControlledTeam,
   registerLooseBall,
 } from "../runtime/control";
-import { emitMatchEvent } from "../runtime/events";
 import { signedMatchNoise } from "../runtime/random";
 import { emitCognitiveEvent, relevantPlayersNear } from "../runtime/cognitive-events";
 import { executeBallAction } from "./ball-system";
@@ -124,7 +123,7 @@ const tryPreparedContact = (state: MatchState, player: PlayerRuntime): boolean =
   const contactDifficulty = (prepared.technique === "header" ? 0.04 : prepared.technique === "volley" ? 0.07 : 0)
     + pressureAt(state, player) * 0.08 + Math.max(0, length(state.ball.velocity) - 48) * 0.002;
   const ready = techniqueBase - contactDifficulty + signedMatchNoise(state) * 0.12
-    >= (prepared.kind === "pass" ? 0.82 : 0.78);
+    >= (prepared.kind === "pass" ? 0.82 : 0.75);
   if (!ready) {
     player.plan!.preparedReceptionAction = { ...prepared, kind: "control" };
     return false;
@@ -251,6 +250,9 @@ export const updatePossession = (state: MatchState, dt: number): void => {
         + fastBallPenalty - ownDribbleBonus - intendedReceiverBonus };
     })
     .filter(({ player, range, gap }) => gap < range
+      && !(player.profile.position === "goalkeeper"
+        && state.activeShot !== null
+        && state.activeShot.team !== player.team)
       && player.kickCooldown < 0.12
       && player.controlCooldown <= 0
       && player.reactionTimer <= 0
@@ -277,19 +279,12 @@ export const updatePossession = (state: MatchState, dt: number): void => {
     return;
   }
   const shotTeam = state.ball.lastAction === "shot" ? state.ball.lastTouch : null;
-  const savedShot = controller.profile.position === "goalkeeper"
-    && state.ball.lastAction === "shot"
-    && state.ball.lastTouch !== null
-    && state.ball.lastTouch !== controller.team
-    && (controller.team === "blue" ? controller.position.x < FIELD.penaltyDepth : controller.position.x > FIELD.width - FIELD.penaltyDepth);
-  if (savedShot) {
-    state.stats[controller.team].saves += 1;
-    emitMatchEvent(state, { type: "save-made", team: controller.team, playerId: controller.profile.id });
-  } else if (shotTeam && state.ball.lastShotOnTarget) {
+  if (shotTeam && state.ball.lastShotOnTarget) {
     state.stats[shotTeam].shotsOnTarget = Math.max(0, state.stats[shotTeam].shotsOnTarget - 1);
   }
   if (state.ball.lastTouch && state.ball.lastTouch !== controller.team) controller.memory.stats.interceptions += 1;
   state.ball.controllerId = controller.profile.id;
+  state.activeShot = null;
   if (!continuesOwnDribble) state.ball.controlStartedAt = state.elapsed;
   clearDribbleOwner(state);
   state.ball.lastTouch = controller.team;

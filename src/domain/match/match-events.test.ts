@@ -34,17 +34,20 @@ describe("eventos estruturados do motor", () => {
   it("registra defesa do goleiro", () => {
     const state = createState();
     const goalkeeper = state.players.find((candidate) => candidate.profile.id === "nilo-gk")!;
+    const shooter = state.players.find((candidate) => candidate.profile.id === "maya-fw")!;
     state.kickoffTimer = 0;
-    state.ball.controllerId = null;
-    state.ball.position = { ...goalkeeper.position };
-    state.ball.velocity = { x: 0, y: 0 };
-    state.ball.lastAction = "shot";
-    state.ball.lastTouch = "coral";
-    state.ball.lastTouchPlayerId = "maya-fw";
+    goalkeeper.position = { x: 9, y: FIELD.height / 2 };
+    shooter.position = { x: 34, y: FIELD.height / 2 };
+    shooter.facing = { x: -1, y: 0 };
+    state.ball.controllerId = shooter.profile.id;
+    state.ball.position = { ...shooter.position };
+    state.ball.controlStartedAt = -1;
+    state.events = [];
+    executeBallAction(state, shooter, { kind: "shot", target: { x: 0, y: FIELD.height / 2 }, targetHeight: 1.2, power: 0.62 });
 
-    stepMatch(state, FIXED_STEP);
+    for (let tick = 0; tick < 240 && !state.events.some((event) => event.type === "save-made"); tick += 1) stepMatch(state, FIXED_STEP);
 
-    expect(state.events[0]).toMatchObject({ type: "save-made", team: "blue", playerId: "nilo-gk" });
+    expect(state.events.find((event) => event.type === "save-made")).toMatchObject({ type: "save-made", team: "blue", playerId: "nilo-gk" });
   });
 
   it("registra gol com autor e origem", () => {

@@ -20,6 +20,11 @@ describe("calibracao deterministica da partida", () => {
     let clearRunwaySamples = 0;
     let carryingWithClearRunway = 0;
     const attack = { crosses: 0, eligibleCrosses: 0, directCrosses: 0, firstTimeShots: 0, shots: 0, longShots: 0, aggressiveBreaks: 0 };
+    const keeper = {
+      attempts: 0, saves: 0, catches: 0, parries: 0, glances: 0, highBallClaims: 0, punches: 0,
+      shots: 0, highShots: 0,
+      distance: { close: { onTarget: 0, saved: 0 }, medium: { onTarget: 0, saved: 0 }, long: { onTarget: 0, saved: 0 } },
+    };
     let safetySamples = 0;
     let advancedSafetySamples = 0;
     let exposedShapeSamples = 0;
@@ -31,6 +36,9 @@ describe("calibracao deterministica da partida", () => {
       let tracked: PendingPass | null = null;
       let trackedFirstTimeShots = 0;
       let nextWorkloadSample = 0;
+      const seenShots = new Set<number>();
+      const seenSaveEvents = new Set<number>();
+      const shotDistances = new Map<number, "close" | "medium" | "long">();
       const finishTracked = () => {
         if (!tracked) return;
         const key = `${tracked.range}-${tracked.trajectory}`;
@@ -53,6 +61,24 @@ describe("calibracao deterministica da partida", () => {
 
       while (!state.finished) {
         stepMatch(state, 1 / 120);
+        if (state.activeShot && !seenShots.has(state.activeShot.id)) {
+          const shot = state.activeShot;
+          seenShots.add(shot.id);
+          keeper.shots += 1;
+          if (shot.targetHeight > 2.4) keeper.highShots += 1;
+          const shooter = state.players.find((player) => player.profile.id === shot.shooterId);
+          const goal = { x: shot.team === "blue" ? FIELD.width : 0, y: FIELD.height / 2 };
+          const distance = shooter ? Math.hypot(shooter.position.x - goal.x, shooter.position.y - goal.y) : FIELD.width;
+          const category = distance < FIELD.width * 0.13 ? "close" : distance < FIELD.width * 0.25 ? "medium" : "long";
+          shotDistances.set(shot.id, category);
+          if (shot.onTarget) keeper.distance[category].onTarget += 1;
+        }
+        for (const event of state.events) {
+          if (event.type !== "save-made" || seenSaveEvents.has(event.id)) continue;
+          seenSaveEvents.add(event.id);
+          const category = event.shotId ? shotDistances.get(event.shotId) : undefined;
+          if (category) keeper.distance[category].saved += 1;
+        }
         for (const [playerId, chance] of activeClearChances) {
           const shot = state.events.find((event) => event.type === "shot-taken" && event.playerId === playerId && event.time >= chance.startedAt);
           const pass = state.pendingPass?.passerId === playerId && state.pendingPass.startedAt >= chance.startedAt;
@@ -121,6 +147,13 @@ describe("calibracao deterministica da partida", () => {
         attack.shots += state.stats[team].shots;
         attack.longShots += state.stats[team].longShots;
         attack.aggressiveBreaks += state.stats[team].aggressiveBreaks;
+        keeper.attempts += state.stats[team].saveAttempts;
+        keeper.saves += state.stats[team].saves;
+        keeper.catches += state.stats[team].catches;
+        keeper.parries += state.stats[team].parries;
+        keeper.glances += state.stats[team].glancingTouches;
+        keeper.highBallClaims += state.stats[team].highBallClaims;
+        keeper.punches += state.stats[team].punches;
       }
     }
 
@@ -155,6 +188,14 @@ describe("calibracao deterministica da partida", () => {
       decisiveClearChanceRate: decisiveClearChances / Math.max(1, clearChanceSamples),
     };
     console.info("ATTACK_CALIBRATION", JSON.stringify(attackReport));
+    const keeperReport = {
+      ...keeper,
+      highShotRate: keeper.highShots / Math.max(1, keeper.shots),
+      catchRate: keeper.catches / Math.max(1, keeper.catches + keeper.parries),
+      parryRate: keeper.parries / Math.max(1, keeper.catches + keeper.parries),
+      saveRate: Object.fromEntries(Object.entries(keeper.distance).map(([key, value]) => [key, value.saved / Math.max(1, value.onTarget)])),
+    };
+    console.info("GOALKEEPER_CALIBRATION", JSON.stringify(keeperReport));
     expect([...buckets.values()].reduce((sum, bucket) => sum + bucket.total, 0)).toBeGreaterThan(400);
     for (const key of ["short-ground", "long-ground", "short-air", "long-air"]) {
       expect(buckets.get(key)?.total ?? 0).toBeGreaterThan(15);
@@ -193,5 +234,17 @@ describe("calibracao deterministica da partida", () => {
     expect(attackReport.advancedSafetyRate).toBeGreaterThanOrEqual(0.25);
     expect(attackReport.advancedSafetyRate).toBeLessThanOrEqual(0.5);
     expect(attackReport.exposedShapeSamples).toBe(0);
+    expect(keeperReport.highShotRate).toBeGreaterThanOrEqual(0.1);
+    expect(keeperReport.highShotRate).toBeLessThanOrEqual(0.25);
+    expect(keeperReport.saveRate.close).toBeGreaterThanOrEqual(0.2);
+    expect(keeperReport.saveRate.close).toBeLessThanOrEqual(0.42);
+    expect(keeperReport.saveRate.medium).toBeGreaterThanOrEqual(0.45);
+    expect(keeperReport.saveRate.medium).toBeLessThanOrEqual(0.68);
+    expect(keeperReport.saveRate.long).toBeGreaterThanOrEqual(0.64);
+    expect(keeperReport.saveRate.long).toBeLessThanOrEqual(0.82);
+    expect(keeperReport.catchRate).toBeGreaterThanOrEqual(0.25);
+    expect(keeperReport.catchRate).toBeLessThanOrEqual(0.45);
+    expect(keeperReport.parryRate).toBeGreaterThanOrEqual(0.55);
+    expect(keeperReport.parryRate).toBeLessThanOrEqual(0.78);
   }, 120_000);
 });

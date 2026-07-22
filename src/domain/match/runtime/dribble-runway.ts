@@ -22,8 +22,8 @@ export interface DribbleTouchChoice {
 }
 
 const RANGE_RULES = [
-  { range: "long", runway: 34, minimum: 25, maximum: 38, energy: 0.56, raceMargin: 0.55, fraction: 0.72 },
-  { range: "medium", runway: 23, minimum: 16, maximum: 24, energy: 0.48, raceMargin: 0.3, fraction: 0.68 },
+  { range: "long", runway: 40, minimum: 25, maximum: 38, energy: 0.56, raceMargin: 0.55, fraction: 0.72 },
+  { range: "medium", runway: 28, minimum: 16, maximum: 24, energy: 0.48, raceMargin: 0.3, fraction: 0.68 },
   { range: "short", runway: 13, minimum: 9, maximum: 13, energy: 0.42, raceMargin: 0, fraction: 0.62 },
 ] as const;
 

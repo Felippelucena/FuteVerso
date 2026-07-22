@@ -37,6 +37,9 @@ export type DefensiveBlock = "high" | "mid" | "low";
 export type PressTrigger = "looseBall" | "counterPress" | "touchline" | "compact";
 export type PassPurpose = "feet" | "throughBall" | "cross" | "cutback" | "switch" | "layoff";
 export type ShotTechnique = "placed" | "power" | "volley" | "header" | "redirect";
+export type GoalkeeperAction = "standingSave" | "lowDive" | "highDive" | "verticalJump" | "aerialClaim" | "punch";
+export type GoalkeeperSource = "shot" | "cross";
+export type SaveOutcome = "catch" | "parry" | "glance" | "miss";
 export type PlayerObjective = "aggressiveBreak" | null;
 export type PreparedReceptionKind = "shot" | "pass" | "control" | "redirect";
 export type DecisionReason =
@@ -57,6 +60,9 @@ export type DecisionReason =
   | "firstTimeAction"
   | "aggressiveBreak"
   | "longShot"
+  | "reactToShot"
+  | "attackCross"
+  | "recoverFromSave"
   | "protectGoal";
 export type PlayerIntent =
   | "carrying"
@@ -72,6 +78,11 @@ export type PlayerIntent =
   | "pressing"
   | "marking"
   | "covering"
+  | "preparingSave"
+  | "diving"
+  | "jumping"
+  | "claimingHighBall"
+  | "recoveringSave"
   | "goalkeeping";
 export type MovementPace = "walk" | "run" | "burst" | "closeControl";
 
@@ -102,6 +113,8 @@ export interface PlayerRuntime {
   lastCognitiveEventId: number;
   objective: PlayerObjective;
   objectiveExpiresAt: number;
+  goalkeeperAttempt: GoalkeeperAttempt | null;
+  goalkeeperRecoveryUntil: number;
 }
 
 export interface Ball {
@@ -145,6 +158,7 @@ export type BallAction =
   | {
     kind: "shot";
     target: Vec2;
+    targetHeight?: number;
     power: number;
     technique?: ShotTechnique;
     preparedPassId?: number;
@@ -235,7 +249,41 @@ export interface PendingPass {
   expectedSpeed?: number;
 }
 
-export type CognitiveEventType = "passCommitted" | "ballTrajectoryChanged" | "controlClaimed" | "passResolved" | "possessionChanged";
+export interface ActiveShot {
+  id: number;
+  shooterId: string;
+  team: Team;
+  startedAt: number;
+  technique: ShotTechnique;
+  target: Vec2;
+  targetHeight: number;
+  expectedArrivalAt: number;
+  expectedSpeed: number;
+  goalPoint: { position: Vec2; height: number };
+  onTarget: boolean;
+  goalkeeperTouched: boolean;
+}
+
+export interface GoalkeeperAttempt {
+  source: GoalkeeperSource;
+  sourceId: number;
+  action: GoalkeeperAction;
+  startedAt: number;
+  reactionReadyAt: number;
+  contactAt: number;
+  expiresAt: number;
+  origin: Vec2;
+  target: Vec2;
+  targetHeight: number;
+  expectedSpeed: number;
+  requiredReach: number;
+  availableReach: number;
+  outcome: SaveOutcome | null;
+  contactQuality: number | null;
+  resolvedAt: number | null;
+}
+
+export type CognitiveEventType = "passCommitted" | "shotCommitted" | "ballTrajectoryChanged" | "controlClaimed" | "passResolved" | "saveResolved" | "possessionChanged";
 
 export interface CognitiveEvent {
   id: number;
@@ -243,8 +291,10 @@ export interface CognitiveEvent {
   type: CognitiveEventType;
   playerIds: string[] | null;
   passId?: number;
+  shotId?: number;
   controllerId?: string;
   outcome?: "received" | "otherTeammate" | "intercepted" | "loose" | "out";
+  saveOutcome?: SaveOutcome;
 }
 
 export interface FeintEvasion {
@@ -258,6 +308,12 @@ export interface TeamStats {
   shots: number;
   shotsOnTarget: number;
   saves: number;
+  saveAttempts: number;
+  catches: number;
+  parries: number;
+  glancingTouches: number;
+  highBallClaims: number;
+  punches: number;
   passes: number;
   completedPasses: number;
   longPasses: number;
@@ -347,6 +403,9 @@ export interface SaveMadeEvent extends MatchEventBase {
   type: "save-made";
   team: Team;
   playerId: string;
+  outcome?: "catch" | "parry";
+  height?: number;
+  shotId?: number | null;
 }
 
 export interface ShotTakenEvent extends MatchEventBase {
@@ -399,9 +458,11 @@ export interface MatchState {
   eventCounter: number;
   cognitiveEventCounter: number;
   passCounter: number;
+  shotCounter: number;
   randomSeed: number;
   learningEnabled: boolean;
   pendingPass: PendingPass | null;
+  activeShot: ActiveShot | null;
   feintEvasion: FeintEvasion | null;
   lastAssist: { playerId: string; team: Team; time: number } | null;
   previousControlledTeam: Team | null;

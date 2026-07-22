@@ -253,6 +253,10 @@ export class MatchScreen {
     const shotDiagnostic = shotAction
       ? `<div class="decision-explanation"><small>FINALIZAÇÃO</small><strong>${SHOT_TECHNIQUE_LABELS[shotAction.technique ?? "power"]} · valor ${shotAction.utility?.toFixed(2) ?? "–"}<br>Linha ${shotAction.blocked ? "bloqueada" : "livre"} · espaço do goleiro ${shotAction.goalkeeperGap?.toFixed(1) ?? "–"}</strong></div>`
       : "";
+    const saveAttempt = selected.goalkeeperAttempt;
+    const saveDiagnostic = saveAttempt
+      ? `<div class="decision-explanation"><small>DEFESA</small><strong>${saveAttempt.action === "standingSave" ? "Em pé" : saveAttempt.action === "lowDive" ? "Mergulho baixo" : saveAttempt.action === "highDive" ? "Mergulho alto" : saveAttempt.action === "verticalJump" ? "Salto vertical" : saveAttempt.action === "punch" ? "Soco" : "Saída aérea"} · ${saveAttempt.outcome ?? "em preparação"}<br>Altura ${saveAttempt.targetHeight.toFixed(2)} · alcance ${saveAttempt.requiredReach.toFixed(1)}/${saveAttempt.availableReach.toFixed(1)} · qualidade ${saveAttempt.contactQuality?.toFixed(2) ?? "–"}</strong></div>`
+      : "";
     this.find("#player-detail").innerHTML = `
       <div class="detail-title"><div><strong>${escapeHtml(selected.profile.name)}</strong><span>${POSITION_LABELS[selected.profile.position]} · ${ROLE_LABELS[selected.profile.role]}</span></div><span class="intent intent--${selected.team}">${intentLabel(state, selected)}</span></div>
       <div class="decision-explanation"><small>POR QUÊ</small><strong>${REASON_LABELS[selected.decisionReason]}</strong></div>
@@ -260,6 +264,7 @@ export class MatchScreen {
       ${preparedDiagnostic}
       ${dribbleDiagnostic}
       ${shotDiagnostic}
+      ${saveDiagnostic}
       <div class="detail-metrics"><span><small>POSTURA</small><strong>${selected.posture === "inPossession" ? "COM POSSE" : "SEM POSSE"}</strong></span><span><small>RITMO</small><strong>${PACE_LABELS[selected.pace]}</strong></span><span><small>PLANO</small><strong>${planAge.toFixed(1)}s</strong></span><span><small>GOLS</small><strong>${stats.goals}</strong></span><span><small>PASSES</small><strong>${stats.completedPasses}</strong></span></div>`;
   }
 
@@ -335,6 +340,8 @@ export class MatchScreen {
       ["Passes longos", `${blue.completedLongPasses}/${blue.longPasses}`, `${coral.completedLongPasses}/${coral.longPasses}`],
       ["Passes aéreos", `${blue.completedAerialPasses}/${blue.aerialPasses}`, `${coral.completedAerialPasses}/${coral.aerialPasses}`],
       ["Finalizações", blue.shots, coral.shots], ["Chutes no alvo", blue.shotsOnTarget, coral.shotsOnTarget], ["Defesas", blue.saves, coral.saves],
+      ["Encaixes", blue.catches, coral.catches], ["Rebotes", blue.parries, coral.parries], ["Raspões", blue.glancingTouches, coral.glancingTouches],
+      ["Saídas aéreas", blue.highBallClaims, coral.highBallClaims], ["Socos", blue.punches, coral.punches],
       ["De primeira", blue.firstTimeShots, coral.firstTimeShots], ["De longe", blue.longShots, coral.longShots], ["Cruzamentos", blue.crosses, coral.crosses],
       ["Fintas", `${blue.feintsCompleted}/${blue.feintsAttempted}`, `${coral.feintsCompleted}/${coral.feintsAttempted}`], ["Toques longos", blue.sprintDribbles, coral.sprintDribbles],
       ["Desarmes", `${blue.tacklesWon}/${blue.tacklesAttempted}`, `${coral.tacklesWon}/${coral.tacklesAttempted}`], ["Recuperações", blue.turnoversWon, coral.turnoversWon],

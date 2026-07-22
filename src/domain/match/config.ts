@@ -11,6 +11,7 @@ export const FIELD = {
   goalTop: (fieldHeight - goalOpening) / 2,
   goalBottom: (fieldHeight + goalOpening) / 2,
   goalDepth: 5 * GOAL_SCALE,
+  goalHeight: 4.8,
   penaltyDepth: 16 * GOAL_SCALE,
   penaltyWidth: 34 * GOAL_SCALE,
   goalAreaDepth: 7 * GOAL_SCALE,
@@ -95,7 +96,28 @@ export const COGNITION = {
     covering: 0.65,
     supporting: 0.85,
     goalkeeping: 0.5,
+    preparingSave: 0.18,
+    diving: 0.32,
+    jumping: 0.32,
+    claimingHighBall: 0.4,
+    recoveringSave: 0.35,
   },
+} as const;
+
+export const GOALKEEPING = {
+  lowHeight: 0.35,
+  mediumHeight: 1.8,
+  highHeight: 3.8,
+  minimumReaction: 0.08,
+  maximumReaction: 0.28,
+  catchThreshold: 0.62,
+  parryThreshold: 0.25,
+  catchRecovery: 0.56,
+  diveRecovery: 0.92,
+  maximumAttemptAge: 2.2,
+  handReach: 11.5,
+  diveSpeedFactor: 12,
+  diveAccelerationFactor: 14,
 } as const;
 
 export const ANALYTICS_GRID = {

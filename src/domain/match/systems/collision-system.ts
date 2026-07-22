@@ -38,7 +38,8 @@ export const resolvePlayerCollisions = (state: MatchState): void => {
 export const resolveBallPlayerCollision = (state: MatchState): void => {
   if (state.ball.height > 1.8 || state.ball.controllerId) return;
   const nearest = state.players
-    .filter((player) => !isEvadedDefender(state, player))
+    .filter((player) => !isEvadedDefender(state, player)
+      && !(player.profile.position === "goalkeeper" && state.activeShot && state.activeShot.team !== player.team))
     .sort((a, b) => distance(a.position, state.ball.position) - distance(b.position, state.ball.position))[0];
   if (!nearest) return;
   const delta = subtract(state.ball.position, nearest.position);

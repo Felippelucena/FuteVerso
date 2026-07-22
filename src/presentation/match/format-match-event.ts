@@ -12,7 +12,10 @@ export const formatMatchEvent = (event: MatchEvent, roster: readonly PlayerProfi
     return `${restart} para ${teamLabel(event.team)}`;
   }
   const player = roster.find((candidate) => candidate.id === event.playerId);
-  if (event.type === "save-made") return `${player?.name ?? teamLabel(event.team)} defendeu`;
+  if (event.type === "save-made") {
+    const action = event.outcome === "catch" ? "encaixou" : event.outcome === "parry" ? "rebateu" : "defendeu";
+    return `${player?.name ?? teamLabel(event.team)} ${action}`;
+  }
   if (event.type === "shot-taken") return `${player?.name ?? teamLabel(event.team)} finalizou`;
   const origin = event.origin === "shot" ? "finalização" : event.origin === "pass" ? "passe" : "condução";
   return `Gol de ${player?.name ?? teamLabel(event.team)} (${origin})`;
