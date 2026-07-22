@@ -2,7 +2,8 @@ import { describe, expect, it } from "vitest";
 import { buildMatchConfig } from "../../application/match/build-match-config";
 import { createDefaultProfile } from "../../application/profile/create-default-profile";
 import { FIELD, FIXED_STEP, MATCH_DURATION } from "./config";
-import { createMatchState, executeBallAction, stepMatch } from "./engine";
+import { createMatchState, stepMatch } from "./index";
+import { executeBallAction } from "./systems/ball-system";
 
 const createState = (seed = 123) => createMatchState(buildMatchConfig(createDefaultProfile(), seed));
 

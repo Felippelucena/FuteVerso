@@ -3,10 +3,10 @@ import { buildMatchConfig } from "../../application/match/build-match-config";
 import { createDefaultProfile } from "../../application/profile/create-default-profile";
 import { FIELD, POSSESSION } from "./config";
 import { decideAll, planAll, resolvePlanDecision } from "./ai";
-import { createMatchState, stepMatch } from "./engine";
+import { createMatchState, stepMatch } from "./index";
 import type { GameProfile } from "../roster/model";
 import { distance } from "../shared/math";
-import { updateTacticalContext } from "./tactics";
+import { updateTacticalContext } from "./systems/tactics-system";
 
 const createTestMatch = (profile: GameProfile = createDefaultProfile(), seed?: number) => createMatchState(buildMatchConfig(profile, seed));
 

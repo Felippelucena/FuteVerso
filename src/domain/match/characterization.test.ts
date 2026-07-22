@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { buildMatchConfig } from "../../application/match/build-match-config";
 import { createDefaultProfile } from "../../application/profile/create-default-profile";
-import { createMatchState, stepMatch } from "./engine";
+import { createMatchState, stepMatch } from "./index";
 import type { MatchState } from "./model";
 
 const round = (value: number): number => Number(value.toFixed(6));

@@ -1,6 +1,6 @@
-import { FIELD, POSSESSION, TACTICS } from "./config";
-import { distance } from "../shared/math";
-import type { MatchState, TacticalPhase, Team, TeamShape, TeamTacticalState } from "./model";
+import { FIELD, POSSESSION, TACTICS } from "../config";
+import { distance } from "../../shared/math";
+import type { MatchState, TacticalPhase, Team, TeamShape, TeamTacticalState } from "../model";
 
 export const TACTICAL_PHASES: TacticalPhase[] = [
   "buildUp", "progression", "finalThird", "counterAttack",

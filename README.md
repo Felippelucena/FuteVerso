@@ -49,7 +49,7 @@ npm run build
 
 ## Estrutura
 
-- `src/domain`: regras de elenco e partida, IA, tática e simulação determinística.
+- `src/domain`: regras de elenco e partida, IA e sistemas determinísticos de simulação.
 - `src/application`: casos de uso, criação de perfil e portas externas.
 - `src/content`: jogadores e escalações disponibilizados pelo jogo.
 - `src/infrastructure`: persistência versionada e adapters de armazenamento.
