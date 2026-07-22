@@ -1,4 +1,4 @@
-import { FIELD } from "./config";
+import { FIELD, PHYSICS } from "./config";
 import { add, clamp, distance, dot, normalize, scale, subtract } from "./math";
 import type { AgentDecision, BallAction, DecisionReason, GameState, PlayerRuntime, Team, Vec2 } from "./model";
 
@@ -197,6 +197,8 @@ const carrierDecision = (
   const pass = choosePass(player, teammates, opponents, state);
   const policy = player.memory.policy;
   const pressure = clamp(1 - closestOpponent / fieldX(7), 0, 1);
+  const duelQuality = (player.profile.skills.control * 0.58 + player.profile.skills.burst * 0.42) / 100;
+  const escapeConfidence = clamp((duelQuality - 0.52) / 0.35, 0, 1);
   const shootingRange = fieldX(21 + policy.shoot * 8);
   const finalThirdUrgency = state.tactics[player.team].phase === "finalThird"
     ? clamp(state.stats[player.team].finalThirdEntries / Math.max(1, state.stats[player.team].shots + 1), 0, 4) * 0.2
@@ -208,7 +210,10 @@ const carrierDecision = (
   const controlAge = Math.max(0, state.elapsed - state.ball.controlStartedAt);
   const dribbleTarget = chooseDribbleTarget(player, opponents);
   const dribbleSpace = Math.min(...opponents.map((opponent) => distance(dribbleTarget, opponent.position)));
-  const dribbleUtility = policy.dribble * 0.62 + clamp(dribbleSpace / fieldX(15), 0, 1.4) - pressure * 0.7 - edgeRisk(dribbleTarget) * 0.55;
+  const dribbleUtility = policy.dribble * 0.62
+    + clamp(dribbleSpace / fieldX(15), 0, 1.4)
+    - pressure * (0.72 - escapeConfidence * 0.82)
+    - edgeRisk(dribbleTarget) * 0.55;
   if (shotUtility >= passUtility && shotUtility >= dribbleUtility) {
     const aimY = player.position.y < FIELD.height / 2 ? FIELD.goalBottom - 2.5 : FIELD.goalTop + 2.5;
     return {
@@ -220,18 +225,23 @@ const carrierDecision = (
       ballAction: { kind: "shot", target: { x: targetGoal.x, y: aimY }, power: clamp(0.56 + goalDistance / fieldX(70), 0.62, 1) },
     };
   }
-  const passAdvantageRequired = pressure > 0.55 ? 0.06 : 0.38;
+  const passAdvantageRequired = pressure > 0.25 ? 0.08 + escapeConfidence * 0.32 : 0.38;
   const hasSettledPossession = controlAge > 0.72 || pressure > 0.68 || player.profile.position === "goalkeeper";
   if (pass && hasSettledPossession && passUtility >= dribbleUtility + passAdvantageRequired) {
     return { movementTarget: player.position, burst: false, posture: "inPossession", intent: "passing", reason: pass.reason, ballAction: pass.action };
   }
   const reason: DecisionReason = pressure > 0.58 || edgeRisk(player.position) > 0.38 ? "escapePressure" : "carryIntoSpace";
-  const duelQuality = (player.profile.skills.control * 0.58 + player.profile.skills.burst * 0.42) / 100;
   const phase = state.tactics[player.team].phase;
-  const defenderIsCommitting = closestOpponent < fieldX(4.2) && (closingSpeed > 1.4 || closestOpponent < fieldX(3));
-  const style = defenderIsCommitting && duelQuality > 0.62 && player.duelCooldown <= 0
+  const defenderCanDuel = Boolean(duelOpponent && duelOpponent.reactionTimer <= 0 && duelOpponent.duelCooldown <= 0);
+  const defenderIsCommitting = defenderCanDuel
+    && closestOpponent < fieldX(7.2)
+    && (closingSpeed > 0.65 || closestOpponent < fieldX(4.6));
+  const canFeint = controlAge >= PHYSICS.feintControlSettleTime
+    && player.reactionTimer <= 0
+    && player.duelCooldown <= 0;
+  const style = defenderIsCommitting && duelQuality > 0.56 && canFeint
     ? "feint"
-    : closestOpponent > fieldX(7) && player.energy > 0.54 && (phase === "counterAttack" || phase === "progression" || phase === "finalThird")
+    : closestOpponent > fieldX(6.5) && player.energy > 0.46 && (phase === "counterAttack" || phase === "progression" || phase === "finalThird")
       ? "sprint"
       : "carry";
   return {

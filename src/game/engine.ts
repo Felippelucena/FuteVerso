@@ -37,6 +37,7 @@ const makePlayer = (save: AutoballSave, team: Team, id: string, lineupIndex: num
     sprintCooldown: 0,
     reactionTimer: 0,
     duelCooldown: 0,
+    controlCooldown: 0,
     pace: "walk",
     posture: "outOfPossession",
     intent: profile.position === "goalkeeper" ? "goalkeeping" : "covering",
@@ -67,6 +68,7 @@ export function createGameState(save: AutoballSave, randomSeed = DEFAULT_MATCH_S
     randomSeed,
     learningEnabled: save.settings.learningEnabled,
     pendingPass: null,
+    feintEvasion: null,
     lastAssist: null,
     previousControlledTeam: null,
     lastControlledTeam: null,
@@ -101,7 +103,7 @@ const skillAcceleration = (player: PlayerRuntime): number => 22 + player.profile
 export const playerSpeedLimit = (player: PlayerRuntime, controlsBall: boolean, running = false): number => {
   const factor = controlsBall
     ? player.sprintTimer > 0 ? PHYSICS.controlledSprintSpeedFactor : PHYSICS.controlledSpeedFactor
-    : player.sprintTimer > 0 ? PHYSICS.burstSpeedFactor : running ? PHYSICS.runSpeedFactor : 1;
+    : player.sprintTimer > 0 ? PHYSICS.burstSpeedFactor : running ? PHYSICS.runSpeedFactor : PHYSICS.walkSpeedFactor;
   return skillSpeed(player) * factor;
 };
 
@@ -110,11 +112,15 @@ const pressureAt = (state: GameState, player: PlayerRuntime): number => {
   return clamp(1 - closest / 10, 0, 1);
 };
 
-const ballClaimQuality = (player: PlayerRuntime, ownBox: boolean): number => {
+const ballClaimQuality = (state: GameState, player: PlayerRuntime, ownBox: boolean): number => {
   const skills = player.profile.skills;
   const value = ownBox && player.profile.position === "goalkeeper"
     ? skills.goalkeeping * 0.72 + skills.defending * 0.18 + skills.control * 0.1
-    : skills.defending * 0.48 + skills.control * 0.34 + skills.acceleration * 0.18;
+    : state.pendingPass?.team === player.team
+      ? skills.control * 0.62 + skills.acceleration * 0.15 + skills.vision * 0.13 + skills.defending * 0.1
+      : state.pendingPass
+        ? skills.defending * 0.48 + skills.control * 0.28 + skills.acceleration * 0.24
+        : skills.control * 0.44 + skills.defending * 0.32 + skills.acceleration * 0.24;
   return clamp(value / 100, 0.05, 1);
 };
 
@@ -175,11 +181,53 @@ const clearDribbleOwner = (state: GameState): void => {
   state.ball.dribbleStartedAt = 0;
 };
 
+const isEvadedDefender = (state: GameState, player: PlayerRuntime): boolean =>
+  state.feintEvasion?.defenderId === player.profile.id && state.elapsed < state.feintEvasion.expiresAt;
+
+const firstTouchOutcome = (
+  state: GameState,
+  player: PlayerRuntime,
+  quality: number,
+  ownBox: boolean,
+  continuesOwnDribble: boolean,
+): "clean" | "heavy" | "miss" => {
+  const relativeSpeed = length(subtract(state.ball.velocity, player.velocity));
+  const toBall = normalize(subtract(state.ball.position, player.position));
+  const facingAlignment = clamp((dot(player.facing, toBall) + 1) / 2, 0, 1);
+  const speedDifficulty = clamp(relativeSpeed / (ownBox ? 68 : 52), 0, 1) * (ownBox ? 0.5 : 0.64);
+  const heightDifficulty = clamp(state.ball.height / 2.4, 0, 1) * 0.18;
+  const positioningDifficulty = (1 - facingAlignment) * 0.16;
+  const pressureDifficulty = pressureAt(state, player) * 0.1;
+  const dribbleBonus = continuesOwnDribble ? 0.18 : 0;
+  const margin = quality * 0.72 + player.energy * 0.1 + dribbleBonus + signedNoise(state) * 0.16
+    - speedDifficulty - heightDifficulty - positioningDifficulty - pressureDifficulty;
+  if (margin > (ownBox ? 0.08 : 0.16)) return "clean";
+  if (margin > -0.13) return "heavy";
+  return "miss";
+};
+
+const applyHeavyTouch = (state: GameState, player: PlayerRuntime, quality: number): void => {
+  const ballSpeed = length(state.ball.velocity);
+  const incoming = ballSpeed > 0.5 ? normalize(state.ball.velocity) : player.facing;
+  const touchDirection = normalize(add(scale(incoming, 0.72), scale(player.facing, 0.28)));
+  const touchSpeed = Math.max(5, ballSpeed * (0.3 + quality * 0.18));
+  state.ball.velocity = add(scale(touchDirection, touchSpeed), scale(player.velocity, 0.22));
+  state.ball.lastTouch = player.team;
+  state.ball.lastTouchPlayerId = player.profile.id;
+  state.ball.controllerId = null;
+  state.ball.controlStartedAt = 0;
+  clearDribbleOwner(state);
+  state.possessionTeam = null;
+};
+
 const updatePossession = (state: GameState, dt: number): void => {
   const current = state.players.find((player) => player.profile.id === state.ball.controllerId);
   if (current && state.ball.height < 1.8 && distance(current.position, state.ball.position) < PHYSICS.kickDistance + 0.7) {
     const challenger = [...state.players]
-      .filter((player) => player.team !== current.team && distance(player.position, current.position) < current.radius + player.radius + 0.38)
+      .filter((player) => player.team !== current.team
+        && player.reactionTimer <= 0
+        && !isEvadedDefender(state, player)
+        && distance(player.position, current.position) < current.radius + player.radius + 0.38)
       .sort((a, b) => distance(a.position, current.position) - distance(b.position, current.position))[0];
     if (challenger && current.duelCooldown <= 0 && challenger.duelCooldown <= 0) {
       state.stats[challenger.team].tacklesAttempted += 1;
@@ -241,21 +289,35 @@ const updatePossession = (state: GameState, dt: number): void => {
     if (!dribbleOwner && !inFlightPassTeam) state.contestedSeconds += dt;
     return;
   }
-  const ballSpeed = length(state.ball.velocity);
   const candidates = state.players
     .map((player) => {
       const ownBox = player.profile.position === "goalkeeper"
         && (player.team === "blue" ? player.position.x < FIELD.penaltyDepth : player.position.x > FIELD.width - FIELD.penaltyDepth);
-      const quality = ballClaimQuality(player, ownBox);
+      const quality = ballClaimQuality(state, player, ownBox);
       const range = PHYSICS.kickDistance - 0.45 + quality * 0.85 + (ownBox ? 0.95 + quality * 0.85 : 0);
       const gap = distance(player.position, state.ball.position);
-      const fastBallPenalty = ballSpeed > 24 ? (1 - quality) * 0.7 : 0;
-      return { player, range, gap, score: gap - quality * 0.92 - (ownBox ? 0.36 : 0) + fastBallPenalty };
+      const relativeSpeed = length(subtract(state.ball.velocity, player.velocity));
+      const fastBallPenalty = relativeSpeed > 18 ? (1 - quality) * relativeSpeed * 0.018 : 0;
+      const ownDribbleBonus = dribbleOwner?.profile.id === player.profile.id ? 0.72 : 0;
+      return { player, quality, ownBox, range, gap, score: gap - quality * 0.92 - (ownBox ? 0.36 : 0) + fastBallPenalty - ownDribbleBonus };
     })
-    .filter(({ player, range, gap }) => gap < range && player.kickCooldown < 0.12)
+    .filter(({ player, range, gap }) => gap < range
+      && player.kickCooldown < 0.12
+      && player.controlCooldown <= 0
+      && player.reactionTimer <= 0
+      && !isEvadedDefender(state, player))
     .sort((a, b) => a.score - b.score || a.gap - b.gap || a.player.profile.id.localeCompare(b.player.profile.id));
-  const controller = candidates[0]?.player;
-  if (!controller) {
+  const claim = candidates[0];
+  if (!claim) {
+    if (!dribbleOwner && !inFlightPassTeam) state.contestedSeconds += dt;
+    return;
+  }
+  const controller = claim.player;
+  const continuesOwnDribble = dribbleOwner?.profile.id === controller.profile.id;
+  const touchOutcome = firstTouchOutcome(state, controller, claim.quality, claim.ownBox, continuesOwnDribble);
+  if (touchOutcome !== "clean") {
+    controller.controlCooldown = touchOutcome === "heavy" ? PHYSICS.heavyTouchCooldown : PHYSICS.controlAttemptCooldown;
+    if (touchOutcome === "heavy") applyHeavyTouch(state, controller, claim.quality);
     if (!dribbleOwner && !inFlightPassTeam) state.contestedSeconds += dt;
     return;
   }
@@ -272,13 +334,13 @@ const updatePossession = (state: GameState, dt: number): void => {
     state.stats[shotTeam].shotsOnTarget = Math.max(0, state.stats[shotTeam].shotsOnTarget - 1);
   }
   if (state.ball.lastTouch && state.ball.lastTouch !== controller.team) controller.memory.stats.interceptions += 1;
-  const continuesOwnDribble = dribbleOwner?.profile.id === controller.profile.id;
   state.ball.controllerId = controller.profile.id;
   if (!continuesOwnDribble) state.ball.controlStartedAt = state.elapsed;
   clearDribbleOwner(state);
   state.ball.lastTouch = controller.team;
   state.ball.lastTouchPlayerId = controller.profile.id;
   registerControlledTeam(state, controller.team);
+  if (state.feintEvasion && state.feintEvasion.attackerId !== controller.profile.id) state.feintEvasion = null;
   state.stats[controller.team].possessionSeconds += dt;
   registerPassOutcome(state, controller);
   state.ball.lastAction = null;
@@ -294,6 +356,7 @@ const updatePlayer = (player: PlayerRuntime, decision: AgentDecision, controlsBa
   player.sprintTimer = Math.max(0, player.sprintTimer - dt);
   player.reactionTimer = Math.max(0, player.reactionTimer - dt);
   player.duelCooldown = Math.max(0, player.duelCooldown - dt);
+  player.controlCooldown = Math.max(0, player.controlCooldown - dt);
   if (decision.burst && player.sprintCooldown <= 0 && player.energy > 0.48) {
     player.sprintTimer = PHYSICS.burstDuration;
     player.sprintCooldown = PHYSICS.burstCooldown;
@@ -308,12 +371,12 @@ const updatePlayer = (player: PlayerRuntime, decision: AgentDecision, controlsBa
   );
   const speedFactor = controlsBall
     ? player.sprintTimer > 0 ? PHYSICS.controlledSprintSpeedFactor : PHYSICS.controlledSpeedFactor
-    : player.sprintTimer > 0 ? PHYSICS.burstSpeedFactor : running ? PHYSICS.runSpeedFactor : 1;
-  player.pace = controlsBall ? "closeControl" : player.sprintTimer > 0 ? "burst" : running ? "run" : "walk";
+    : player.sprintTimer > 0 ? PHYSICS.burstSpeedFactor : running ? PHYSICS.runSpeedFactor : PHYSICS.walkSpeedFactor;
+  player.pace = player.sprintTimer > 0 ? "burst" : controlsBall ? "closeControl" : running ? "run" : "walk";
   const desired = scale(normalize(subtract(decision.movementTarget, player.position)), baseSpeed * speedFactor);
   const steering = subtract(desired, player.velocity);
   const reactionFactor = player.reactionTimer > 0 ? 0.38 : 1;
-  const burstAcceleration = player.sprintTimer > 0 ? 1.65 : 1;
+  const burstAcceleration = player.sprintTimer > 0 ? PHYSICS.burstAccelerationFactor : 1;
   const acceleration = scale(normalize(steering), skillAcceleration(player) * (0.72 + player.energy * 0.28) * reactionFactor * burstAcceleration);
   player.velocity = add(player.velocity, scale(acceleration, dt));
   player.velocity = scale(player.velocity, Math.exp(-PHYSICS.playerDrag * dt));
@@ -337,7 +400,13 @@ const clampPlayerToField = (player: PlayerRuntime): void => {
   player.position.y = clamp(player.position.y, player.radius, FIELD.height - player.radius);
 };
 
-const resolvePlayerCollision = (a: PlayerRuntime, b: PlayerRuntime): void => {
+const resolvePlayerCollision = (state: GameState, a: PlayerRuntime, b: PlayerRuntime): void => {
+  const evasion = state.feintEvasion;
+  if (evasion && state.elapsed < evasion.expiresAt) {
+    const isEvasionPair = (a.profile.id === evasion.attackerId && b.profile.id === evasion.defenderId)
+      || (a.profile.id === evasion.defenderId && b.profile.id === evasion.attackerId);
+    if (isEvasionPair) return;
+  }
   const delta = subtract(b.position, a.position);
   const separation = length(delta);
   const minimum = a.radius + b.radius;
@@ -366,8 +435,8 @@ const releaseBall = (state: GameState, player: PlayerRuntime, direction: Vec2, s
   state.possessionTeam = null;
 };
 
-const executeBallAction = (state: GameState, player: PlayerRuntime, action: BallAction): void => {
-  if (action.kind === "none" || player.kickCooldown > 0) return;
+export const executeBallAction = (state: GameState, player: PlayerRuntime, action: BallAction): void => {
+  if (action.kind === "none" || player.kickCooldown > 0 || player.reactionTimer > 0) return;
   const pressure = pressureAt(state, player);
   if (action.kind === "dribble") {
     const controlStartedAt = state.ball.controlStartedAt || state.elapsed;
@@ -377,23 +446,31 @@ const executeBallAction = (state: GameState, player: PlayerRuntime, action: Ball
     let errorFactor = 0.32 + pressure * 0.28;
     let speed = 13.5 + quality * 3.5;
     let chosenDirection = targetDirection;
+    let dribbleTarget = action.target;
     let defender: PlayerRuntime | null = null;
     if (action.style === "sprint") {
       errorFactor = 0.58 + pressure * 0.42 + (1 - player.energy) * 0.35;
-      speed = 21 + quality * 6;
+      speed = 25 + quality * 9;
       state.stats[player.team].sprintDribbles += 1;
       player.sprintTimer = Math.max(player.sprintTimer, PHYSICS.burstDuration);
       player.sprintCooldown = Math.max(player.sprintCooldown, PHYSICS.burstCooldown);
     } else if (action.style === "feint") {
       defender = [...state.players]
-        .filter((candidate) => candidate.team !== player.team && distance(candidate.position, player.position) < FIELD.width * 0.075)
+        .filter((candidate) => candidate.team !== player.team
+          && candidate.reactionTimer <= 0
+          && candidate.duelCooldown <= 0
+          && distance(candidate.position, player.position) < FIELD.width * 0.075)
         .sort((a, b) => distance(a.position, player.position) - distance(b.position, player.position))[0];
       if (defender) {
         state.stats[player.team].feintsAttempted += 1;
         const attackerScore = (player.profile.skills.control * 0.58 + player.profile.skills.burst * 0.42) / 100;
         const defenderScore = (defender.profile.skills.defending * 0.62 + defender.profile.skills.acceleration * 0.38) / 100;
         success = attackerScore - defenderScore + signedNoise(state) * 0.42 > 0.08;
-        if (success) defender.reactionTimer = Math.max(defender.reactionTimer, PHYSICS.feintReactionDuration * (0.8 + quality * 0.4));
+        if (success) {
+          defender.reactionTimer = Math.max(defender.reactionTimer, PHYSICS.feintReactionDuration * (0.8 + quality * 0.4));
+          defender.duelCooldown = Math.max(defender.duelCooldown, PHYSICS.feintEvasionDuration + 0.22);
+          defender.controlCooldown = Math.max(defender.controlCooldown, PHYSICS.feintEvasionDuration);
+        }
       } else {
         success = false;
       }
@@ -402,27 +479,39 @@ const executeBallAction = (state: GameState, player: PlayerRuntime, action: Ball
         const firstSide = { x: -towardDefender.y, y: towardDefender.x };
         const secondSide = scale(firstSide, -1);
         const escapeSide = dot(firstSide, targetDirection) >= dot(secondSide, targetDirection) ? firstSide : secondSide;
-        chosenDirection = normalize(add(scale(targetDirection, 0.74), scale(escapeSide, 0.66)));
+        const goalward = { x: player.team === "blue" ? 1 : -1, y: 0 };
+        chosenDirection = normalize(add(add(scale(goalward, 0.72), scale(targetDirection, 0.28)), scale(escapeSide, 0.92)));
+        dribbleTarget = {
+          x: clamp(defender!.position.x + goalward.x * FIELD.width * 0.07, 4, FIELD.width - 4),
+          y: clamp(defender!.position.y + escapeSide.y * FIELD.height * 0.075, 4, FIELD.height - 4),
+        };
+        defender!.velocity = add(scale(defender!.velocity, 0.25), scale(escapeSide, -6.5));
         state.stats[player.team].feintsCompleted += 1;
         player.memory.stats.dribbles += 1;
         adapt(player, "dribble", state.learningEnabled ? 0.0012 : 0);
-        player.sprintTimer = Math.max(player.sprintTimer, PHYSICS.burstDuration * 0.9);
+        player.sprintTimer = Math.max(player.sprintTimer, PHYSICS.burstDuration * 0.95);
         player.sprintCooldown = Math.max(player.sprintCooldown, PHYSICS.burstCooldown);
+        player.velocity = add(player.velocity, scale(chosenDirection, 9));
       } else {
         if (defender) chosenDirection = normalize(subtract(defender.position, player.position));
         adapt(player, "dribble", state.learningEnabled ? -0.0008 : 0);
       }
       player.duelCooldown = success ? 5.2 : 6.8;
-      errorFactor = success ? 0.2 : 0.72;
-      speed = success ? 19 + quality * 4.5 : 11.5;
+      errorFactor = success ? 0.14 : 0.72;
+      speed = success ? 23 + quality * 7 : 11.5;
     }
     const direction = rotate(chosenDirection, signedNoise(state) * (1 - quality) * errorFactor);
     releaseBall(state, player, direction, speed, 0);
     state.ball.lastAction = "dribble";
     state.ball.lastShotOnTarget = false;
+    if (action.style === "feint") {
+      state.feintEvasion = success && defender
+        ? { attackerId: player.profile.id, defenderId: defender.profile.id, expiresAt: state.elapsed + PHYSICS.feintEvasionDuration }
+        : null;
+    }
     if (action.style !== "feint" || success) {
       state.ball.dribbleOwnerId = player.profile.id;
-      state.ball.dribbleTarget = { ...action.target };
+      state.ball.dribbleTarget = { ...dribbleTarget };
       state.ball.dribbleStyle = action.style;
       state.ball.dribbleStartedAt = state.elapsed;
       state.ball.controlStartedAt = controlStartedAt;
@@ -521,11 +610,13 @@ const prepareControlledBall = (player: PlayerRuntime, decision: AgentDecision, d
 
 const resolveBallPlayerCollision = (state: GameState): void => {
   if (state.ball.height > 1.8 || state.ball.controllerId) return;
-  const nearest = [...state.players].sort((a, b) => distance(a.position, state.ball.position) - distance(b.position, state.ball.position))[0];
+  const nearest = state.players
+    .filter((player) => !isEvadedDefender(state, player))
+    .sort((a, b) => distance(a.position, state.ball.position) - distance(b.position, state.ball.position))[0];
   if (!nearest) return;
   const delta = subtract(state.ball.position, nearest.position);
   const separation = length(delta);
-  const minimum = state.ball.radius + nearest.radius;
+  const minimum = state.ball.radius + nearest.radius * PHYSICS.passiveCollisionRadiusFactor;
   if (separation >= minimum || separation < 0.001) return;
   const normal = scale(delta, 1 / separation);
   state.ball.position = add(nearest.position, scale(normal, minimum + 0.02));
@@ -554,6 +645,7 @@ const resetPositions = (state: GameState, kickoffTeam: Team): void => {
     player.sprintTimer = 0;
     player.reactionTimer = 0;
     player.duelCooldown = 0;
+    player.controlCooldown = 0;
     player.pace = "walk";
     player.energy = Math.min(1, player.energy + 0.16);
   }
@@ -570,6 +662,7 @@ const resetPositions = (state: GameState, kickoffTeam: Team): void => {
   state.ball.lastShotOnTarget = false;
   state.possessionTeam = null;
   state.pendingPass = null;
+  state.feintEvasion = null;
   state.kickoffTimer = 1.15;
 };
 
@@ -621,6 +714,7 @@ const restartPlay = (
   state.ball.lastShotOnTarget = false;
   state.possessionTeam = team;
   state.pendingPass = null;
+  state.feintEvasion = null;
   state.kickoffTimer = 0.72;
   const label = kind === "throwIn" ? "Lateral" : kind === "corner" ? "Escanteio" : "Tiro de meta";
   addEvent(state, team, `${label} para ${team === "blue" ? "NILO" : "MAYA"}`);
@@ -699,6 +793,7 @@ export function stepGame(state: GameState, dt: number): void {
   if (state.finished) return;
   const nextElapsed = state.elapsed + dt;
   state.elapsed = nextElapsed >= MATCH_DURATION - 0.000_001 ? MATCH_DURATION : nextElapsed;
+  if (state.feintEvasion && state.elapsed >= state.feintEvasion.expiresAt) state.feintEvasion = null;
   sampleSpatialAnalytics(state);
   if (state.kickoffTimer > 0) {
     state.kickoffTimer = Math.max(0, state.kickoffTimer - dt);
@@ -719,7 +814,7 @@ export function stepGame(state: GameState, dt: number): void {
     state.stats[player.team].distanceCovered += length(player.velocity) * dt;
   }
   for (let first = 0; first < state.players.length; first += 1) {
-    for (let second = first + 1; second < state.players.length; second += 1) resolvePlayerCollision(state.players[first], state.players[second]);
+    for (let second = first + 1; second < state.players.length; second += 1) resolvePlayerCollision(state, state.players[first], state.players[second]);
   }
   for (const player of state.players) clampPlayerToField(player);
   const controller = state.players.find((player) => player.profile.id === state.ball.controllerId);
@@ -730,8 +825,8 @@ export function stepGame(state: GameState, dt: number): void {
     if (actionReady && firstTouchSettled) executeBallAction(state, controller, decisions.get(controller.profile.id)!.ballAction);
   }
   updateBall(state, dt);
-  resolveBallPlayerCollision(state);
   updatePossession(state, dt);
+  resolveBallPlayerCollision(state);
   updateTacticalContext(state, dt);
   if (state.pendingPass && state.elapsed - state.pendingPass.startedAt > 4) {
     const passer = state.players.find((player) => player.profile.id === state.pendingPass?.passerId);

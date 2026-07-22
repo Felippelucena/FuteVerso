@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { PASS_VARIANTS, decideAll, formationAnchor } from "./ai";
 import { FIELD, PHYSICS } from "./config";
-import { createGameState, playerSpeedLimit, stepGame } from "./engine";
+import { createGameState, executeBallAction, playerSpeedLimit, stepGame } from "./engine";
 import { distance } from "./math";
 import { createDefaultSave, validateLineups } from "./roster";
 
@@ -52,10 +52,12 @@ describe("ações e física", () => {
     player.sprintTimer = 0.2;
     const controlledSprint = playerSpeedLimit(player, true);
     const burst = playerSpeedLimit(player, false);
-    expect(controlled / walk).toBeCloseTo(0.78, 5);
-    expect(controlledSprint / walk).toBeCloseTo(0.94, 5);
-    expect(run / walk).toBeCloseTo(1.48, 5);
-    expect(burst / walk).toBeCloseTo(1.85, 5);
+    expect(controlled / walk).toBeCloseTo(PHYSICS.controlledSpeedFactor / PHYSICS.walkSpeedFactor, 5);
+    expect(controlledSprint / controlled).toBeCloseTo(PHYSICS.controlledSprintSpeedFactor / PHYSICS.controlledSpeedFactor, 5);
+    expect(run / walk).toBeCloseTo(PHYSICS.runSpeedFactor / PHYSICS.walkSpeedFactor, 5);
+    expect(burst / run).toBeCloseTo(PHYSICS.burstSpeedFactor / PHYSICS.runSpeedFactor, 5);
+    expect(controlledSprint / controlled).toBeGreaterThan(1.5);
+    expect(burst / run).toBeGreaterThan(1.5);
   });
 
   it("evita tirar o goleiro do gol para pressionar longe da area", () => {
@@ -171,7 +173,7 @@ describe("ações e física", () => {
       if (player !== target) player.position = { x: 8 + index * 7, y: 10 };
     });
     state.ball.position = {
-      x: target.position.x + target.radius + state.ball.radius + 0.05,
+      x: target.position.x + target.radius * PHYSICS.passiveCollisionRadiusFactor + state.ball.radius + 0.05,
       y: target.position.y,
     };
     state.ball.velocity = { x: -30, y: 0 };
@@ -181,6 +183,219 @@ describe("ações e física", () => {
     expect(state.ball.velocity.x).toBeGreaterThan(target.velocity.x);
     expect(state.ball.lastTouchPlayerId).toBe(target.profile.id);
     expect(state.ball.position.x).toBeGreaterThan(target.position.x);
+  });
+
+  it("deixa uma bola forte escapar de um jogador sem controle para domina-la", () => {
+    const state = createGameState(createDefaultSave(), 812);
+    state.kickoffTimer = 0;
+    const receiver = state.players.find((player) => player.team === "blue" && player.profile.position === "midfielder")!;
+    receiver.position = { x: FIELD.width / 2, y: FIELD.height / 2 };
+    receiver.velocity = { x: 0, y: 0 };
+    receiver.facing = { x: 1, y: 0 };
+    receiver.profile.skills.control = 1;
+    receiver.profile.skills.defending = 1;
+    receiver.profile.skills.acceleration = 1;
+    state.players.forEach((player, index) => {
+      if (player !== receiver) player.position = { x: 8 + index * 8, y: 9 };
+      player.kickCooldown = player === receiver ? 0 : 10;
+    });
+    state.ball.position = { x: receiver.position.x - 3.1, y: receiver.position.y };
+    state.ball.velocity = { x: 60, y: 0 };
+    state.ball.controllerId = null;
+
+    stepGame(state, 1 / 120);
+
+    expect(state.ball.controllerId).not.toBe(receiver.profile.id);
+    expect(receiver.controlCooldown).toBeGreaterThan(0);
+  });
+
+  it("transforma um passe dificil em toque pesado em vez de controle magnetico", () => {
+    const state = createGameState(createDefaultSave(), 42);
+    state.kickoffTimer = 0;
+    const receiver = state.players.find((player) => player.team === "blue" && player.profile.position === "midfielder")!;
+    const passer = state.players.find((player) => player.team === "blue" && player !== receiver)!;
+    receiver.position = { x: FIELD.width / 2, y: FIELD.height / 2 };
+    receiver.velocity = { x: 0, y: 0 };
+    receiver.facing = { x: 1, y: 0 };
+    state.players.forEach((player, index) => {
+      if (player !== receiver) player.position = { x: 8 + index * 8, y: 9 };
+      player.kickCooldown = player === receiver ? 0 : 10;
+    });
+    state.ball.position = { x: receiver.position.x - 3.1, y: receiver.position.y };
+    state.ball.velocity = { x: 40, y: 0 };
+    state.ball.controllerId = null;
+    state.ball.lastAction = "pass";
+    state.ball.lastTouch = passer.team;
+    state.ball.lastTouchPlayerId = passer.profile.id;
+    state.pendingPass = {
+      passerId: passer.profile.id,
+      receiverId: receiver.profile.id,
+      team: receiver.team,
+      startedAt: 0,
+      trajectory: "ground",
+      range: "short",
+    };
+
+    stepGame(state, 1 / 120);
+
+    expect(state.ball.controllerId).toBeNull();
+    expect(state.ball.lastTouchPlayerId).toBe(receiver.profile.id);
+    expect(state.ball.velocity.x).toBeGreaterThan(0);
+    expect(state.ball.velocity.x).toBeLessThan(40);
+    expect(receiver.controlCooldown).toBeGreaterThan(PHYSICS.controlAttemptCooldown);
+  });
+
+  it("nao usa todo o raio visual do jogador como uma parede", () => {
+    const state = createGameState(createDefaultSave(), 913);
+    state.kickoffTimer = 0;
+    const target = state.players[0];
+    target.position = { x: FIELD.width / 2, y: FIELD.height / 2 };
+    target.velocity = { x: 0, y: 0 };
+    state.players.forEach((player, index) => {
+      player.kickCooldown = 10;
+      player.reactionTimer = 10;
+      if (player !== target) player.position = { x: 8 + index * 7, y: 10 };
+    });
+    state.ball.position = {
+      x: target.position.x,
+      y: target.position.y + target.radius * PHYSICS.passiveCollisionRadiusFactor + state.ball.radius + 0.08,
+    };
+    state.ball.velocity = { x: 0, y: 0 };
+    state.ball.lastTouch = null;
+    state.ball.lastTouchPlayerId = null;
+
+    stepGame(state, 1 / 120);
+
+    expect(state.ball.lastTouchPlayerId).toBeNull();
+  });
+
+  it("faz a finta vencedora passar pelo defensor sem permitir resposta imediata", () => {
+    const state = createGameState(createDefaultSave(), 2026);
+    state.kickoffTimer = 0;
+    state.elapsed = 20;
+    const attacker = state.players.find((player) => player.team === "blue" && player.profile.position === "midfielder")!;
+    const defender = state.players.find((player) => player.team === "coral" && player.profile.position === "centerBack")!;
+    attacker.position = { x: FIELD.width * 0.42, y: FIELD.height / 2 };
+    attacker.velocity = { x: 2, y: 0 };
+    attacker.facing = { x: 1, y: 0 };
+    attacker.profile.skills.control = 100;
+    attacker.profile.skills.burst = 100;
+    defender.position = { x: attacker.position.x + 5, y: attacker.position.y };
+    defender.velocity = { x: -2, y: 0 };
+    defender.profile.skills.defending = 1;
+    defender.profile.skills.acceleration = 1;
+    state.players.forEach((player, index) => {
+      if (player !== attacker && player !== defender) player.position = { x: 10 + index * 12, y: 10 };
+    });
+    state.ball.position = { x: attacker.position.x + attacker.radius + state.ball.radius + 0.15, y: attacker.position.y };
+    state.ball.controllerId = attacker.profile.id;
+    state.ball.controlStartedAt = state.elapsed - 1;
+    state.ball.lastTouch = attacker.team;
+    state.ball.lastTouchPlayerId = attacker.profile.id;
+    const initialSeparation = distance(attacker.position, defender.position);
+
+    executeBallAction(state, attacker, {
+      kind: "dribble",
+      style: "feint",
+      target: { x: attacker.position.x + 14, y: attacker.position.y + 2 },
+    });
+
+    expect(state.stats.blue.feintsCompleted).toBe(1);
+    expect(state.feintEvasion).toMatchObject({ attackerId: attacker.profile.id, defenderId: defender.profile.id });
+    expect(state.ball.dribbleOwnerId).toBe(attacker.profile.id);
+    expect(state.ball.velocity.x).toBeGreaterThan(0);
+    expect(defender.reactionTimer).toBeGreaterThan(0);
+    expect(defender.controlCooldown).toBeGreaterThan(0);
+
+    for (let tick = 0; tick < 60; tick += 1) {
+      stepGame(state, 1 / 120);
+      expect(state.ball.controllerId).not.toBe(defender.profile.id);
+    }
+    expect(state.stats.coral.feintsAttempted).toBe(0);
+    expect(distance(attacker.position, defender.position)).toBeGreaterThan(initialSeparation + 2);
+  });
+
+  it("nao permite finta antes de o jogador estabilizar a posse", () => {
+    const state = createGameState(createDefaultSave(), 77);
+    state.kickoffTimer = 0;
+    state.elapsed = 12;
+    const attacker = state.players.find((player) => player.team === "blue" && player.profile.position === "midfielder")!;
+    const defender = state.players.find((player) => player.team === "coral" && player.profile.position === "centerBack")!;
+    attacker.position = { x: FIELD.width * 0.4, y: FIELD.height / 2 };
+    attacker.profile.skills.control = 100;
+    attacker.profile.skills.burst = 100;
+    defender.position = { x: attacker.position.x + 4, y: attacker.position.y };
+    defender.velocity = { x: -4, y: 0 };
+    state.ball.position = { x: attacker.position.x + 3, y: attacker.position.y };
+    state.ball.controllerId = attacker.profile.id;
+    state.ball.controlStartedAt = state.elapsed - PHYSICS.feintControlSettleTime / 2;
+
+    const decision = decideAll(state).get(attacker.profile.id)!;
+
+    expect(decision.ballAction.kind === "dribble" && decision.ballAction.style === "feint").toBe(false);
+  });
+
+  it("antecipa o corte quando um defensor se aproxima em velocidade", () => {
+    const state = createGameState(createDefaultSave(), 78);
+    state.kickoffTimer = 0;
+    state.elapsed = 12;
+    const attacker = state.players.find((player) => player.team === "blue" && player.profile.position === "midfielder")!;
+    const defender = state.players.find((player) => player.team === "coral" && player.profile.position === "centerBack")!;
+    attacker.position = { x: FIELD.width * 0.4, y: FIELD.height / 2 };
+    attacker.velocity = { x: 1, y: 0 };
+    attacker.facing = { x: 1, y: 0 };
+    attacker.profile.skills.control = 100;
+    attacker.profile.skills.burst = 100;
+    attacker.memory.policy.dribble = 0.9;
+    attacker.memory.policy.pass = 0.28;
+    attacker.memory.policy.shoot = 0.28;
+    defender.position = { x: attacker.position.x + 10, y: attacker.position.y };
+    defender.velocity = { x: -8, y: 0 };
+    state.players.forEach((player, index) => {
+      if (player.team === attacker.team && player !== attacker) player.position = { x: 10 + index * 6, y: 12 + index * 8 };
+      if (player.team === defender.team && player !== defender) player.position = { x: FIELD.width - 12, y: 12 + index * 12 };
+    });
+    state.ball.position = { x: attacker.position.x + 3, y: attacker.position.y };
+    state.ball.controllerId = attacker.profile.id;
+    state.ball.controlStartedAt = state.elapsed - 1;
+
+    const decision = decideAll(state).get(attacker.profile.id)!;
+
+    expect(decision.ballAction).toMatchObject({ kind: "dribble", style: "feint" });
+    expect(decision.burst).toBe(true);
+  });
+
+  it("resolve a chegada simultanea na bola antes de liberar qualquer finta", () => {
+    const state = createGameState(createDefaultSave(), 144);
+    state.kickoffTimer = 0;
+    state.elapsed = 10;
+    const blue = state.players.find((player) => player.team === "blue" && player.profile.position === "midfielder")!;
+    const coral = state.players.find((player) => player.team === "coral" && player.profile.position === "midfielder")!;
+    const center = { x: FIELD.width / 2, y: FIELD.height / 2 };
+    blue.position = { x: center.x - 3.1, y: center.y };
+    blue.velocity = { x: 4, y: 0 };
+    blue.facing = { x: 1, y: 0 };
+    coral.position = { x: center.x + 3.1, y: center.y };
+    coral.velocity = { x: -4, y: 0 };
+    coral.facing = { x: -1, y: 0 };
+    for (const player of [blue, coral]) {
+      player.profile.skills.control = 100;
+      player.profile.skills.burst = 100;
+      player.memory.policy.dribble = 0.9;
+    }
+    state.players.forEach((player, index) => {
+      if (player !== blue && player !== coral) {
+        player.position = { x: 8 + index * 8, y: 9 };
+        player.kickCooldown = 10;
+      }
+    });
+    state.ball.position = center;
+    state.ball.velocity = { x: 0, y: 0 };
+    state.ball.controllerId = null;
+
+    for (let tick = 0; tick < 24; tick += 1) stepGame(state, 1 / 120);
+
+    expect(state.stats.blue.feintsAttempted + state.stats.coral.feintsAttempted).toBe(0);
   });
 
   it("reproduz a partida quando a semente é igual", () => {

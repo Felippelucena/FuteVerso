@@ -29,7 +29,9 @@ npm run build
 - Posturas coletivas com e sem posse, pressão coordenada, apoio e marcação.
 - Fases táticas de construção, progressão, último terço, contra-ataque, pressão e blocos defensivos.
 - Coordenação ofensiva com amplitude, profundidade, terceiro homem, tabelas, inversões e defesa de segurança.
-- Condução por pequenos toques, velocidade reduzida com a bola e explosões sem ela.
+- Ritmos bem separados entre caminhada, corrida, condução e explosão, com cortes antecipados contra defensores em aproximação.
+- Domínio contextual: velocidade da bola, orientação, pressão e atributos podem produzir controle limpo, toque pesado ou erro.
+- Fintas exigem posse estabilizada; ao vencer o duelo, o atacante ultrapassa o defensor e ganha uma janela curta de aceleração.
 - Passes rasteiros ou aéreos, curtos ou longos, no pé ou no espaço.
 - Erros determinísticos influenciados por habilidade, pressão, distância e fadiga.
 - Memória individual com estatísticas e ajuste limitado dos pesos de decisão.

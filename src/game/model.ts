@@ -120,6 +120,7 @@ export interface PlayerRuntime {
   sprintCooldown: number;
   reactionTimer: number;
   duelCooldown: number;
+  controlCooldown: number;
   pace: MovementPace;
   posture: TeamPosture;
   intent: PlayerIntent;
@@ -179,6 +180,12 @@ export interface PendingPass {
   startedAt: number;
   trajectory: PassTrajectory;
   range: PassRange;
+}
+
+export interface FeintEvasion {
+  attackerId: string;
+  defenderId: string;
+  expiresAt: number;
 }
 
 export interface TeamStats {
@@ -247,6 +254,7 @@ export interface GameState {
   randomSeed: number;
   learningEnabled: boolean;
   pendingPass: PendingPass | null;
+  feintEvasion: FeintEvasion | null;
   lastAssist: { playerId: string; team: Team; time: number } | null;
   previousControlledTeam: Team | null;
   lastControlledTeam: Team | null;
