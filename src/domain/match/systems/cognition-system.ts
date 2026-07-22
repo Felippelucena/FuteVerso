@@ -49,7 +49,8 @@ export const updateCognition = (state: MatchState): Map<string, AgentDecision> =
         const sameIdea = current.intent === candidate.intent
           && current.reason === candidate.reason
           && sameBallAction
-          && sameTargetReference;
+          && sameTargetReference
+          && (current.intent !== "receiving" || current.burst === candidate.burst);
         const commitmentUntil = current.startedAt + (current.expiresAt - current.startedAt) * 0.65;
         if (sameIdea || state.elapsed < commitmentUntil) continue;
       }

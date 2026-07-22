@@ -65,4 +65,113 @@ describe("movimento dos jogadores", () => {
     expect(decisions.get(defender.profile.id)?.intent).toBe("pressing");
   });
 
+  it("faz o receptor correr mesmo perto do ponto de recepcao", () => {
+    const state = createTestMatch(createDefaultProfile(), 20260722);
+    state.kickoffTimer = 0;
+    state.elapsed = 12;
+    const receiver = state.players.find((player) => player.team === "blue" && player.profile.position === "midfielder")!;
+    const passer = state.players.find((player) => player.team === receiver.team && player !== receiver)!;
+    receiver.position = { x: FIELD.width / 2, y: FIELD.height / 2 };
+    receiver.velocity = { x: 0, y: 0 };
+    const target = { x: receiver.position.x + 8, y: receiver.position.y };
+    state.ball.position = { x: receiver.position.x - 10, y: receiver.position.y };
+    state.ball.velocity = { x: 28, y: 0 };
+    state.ball.controllerId = null;
+    state.pendingPass = {
+      passerId: passer.profile.id,
+      receiverId: receiver.profile.id,
+      team: receiver.team,
+      startedAt: state.elapsed - 0.2,
+      trajectory: "ground",
+      range: "short",
+      targeting: "space",
+      selectionReason: "progressivePass",
+      target,
+      landingPoint: target,
+      expectedArrivalAt: state.elapsed + 0.8,
+      receiverEta: 0.6,
+      opponentEta: 1.4,
+    };
+
+    const decision = decideAll(state).get(receiver.profile.id)!;
+    expect(decision).toMatchObject({ intent: "receiving", reason: "attackReception" });
+    stepMatch(state, 1 / 120);
+    expect(["run", "burst"]).toContain(receiver.pace);
+  });
+
+  it("usa explosao quando o adversario chega ate 0,35 s depois do receptor", () => {
+    const state = createTestMatch(createDefaultProfile(), 2718);
+    state.kickoffTimer = 0;
+    state.elapsed = 9;
+    const receiver = state.players.find((player) => player.team === "blue" && player.profile.position === "midfielder")!;
+    const passer = state.players.find((player) => player.team === receiver.team && player !== receiver)!;
+    const rival = state.players.find((player) => player.team !== receiver.team && player.profile.position === "midfielder")!;
+    const target = { x: FIELD.width / 2, y: FIELD.height / 2 };
+    receiver.position = { x: target.x - 10, y: target.y };
+    rival.position = { x: target.x + 10.5, y: target.y };
+    state.players.forEach((player, index) => {
+      if (player !== receiver && player !== rival) player.position = { x: 8 + index * 7, y: 8 };
+    });
+    state.ball.position = { x: target.x - 20, y: target.y };
+    state.ball.velocity = { x: 24, y: 0 };
+    state.ball.controllerId = null;
+    state.pendingPass = {
+      passerId: passer.profile.id,
+      receiverId: receiver.profile.id,
+      team: receiver.team,
+      startedAt: state.elapsed - 0.3,
+      trajectory: "ground",
+      range: "long",
+      targeting: "space",
+      selectionReason: "progressivePass",
+      target,
+      landingPoint: target,
+      expectedArrivalAt: state.elapsed + 1,
+      receiverEta: 0.7,
+      opponentEta: 0.9,
+    };
+
+    const decision = decideAll(state).get(receiver.profile.id)!;
+    expect(decision.intent).toBe("receiving");
+    expect(decision.burst).toBe(true);
+    stepMatch(state, 1 / 120);
+    expect(receiver.pace).toBe("burst");
+  });
+
+  it("recalcula o alvo de recepcao depois de um quique ou desvio", () => {
+    const state = createTestMatch(createDefaultProfile(), 31415);
+    state.kickoffTimer = 0;
+    state.elapsed = 15;
+    const receiver = state.players.find((player) => player.team === "blue" && player.profile.position === "midfielder")!;
+    const passer = state.players.find((player) => player.team === receiver.team && player !== receiver)!;
+    receiver.position = { x: 48, y: 28 };
+    const originalLanding = { x: 78, y: 30 };
+    state.ball.position = { x: 53, y: 31 };
+    state.ball.velocity = { x: 2, y: 24 };
+    state.ball.height = 0;
+    state.ball.verticalVelocity = 0;
+    state.ball.controllerId = null;
+    state.pendingPass = {
+      passerId: passer.profile.id,
+      receiverId: receiver.profile.id,
+      team: receiver.team,
+      startedAt: state.elapsed - 0.7,
+      trajectory: "air",
+      range: "long",
+      targeting: "space",
+      selectionReason: "progressivePass",
+      target: originalLanding,
+      landingPoint: originalLanding,
+      expectedArrivalAt: state.elapsed + 0.8,
+      receiverEta: 0.9,
+      opponentEta: 1.2,
+    };
+
+    const decision = decideAll(state).get(receiver.profile.id)!;
+
+    expect(decision.intent).toBe("receiving");
+    expect(decision.movementTarget.y).toBeGreaterThan(40);
+    expect(decision.movementTarget).not.toEqual(originalLanding);
+  });
+
 });

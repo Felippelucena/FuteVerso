@@ -23,6 +23,7 @@ export const INTENT_LABELS = {
   feinting: "Fintando",
   passing: "Passando",
   shooting: "Finalizando",
+  receiving: "Recebendo passe",
   supporting: "Apoiando",
   pressing: "Pressionando",
   marking: "Marcando",
@@ -63,6 +64,7 @@ export const REASON_LABELS: Record<DecisionReason, string> = {
   pressBall: "Pressionar o portador",
   coverGoal: "Cobrir o gol",
   markThreat: "Marcar ameaça",
+  attackReception: "Atacar a recepção",
   protectGoal: "Proteger o gol",
 };
 

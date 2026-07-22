@@ -45,6 +45,13 @@ describe("ciclo de vida da partida", () => {
       startedAt: 0,
       trajectory: "ground",
       range: "short",
+      targeting: "feet",
+      selectionReason: "progressivePass",
+      target: { ...state.ball.position },
+      landingPoint: { ...state.ball.position },
+      expectedArrivalAt: 1,
+      receiverEta: 1,
+      opponentEta: 2,
     };
 
     stepMatch(state, FIXED_STEP);

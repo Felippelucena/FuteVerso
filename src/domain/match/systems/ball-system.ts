@@ -11,6 +11,7 @@ import {
 import { emitMatchEvent } from "../runtime/events";
 import { playerSkillSpeed } from "../runtime/player-metrics";
 import { signedMatchNoise } from "../runtime/random";
+import { solvePassTrajectory, targetAlongDirection } from "../runtime/pass-trajectory";
 
 const dribbleTravelPlan = (
   player: PlayerRuntime,
@@ -190,10 +191,9 @@ export const executeBallAction = (state: MatchState, player: PlayerRuntime, acti
   const direction = rotate(normalize(subtract(action.target, state.ball.position)), signedMatchNoise(state) * (1 - quality) * angularError);
   const distancePower = clamp(passDistance / (action.range === "long" ? 76 : 48), 0, 1);
   const chosenPower = clamp(Math.max(action.power, 0.44 + distancePower * 0.44), 0.42, 1);
-  const speedBase = action.range === "long" ? lerp(30, 63, chosenPower) : lerp(18, action.targeting === "space" ? 50 : 43, chosenPower);
-  const speed = speedBase * (0.9 + player.profile.skills.kickPower / 430) * (1 + signedMatchNoise(state) * (1 - quality) * 0.14);
-  const lift = action.trajectory === "air" ? lerp(12, action.range === "long" ? 20 : 15, chosenPower) : 0;
-  releaseBall(state, player, direction, speed, lift);
+  const executedTarget = targetAlongDirection(state.ball.position, action.target, direction);
+  const solution = solvePassTrajectory(state.ball.position, executedTarget, action.trajectory, action.range, action.targeting, chosenPower);
+  releaseBall(state, player, normalize(solution.velocity), length(solution.velocity), solution.verticalVelocity);
   state.ball.lastAction = "pass";
   state.ball.lastShotOnTarget = false;
   player.kickCooldown = 0.4;
@@ -211,6 +211,13 @@ export const executeBallAction = (state: MatchState, player: PlayerRuntime, acti
     startedAt: state.elapsed,
     trajectory: action.trajectory,
     range: action.range,
+    targeting: action.targeting,
+    selectionReason: action.selectionReason ?? "progressivePass",
+    target: executedTarget,
+    landingPoint: solution.landingPoint,
+    expectedArrivalAt: state.elapsed + solution.duration,
+    receiverEta: action.receiverEta ?? solution.duration,
+    opponentEta: action.opponentEta ?? solution.duration,
   };
 };
 

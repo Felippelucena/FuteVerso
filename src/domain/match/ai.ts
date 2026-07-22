@@ -3,13 +3,15 @@ import { add, clamp, distance, dot, normalize, scale, subtract } from "../shared
 import type { AgentDecision, BallAction, DecisionReason, DribbleStyle, MatchState, PlanTarget, PlayerPlan, PlayerRuntime, Team, Vec2 } from "./model";
 import { activeBallPlayerId } from "./runtime/control";
 import {
-  estimateBallTravelTime,
   interceptionThreat,
   predictBallPosition,
   predictPlayerPosition,
+  predictPlayerAlongPlan,
   predictedSpaceAt,
   predictionHorizon,
 } from "./runtime/prediction";
+import { estimatePassDuration } from "./runtime/pass-trajectory";
+import { playerSkillSpeed } from "./runtime/player-metrics";
 
 export const PASS_VARIANTS = (["ground", "air"] as const).flatMap((trajectory) =>
   (["short", "long"] as const).flatMap((range) =>
@@ -118,43 +120,61 @@ const goalkeeperTarget = (player: PlayerRuntime, state: MatchState): Vec2 => {
   };
 };
 
-interface PassOption {
+export interface PassOption {
   action: Extract<BallAction, { kind: "pass" }>;
   score: number;
   reason: DecisionReason;
 }
 
-const choosePass = (player: PlayerRuntime, teammates: PlayerRuntime[], opponents: PlayerRuntime[], state: MatchState): PassOption | null => {
+export const choosePass = (player: PlayerRuntime, teammates: PlayerRuntime[], opponents: PlayerRuntime[], state: MatchState): PassOption | null => {
   const direction = attackDirection(player.team);
   const carrierEdgeRisk = edgeRisk(player.position);
   const collective = state.tactics[player.team].collectivePlan;
+  const phase = state.tactics[player.team].phase;
   const candidates = teammates
     .filter((teammate) => teammate.profile.id !== player.profile.id)
-    .map((teammate) => {
+    .flatMap((teammate) => PASS_VARIANTS.map((variant) => {
       const initialDistance = distance(player.position, teammate.position);
-      const travelTime = estimateBallTravelTime(initialDistance);
-      const predictedTarget = predictPlayerPosition(teammate, travelTime * (0.72 + player.profile.mental.anticipation / 360));
+      const initialTime = estimatePassDuration(initialDistance, variant.trajectory, variant.range, variant.targeting);
+      const anticipationScale = 0.78 + player.profile.mental.anticipation / 360;
+      const routeProjection = predictPlayerAlongPlan(state, teammate, initialTime * anticipationScale);
+      const predictedTarget = variant.targeting === "feet"
+        ? blend(teammate.position, routeProjection, 0.72)
+        : routeProjection;
       const passDistance = distance(player.position, predictedTarget);
-      const progress = direction * (predictedTarget.x - player.position.x);
-      const openness = predictedSpaceAt(predictedTarget, opponents, travelTime);
-      const lanePressure = opponents.reduce((risk, opponent) => {
-        const laneDistance = distanceToSegment(predictPlayerPosition(opponent, travelTime * 0.62), player.position, predictedTarget);
+      const travelTime = estimatePassDuration(passDistance, variant.trajectory, variant.range, variant.targeting);
+      const receiverFuture = predictPlayerAlongPlan(state, teammate, travelTime);
+      const target = variant.targeting === "space" ? blend(predictedTarget, receiverFuture, 0.68) : predictedTarget;
+      const progress = direction * (target.x - player.position.x);
+      const opponentFutures = opponents.map((opponent) => ({ opponent, position: predictPlayerAlongPlan(state, opponent, travelTime) }));
+      const openness = Math.min(...opponentFutures.map(({ position }) => distance(target, position)));
+      const rawLanePressure = opponentFutures.reduce((risk, { position }) => {
+        const laneDistance = distanceToSegment(position, player.position, target);
         return risk + clamp(1 - laneDistance / fieldY(4), 0, 1);
-      }, 0) + interceptionThreat(player.position, predictedTarget, opponents, travelTime) * 0.72;
-      const blocked = lanePressure > 0.82;
-      const phase = state.tactics[player.team].phase;
+      }, 0) + interceptionThreat(player.position, target, opponents, travelTime) * 0.58;
+      const landingContest = clamp(1 - openness / fieldX(9), 0, 1);
+      const effectivePressure = variant.trajectory === "air"
+        ? rawLanePressure * 0.34 + landingContest * 1.2
+        : rawLanePressure;
+      const blocked = effectivePressure > 0.82;
       const passerTechnique = (player.profile.skills.passing + player.profile.skills.vision) / 200;
       const longProgression = progress > fieldX(18) && (phase === "buildUp" || phase === "progression" || phase === "counterAttack");
-      const crossesPitch = (player.position.y - FIELD.height / 2) * (teammate.position.y - FIELD.height / 2) < 0;
-      const switchValue = carrierEdgeRisk * centrality(teammate.position) * (crossesPitch ? 1.2 : 0.42);
+      const crossesPitch = (player.position.y - FIELD.height / 2) * (target.y - FIELD.height / 2) < 0;
+      const switchValue = carrierEdgeRisk * centrality(target) * (crossesPitch ? 1.2 : 0.42);
       const wallPass = state.lastAssist?.playerId === teammate.profile.id && state.elapsed - state.lastAssist.time < 4.2;
       const wallPassBonus = wallPass ? 0.64 : 0;
       const roleBonus = teammate.profile.role === "finisher" ? Math.max(0, progress) / fieldX(35) : 0;
       const backwardsSafety = progress < 0 && openness > fieldX(7) ? 0.22 : 0;
+      const rangePenalty = variant.range === "short"
+        ? clamp((passDistance - fieldX(24)) / fieldX(12), 0, 1) * 0.85
+        : clamp((fieldX(13) - passDistance) / fieldX(8), 0, 1) * 0.72;
+      const aerialValue = variant.trajectory === "air"
+        ? (rawLanePressure > 0.9 ? 0.3 : -0.16) - landingContest * 0.72 - (variant.range === "long" ? 0.08 : 0)
+        : 0;
       const collectiveBonus = collective
         ? (collective.primaryRunnerId === teammate.profile.id ? 0.34 + collective.risk * 0.18 : 0)
           + (collective.secondaryRunnerId === teammate.profile.id ? 0.18 : 0)
-          + channelAffinity(predictedTarget, collective.attackChannel) * 0.2
+          + channelAffinity(target, collective.attackChannel) * 0.2
           + (collective.safetyPlayerId === teammate.profile.id && progress < 0 ? (1 - collective.risk) * 0.3 : 0)
           + (collective.buildUpStyle === "direct"
             ? clamp(progress / fieldX(24), -0.12, 0.3)
@@ -163,42 +183,38 @@ const choosePass = (player: PlayerRuntime, teammates: PlayerRuntime[], opponents
               : 0)
         : 0;
       const score = clamp(progress / fieldX(24), -0.8, 1.45)
-        + clamp(openness / fieldX(14), 0, 1.18)
-        + centrality(teammate.position) * 0.18
-        + roleBonus
-        + switchValue
-        + wallPassBonus
-        + backwardsSafety
-        + collectiveBonus
+        + clamp(openness / fieldX(14), 0, 1.18) + centrality(target) * 0.18 + roleBonus
+        + switchValue + wallPassBonus + backwardsSafety + collectiveBonus + aerialValue
         + (longProgression ? passerTechnique * 0.36 : 0)
         + (player.profile.mental.teamwork - 50) / 100 * 0.22
         + (player.profile.mental.decisionMaking - 50) / 100 * 0.16
         + (player.profile.mental.creativity - 50) / 100 * (blocked ? 0.2 : 0.06)
-        - passDistance / fieldX(72)
-        - lanePressure * (passDistance > fieldX(18) ? 0.58 : 0.86) * (1.08 - player.profile.mental.creativity / 500);
+        - passDistance / fieldX(72) - rangePenalty
+        - effectivePressure * (passDistance > fieldX(18) ? 0.58 : 0.86) * (1.08 - player.profile.mental.creativity / 500);
+      const receiverEta = distance(teammate.position, target) / Math.max(1, playerSkillSpeed(teammate) * PHYSICS.runSpeedFactor);
+      const opponentEta = Math.min(...opponents.map((opponent) => distance(opponent.position, target)
+        / Math.max(1, playerSkillSpeed(opponent) * PHYSICS.runSpeedFactor)));
       const reason: DecisionReason = wallPass ? "wallPass" : switchValue > 0.52 ? "switchPlay" : "progressivePass";
-      return { teammate, predictedTarget, passDistance, blocked, lanePressure, progress, longProgression, score, reason };
-    })
+      return { teammate, target, passDistance, score, reason, variant, receiverEta, opponentEta };
+    }))
     .sort((a, b) => b.score - a.score);
   const best = candidates[0];
   if (!best) return null;
-  const targeting = best.teammate.velocity.x * direction > 2 || best.teammate.profile.role === "finisher" ? "space" : "feet";
-  const range = best.passDistance > fieldX(18) || (best.longProgression && best.passDistance > fieldX(14)) ? "long" : "short";
-  const trajectory = best.blocked && best.passDistance > fieldX(9) && (range === "long" || best.lanePressure > 1.08) ? "air" : "ground";
-  const anticipationFactor = 0.72 + player.profile.mental.anticipation / 250;
-  const leadMultiplier = (range === "long" ? 1.18 : 0.82) * anticipationFactor;
-  const lead = targeting === "space" ? scale(best.teammate.velocity, clamp(best.passDistance / 48, 0.08, leadMultiplier * 0.35)) : { x: 0, y: 0 };
   return {
     score: best.score,
     reason: best.reason,
     action: {
       kind: "pass",
       receiverId: best.teammate.profile.id,
-      target: clampToField(add(best.predictedTarget, lead), 4),
-      trajectory,
-      range,
-      targeting,
-      power: clamp(0.42 + best.passDistance / fieldX(82) + (targeting === "space" ? 0.08 : 0) + (best.blocked ? 0.06 : 0), 0.48, 1),
+      target: clampToField(best.target, 4),
+      trajectory: best.variant.trajectory,
+      range: best.variant.range,
+      targeting: best.variant.targeting,
+      power: clamp(0.42 + best.passDistance / fieldX(82) + (best.variant.targeting === "space" ? 0.08 : 0)
+        + (best.variant.trajectory === "air" ? 0.04 : 0), 0.48, 1),
+      receiverEta: best.receiverEta,
+      opponentEta: best.opponentEta,
+      selectionReason: best.reason,
     },
   };
 };
@@ -471,6 +487,37 @@ const defensiveTarget = (
   return { target, intent, reason, burst: defensiveBurst };
 };
 
+const receptionTarget = (state: MatchState): Vec2 => {
+  const pending = state.pendingPass;
+  if (!pending) return state.ball.position;
+  const remaining = pending.expectedArrivalAt - state.elapsed;
+  const liveProjection = predictBallPosition(state, clamp(remaining, 0.12, 2.2));
+  const trajectoryChanged = distance(liveProjection, pending.landingPoint) > fieldX(6);
+  return clampToField(trajectoryChanged || remaining <= 0 ? liveProjection : pending.landingPoint, 3);
+};
+
+const receptionDecision = (player: PlayerRuntime, opponents: PlayerRuntime[], state: MatchState): AgentDecision => {
+  const target = receptionTarget(state);
+  const remaining = Math.max(0.12, (state.pendingPass?.expectedArrivalAt ?? state.elapsed + 0.4) - state.elapsed);
+  const runSpeed = playerSkillSpeed(player) * PHYSICS.runSpeedFactor;
+  const receiverEta = distance(player.position, target) / Math.max(1, runSpeed);
+  const opponentEta = Math.min(...opponents.map((opponent) => distance(opponent.position, target)
+    / Math.max(1, playerSkillSpeed(opponent) * PHYSICS.runSpeedFactor)));
+  const requiredSpeed = distance(player.position, target) / remaining;
+  const urgentRace = opponentEta <= receiverEta + 0.35;
+  const burst = player.energy > 0.48 && player.sprintCooldown <= 0
+    && (requiredSpeed > runSpeed * 0.88 || urgentRace);
+  return {
+    movementTarget: target,
+    burst,
+    burstDuration: burst ? clamp(Math.max(receiverEta, remaining), PHYSICS.burstDuration, 1.45) : undefined,
+    posture: "inPossession",
+    intent: "receiving",
+    reason: "attackReception",
+    ballAction: { kind: "none" },
+  };
+};
+
 export const decideAll = (state: MatchState): Map<string, AgentDecision> => {
   const decisions = new Map<string, AgentDecision>();
   const actualController = state.players.find((player) => player.profile.id === state.ball.controllerId) ?? null;
@@ -520,15 +567,7 @@ export const decideAll = (state: MatchState): Map<string, AgentDecision> => {
             ballAction: { kind: "none" },
           });
         } else {
-          const receiveTarget = clampToField(predictBallPosition(state, predictionHorizon(player, 0.9) * 0.55), 3);
-          decisions.set(player.profile.id, {
-            movementTarget: receiveTarget,
-            burst: false,
-            posture: "inPossession",
-            intent: "supporting",
-            reason: "thirdManSupport",
-            ballAction: { kind: "none" },
-          });
+          decisions.set(player.profile.id, receptionDecision(player, opponents, state));
         }
         continue;
       }
@@ -645,7 +684,7 @@ export const resolvePlanDecision = (player: PlayerRuntime, state: MatchState): A
     const lookAhead = style === "knockOn" ? 0.72 : style === "controlledSprint" ? 0.48 : style === "feint" ? 0.58 : 0.36;
     movementTarget = predictBallPosition(state, lookAhead);
   } else if (state.pendingPass?.receiverId === player.profile.id && !state.ball.controllerId) {
-    movementTarget = predictBallPosition(state, predictionHorizon(player, 0.9) * 0.55);
+    movementTarget = receptionTarget(state);
   } else if (plan.target.kind === "point") movementTarget = plan.target.position;
   else if (plan.target.kind === "ball") movementTarget = add(state.ball.position, plan.target.offset);
   else if (plan.target.kind === "goalkeeper") movementTarget = goalkeeperTarget(player, state);

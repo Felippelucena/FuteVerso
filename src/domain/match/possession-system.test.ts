@@ -99,6 +99,13 @@ describe("posse e domínio", () => {
       startedAt: 0,
       trajectory: "ground",
       range: "short",
+      targeting: "feet",
+      selectionReason: "progressivePass",
+      target: { ...state.ball.position },
+      landingPoint: { ...state.ball.position },
+      expectedArrivalAt: state.elapsed + 0.4,
+      receiverEta: 0.4,
+      opponentEta: 0.8,
     };
 
     stepMatch(state, 1 / 120);

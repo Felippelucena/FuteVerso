@@ -1,6 +1,7 @@
 import { FIELD, PHYSICS, TACTICS } from "../config";
 import type { MatchState, PlayerRuntime, Vec2 } from "../model";
 import { add, clamp, distance, length, scale } from "../../shared/math";
+import { playerSkillAcceleration, playerSkillSpeed } from "./player-metrics";
 
 const clampToField = (position: Vec2, margin: number): Vec2 => ({
   x: clamp(position.x, margin, FIELD.width - margin),
@@ -22,6 +23,45 @@ export const predictPlayerPosition = (player: PlayerRuntime, seconds: number): V
     ? (1 - Math.exp(-PHYSICS.playerDrag * seconds)) / PHYSICS.playerDrag
     : seconds;
   return clampToField(add(player.position, scale(player.velocity, travelFactor)), player.radius);
+};
+
+const planTargetPosition = (state: MatchState, player: PlayerRuntime): Vec2 | null => {
+  const target = player.plan?.target;
+  if (!target) return null;
+  if (target.kind === "point") return target.position;
+  if (target.kind === "ball") return add(state.ball.position, target.offset);
+  if (target.kind === "player") {
+    const targetPlayer = state.players.find((candidate) => candidate.profile.id === target.playerId);
+    return targetPlayer ? add(targetPlayer.position, target.offset) : null;
+  }
+  return null;
+};
+
+export const predictPlayerAlongPlan = (state: MatchState, player: PlayerRuntime, seconds: number): Vec2 => {
+  const target = planTargetPosition(state, player);
+  if (!target || seconds <= 0) return predictPlayerPosition(player, seconds);
+  const steps = 6;
+  const dt = seconds / steps;
+  let position = { ...player.position };
+  let velocity = { ...player.velocity };
+  const burst = player.sprintTimer > 0 || player.plan?.burst;
+  const speedFactor = burst ? PHYSICS.burstSpeedFactor : PHYSICS.runSpeedFactor;
+  const maximumSpeed = playerSkillSpeed(player) * speedFactor;
+  const acceleration = playerSkillAcceleration(player) * (burst ? PHYSICS.burstAccelerationFactor : 1);
+  for (let step = 0; step < steps; step += 1) {
+    const delta = { x: target.x - position.x, y: target.y - position.y };
+    const gap = length(delta);
+    if (gap < player.radius) break;
+    const desired = scale(delta, maximumSpeed / Math.max(0.001, gap));
+    const steering = { x: desired.x - velocity.x, y: desired.y - velocity.y };
+    const steeringLength = length(steering);
+    if (steeringLength > 0.001) velocity = add(velocity, scale(steering, acceleration * dt / steeringLength));
+    velocity = scale(velocity, Math.exp(-PHYSICS.playerDrag * dt));
+    const speed = length(velocity);
+    if (speed > maximumSpeed) velocity = scale(velocity, maximumSpeed / speed);
+    position = add(position, scale(velocity, dt));
+  }
+  return clampToField(position, player.radius);
 };
 
 export const predictBallPosition = (state: MatchState, seconds: number): Vec2 => {

@@ -227,9 +227,15 @@ export class MatchScreen {
     this.selectedPlayerId = selected.profile.id;
     const stats = selected.memory.stats;
     const planAge = selected.plan ? Math.max(0, state.elapsed - selected.plan.startedAt) : 0;
+    const pendingPass = state.pendingPass;
+    const receptionDiagnostic = pendingPass
+      && (pendingPass.receiverId === selected.profile.id || pendingPass.passerId === selected.profile.id)
+      ? `<div class="decision-explanation"><small>RECEPÇÃO</small><strong>${pendingPass.range === "long" ? "Longo" : "Curto"} ${pendingPass.trajectory === "air" ? "aéreo" : "rasteiro"} para ${pendingPass.targeting === "space" ? "o espaço" : "os pés"} · ${REASON_LABELS[pendingPass.selectionReason]}<br>Ponto ${pendingPass.landingPoint.x.toFixed(1)}, ${pendingPass.landingPoint.y.toFixed(1)} · ETA ${pendingPass.receiverEta.toFixed(2)}s / rival ${pendingPass.opponentEta.toFixed(2)}s</strong></div>`
+      : "";
     this.find("#player-detail").innerHTML = `
       <div class="detail-title"><div><strong>${escapeHtml(selected.profile.name)}</strong><span>${POSITION_LABELS[selected.profile.position]} · ${ROLE_LABELS[selected.profile.role]}</span></div><span class="intent intent--${selected.team}">${INTENT_LABELS[selected.intent]}</span></div>
       <div class="decision-explanation"><small>POR QUÊ</small><strong>${REASON_LABELS[selected.decisionReason]}</strong></div>
+      ${receptionDiagnostic}
       <div class="detail-metrics"><span><small>POSTURA</small><strong>${selected.posture === "inPossession" ? "COM POSSE" : "SEM POSSE"}</strong></span><span><small>RITMO</small><strong>${PACE_LABELS[selected.pace]}</strong></span><span><small>PLANO</small><strong>${planAge.toFixed(1)}s</strong></span><span><small>GOLS</small><strong>${stats.goals}</strong></span><span><small>PASSES</small><strong>${stats.completedPasses}</strong></span></div>`;
   }
 

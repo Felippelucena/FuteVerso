@@ -58,13 +58,24 @@ const firstTouchOutcome = (
   const relativeSpeed = length(subtract(state.ball.velocity, player.velocity));
   const toBall = normalize(subtract(state.ball.position, player.position));
   const facingAlignment = clamp((dot(player.facing, toBall) + 1) / 2, 0, 1);
-  const speedDifficulty = clamp(relativeSpeed / (ownBox ? 68 : 52), 0, 1) * (ownBox ? 0.5 : 0.64);
+  const preparedReceiver = state.pendingPass?.receiverId === player.profile.id
+    && Math.abs(state.elapsed - state.pendingPass.expectedArrivalAt) < 0.8;
+  const speedDifficulty = clamp(relativeSpeed / (ownBox ? 68 : 52), 0, 1) * (ownBox ? 0.5 : 0.64)
+    * (preparedReceiver ? 0.9 : 1);
   const heightDifficulty = clamp(state.ball.height / 2.4, 0, 1) * 0.18;
   const positioningDifficulty = (1 - facingAlignment) * 0.16;
   const pressureDifficulty = pressureAt(state, player) * 0.1 * (1.22 - player.profile.mental.composure / 180);
+  const passControlDifficulty = state.pendingPass?.team === player.team
+    ? state.pendingPass.trajectory === "air"
+      ? state.pendingPass.range === "long" ? 0.24 : 0.16
+      : state.pendingPass.range === "long" ? 0.17 : 0.035
+    : 0;
   const dribbleBonus = continuesOwnDribble ? 0.18 : 0;
-  const margin = quality * 0.72 + player.energy * 0.1 + dribbleBonus + signedMatchNoise(state) * 0.16
-    - speedDifficulty - heightDifficulty - positioningDifficulty - pressureDifficulty;
+  const receptionBonus = preparedReceiver
+    ? facingAlignment * 0.03 + player.profile.mental.anticipation / 100 * 0.03
+    : 0;
+  const margin = quality * 0.72 + player.energy * 0.1 + dribbleBonus + receptionBonus + signedMatchNoise(state) * 0.16
+    - speedDifficulty - heightDifficulty - positioningDifficulty - pressureDifficulty - passControlDifficulty;
   if (margin > (ownBox ? 0.08 : 0.16)) return "clean";
   if (margin > -0.13) return "heavy";
   return "miss";
@@ -172,7 +183,9 @@ export const updatePossession = (state: MatchState, dt: number): void => {
       const relativeSpeed = length(subtract(state.ball.velocity, player.velocity));
       const fastBallPenalty = relativeSpeed > 18 ? (1 - quality) * relativeSpeed * 0.018 : 0;
       const ownDribbleBonus = dribbleOwner?.profile.id === player.profile.id ? 0.72 : 0;
-      return { player, quality, ownBox, range, gap, score: gap - quality * 0.92 - (ownBox ? 0.36 : 0) + fastBallPenalty - ownDribbleBonus };
+      const intendedReceiverBonus = state.pendingPass?.receiverId === player.profile.id ? 0.42 : 0;
+      return { player, quality, ownBox, range, gap, score: gap - quality * 0.92 - (ownBox ? 0.36 : 0)
+        + fastBallPenalty - ownDribbleBonus - intendedReceiverBonus };
     })
     .filter(({ player, range, gap }) => gap < range
       && player.kickCooldown < 0.12
@@ -221,7 +234,11 @@ export const updatePossession = (state: MatchState, dt: number): void => {
 };
 
 export const expirePendingPass = (state: MatchState): void => {
-  if (!state.pendingPass || state.elapsed - state.pendingPass.startedAt <= 4) return;
+  if (!state.pendingPass) return;
+  const controlWindow = state.pendingPass.trajectory === "air"
+    ? state.pendingPass.range === "long" ? 0.16 : 0.35
+    : state.pendingPass.range === "long" ? 0.48 : 1.25;
+  if (state.elapsed <= state.pendingPass.expectedArrivalAt + controlWindow) return;
   const passer = state.players.find((player) => player.profile.id === state.pendingPass?.passerId);
   if (passer) passer.memory.stats.failedPasses += 1;
   state.pendingPass = null;

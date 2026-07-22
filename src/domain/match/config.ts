@@ -83,6 +83,7 @@ export const COGNITION = {
   planDuration: {
     passing: 0.25,
     shooting: 0.25,
+    receiving: 0.7,
     carrying: 0.45,
     sprinting: 0.45,
     knockingOn: 0.45,

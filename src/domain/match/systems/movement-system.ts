@@ -29,6 +29,7 @@ const updatePlayer = (player: PlayerRuntime, decision: AgentDecision, controlsBa
   const running = !controlsBall && (
     movementGap > FIELD.width * 0.095
     || decision.intent === "pressing"
+    || decision.intent === "receiving"
     || decision.intent === "sprinting"
     || decision.intent === "knockingOn"
     || decision.intent === "feinting"

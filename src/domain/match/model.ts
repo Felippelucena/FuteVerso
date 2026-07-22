@@ -49,6 +49,7 @@ export type DecisionReason =
   | "pressBall"
   | "coverGoal"
   | "markThreat"
+  | "attackReception"
   | "protectGoal";
 export type PlayerIntent =
   | "carrying"
@@ -57,6 +58,7 @@ export type PlayerIntent =
   | "feinting"
   | "passing"
   | "shooting"
+  | "receiving"
   | "supporting"
   | "pressing"
   | "marking"
@@ -124,6 +126,9 @@ export type BallAction =
     range: PassRange;
     targeting: PassTargeting;
     power: number;
+    receiverEta?: number;
+    opponentEta?: number;
+    selectionReason?: DecisionReason;
   };
 
 export interface AgentDecision {
@@ -166,6 +171,13 @@ export interface PendingPass {
   startedAt: number;
   trajectory: PassTrajectory;
   range: PassRange;
+  targeting: PassTargeting;
+  selectionReason: DecisionReason;
+  target: Vec2;
+  landingPoint: Vec2;
+  expectedArrivalAt: number;
+  receiverEta: number;
+  opponentEta: number;
 }
 
 export interface FeintEvasion {

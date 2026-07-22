@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { buildMatchConfig } from "../../application/match/build-match-config";
 import { createDefaultProfile } from "../../application/profile/create-default-profile";
-import { PASS_VARIANTS, decideAll } from "./ai";
+import { PASS_VARIANTS, choosePass, decideAll } from "./ai";
 import { FIELD, PHYSICS } from "./config";
 import { createMatchState, stepMatch } from "./index";
 import { executeBallAction } from "./systems/ball-system";
@@ -76,6 +76,44 @@ describe("ações e física da bola", () => {
     expect(state.ball.controllerId ?? state.ball.dribbleOwnerId).toBe(holder.profile.id);
     const maximumContinuousTravel = (PHYSICS.controlledBallRepositionSpeed + PHYSICS.maxBallSpeed) / 120;
     expect(repositionDistance).toBeLessThanOrEqual(maximumContinuousTravel + 0.02);
+  });
+
+  it("prefere o rasteiro sob pressão moderada e rejeita o aéreo sem vantagem", () => {
+    const state = createTestMatch(createDefaultProfile(), 404);
+    state.kickoffTimer = 0;
+    const passer = state.players.find((player) => player.team === "blue" && player.profile.position === "midfielder")!;
+    const receiver = state.players.find((player) => player.team === passer.team && player.profile.position === "forward")!;
+    passer.position = { x: 38, y: 30 };
+    receiver.position = { x: 59, y: 30 };
+    receiver.velocity = { x: 2, y: 0 };
+    const opponents = state.players.filter((player) => player.team !== passer.team);
+    opponents.forEach((opponent, index) => {
+      opponent.position = index === 0 ? { x: 49, y: 34 } : { x: 88 + index * 2, y: 8 + index * 12 };
+      opponent.velocity = { x: 0, y: 0 };
+    });
+
+    const option = choosePass(passer, [passer, receiver], opponents, state);
+
+    expect(option?.action.trajectory).toBe("ground");
+  });
+
+  it("usa o aéreo quando o corredor rasteiro está bloqueado e a queda está livre", () => {
+    const state = createTestMatch(createDefaultProfile(), 405);
+    state.kickoffTimer = 0;
+    const passer = state.players.find((player) => player.team === "blue" && player.profile.position === "midfielder")!;
+    const receiver = state.players.find((player) => player.team === passer.team && player.profile.position === "forward")!;
+    passer.position = { x: 32, y: 30 };
+    receiver.position = { x: 72, y: 30 };
+    receiver.velocity = { x: 1, y: 0 };
+    const opponents = state.players.filter((player) => player.team !== passer.team);
+    opponents.forEach((opponent, index) => {
+      opponent.position = index < 2 ? { x: 43 + index * 8, y: 30 } : { x: 88, y: 8 + index * 12 };
+      opponent.velocity = { x: 0, y: 0 };
+    });
+
+    const option = choosePass(passer, [passer, receiver], opponents, state);
+
+    expect(option?.action.trajectory).toBe("air");
   });
 
   it("mantem a bola dominada ao conduzir e mudar de direcao", () => {

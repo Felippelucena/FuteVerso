@@ -211,7 +211,13 @@ describe("qualidade coletiva da simulacao", () => {
     state.ballControlTeam = "blue";
     state.lastControlledTeam = "blue";
     state.ball.controllerId = null;
-    state.pendingPass = { passerId: "nilo-mid", receiverId: "nilo-fw", team: "blue", startedAt: state.elapsed, trajectory: "ground", range: "short" };
+    state.pendingPass = {
+      passerId: "nilo-mid", receiverId: "nilo-fw", team: "blue", startedAt: state.elapsed,
+      trajectory: "ground", range: "short", targeting: "space", selectionReason: "progressivePass",
+      target: { x: FIELD.width * 0.55, y: FIELD.height * 0.42 },
+      landingPoint: { x: FIELD.width * 0.55, y: FIELD.height * 0.42 }, expectedArrivalAt: state.elapsed + 0.8,
+      receiverEta: 0.6, opponentEta: 1.2,
+    };
     state.ball.position = { x: FIELD.width * 0.45, y: FIELD.height * 0.42 };
     state.ball.velocity = { x: 16, y: 0 };
 
