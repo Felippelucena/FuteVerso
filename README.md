@@ -50,15 +50,20 @@ npm run build
 ## Estrutura
 
 - `src/domain`: regras de elenco e partida, IA e sistemas determinísticos de simulação.
-- `src/application`: casos de uso, criação de perfil e portas externas.
+- `src/application`: sessão, coordenação do jogo, casos de uso e portas externas.
 - `src/content`: jogadores e escalações disponibilizados pelo jogo.
 - `src/infrastructure`: persistência versionada e adapters de armazenamento.
-- `src/presentation`: Canvas e formatação dos dados para a interface.
-- `src/main.ts`: composition root, loop visual e telas atuais.
+- `src/presentation`: shell, telas DOM, loop do navegador, Canvas e view models.
+- `src/main.ts`: composition root que apenas instancia e conecta os módulos.
 
 O motor recebe um `MatchConfig` independente do save e expõe uma fachada pequena
 para criar, avançar e extrair resultados de uma partida. As regras de dependência
 e as APIs públicas estão descritas em [`docs/architecture.md`](docs/architecture.md).
+
+O controle da sessão fica em `MatchSession`, os comandos de perfil em
+`GameApplication` e o shell, as telas e o loop do navegador em `presentation`.
+O roteiro de regressão visual e funcional está em
+[`docs/ui-characterization.md`](docs/ui-characterization.md).
 
 O armazenamento implementa a porta `SaveRepository`, permitindo uma futura troca
 por IndexedDB quando replays e históricos maiores forem adicionados.
