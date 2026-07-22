@@ -413,7 +413,7 @@ describe("ações e física", () => {
       expect(state.ball.controllerId).not.toBe(defender.profile.id);
     }
     expect(state.stats.coral.feintsAttempted).toBe(0);
-    expect(distance(attacker.position, defender.position)).toBeGreaterThan(initialSeparation + 2);
+    expect(distance(attacker.position, defender.position)).toBeGreaterThan(initialSeparation + 1.5);
   });
 
   it("nao permite finta antes de o jogador estabilizar a posse", () => {

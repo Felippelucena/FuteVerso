@@ -1,4 +1,4 @@
-import { FIELD, TACTICS } from "./config";
+import { FIELD, POSSESSION, TACTICS } from "./config";
 import { distance } from "./math";
 import type { GameState, TacticalPhase, Team, TeamShape, TeamTacticalState } from "./model";
 
@@ -14,8 +14,11 @@ export const createPhaseSeconds = (): Record<TacticalPhase, number> => Object.fr
 export const createTacticalState = (team: Team): TeamTacticalState => ({
   phase: team === "blue" ? "midBlock" : "midBlock",
   phaseStartedAt: 0,
+  candidatePhase: "midBlock",
+  candidatePhaseStartedAt: 0,
   shape: { width: 0, depth: 0, compactness: 0, lineHeight: 0 },
-  wasInFinalThird: false,
+  finalThirdLatched: false,
+  lastFinalThirdEntryAt: -POSSESSION.finalThirdEntryCooldown,
 });
 
 const attackingProgress = (team: Team, x: number): number => team === "blue" ? x / FIELD.width : (FIELD.width - x) / FIELD.width;
@@ -59,21 +62,37 @@ export const updateTacticalContext = (state: GameState, dt: number): void => {
   for (const team of ["blue", "coral"] as const) {
     const tactical = state.tactics[team];
     const shape = measureShape(state, team);
-    const phase = detectPhase(state, team, shape);
-    if (phase !== tactical.phase) {
-      tactical.phase = phase;
-      tactical.phaseStartedAt = state.elapsed;
+    const desiredPhase = detectPhase(state, team, shape);
+    if (desiredPhase !== tactical.candidatePhase) {
+      tactical.candidatePhase = desiredPhase;
+      tactical.candidatePhaseStartedAt = state.elapsed;
+    }
+    if (desiredPhase !== tactical.phase) {
+      const transitionPhase = desiredPhase === "counterAttack" || desiredPhase === "counterPress";
+      const candidateStable = state.elapsed - tactical.candidatePhaseStartedAt >= POSSESSION.phaseDebounceSeconds;
+      const currentDwelled = state.elapsed - tactical.phaseStartedAt >= POSSESSION.minimumPhaseSeconds;
+      if (transitionPhase || (candidateStable && currentDwelled)) {
+        tactical.phase = desiredPhase;
+        tactical.phaseStartedAt = state.elapsed;
+      }
+    } else {
+      tactical.candidatePhase = desiredPhase;
+      tactical.candidatePhaseStartedAt = state.elapsed;
     }
     tactical.shape = shape;
-    const inFinalThird = state.possessionTeam === team && attackingProgress(team, state.ball.position.x) >= TACTICS.finalThirdStart;
-    if (inFinalThird && !tactical.wasInFinalThird) state.stats[team].finalThirdEntries += 1;
-    tactical.wasInFinalThird = inFinalThird;
+    const progress = attackingProgress(team, state.ball.position.x);
+    if (state.possessionTeam !== team || progress <= POSSESSION.finalThirdRearm) tactical.finalThirdLatched = false;
+    const inFinalThird = state.possessionTeam === team && progress >= POSSESSION.finalThirdEnter;
+    if (inFinalThird && !tactical.finalThirdLatched && state.elapsed - tactical.lastFinalThirdEntryAt >= POSSESSION.finalThirdEntryCooldown) {
+      state.stats[team].finalThirdEntries += 1;
+      tactical.finalThirdLatched = true;
+      tactical.lastFinalThirdEntryAt = state.elapsed;
+    }
     if (dt <= 0) continue;
-    state.stats[team].phaseSeconds[phase] += dt;
+    state.stats[team].phaseSeconds[tactical.phase] += dt;
     state.stats[team].widthIntegral += shape.width * dt;
     state.stats[team].depthIntegral += shape.depth * dt;
     state.stats[team].compactnessIntegral += shape.compactness * dt;
     state.stats[team].spatialSeconds += dt;
   }
 };
-

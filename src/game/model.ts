@@ -54,6 +54,17 @@ export interface PlayerSkills {
   goalkeeping: number;
 }
 
+export interface PlayerMentalAttributes {
+  decisionMaking: number;
+  anticipation: number;
+  composure: number;
+  aggression: number;
+  teamwork: number;
+  creativity: number;
+  intensity: number;
+  adaptability: number;
+}
+
 export interface PlayerProfile {
   id: string;
   name: string;
@@ -61,6 +72,7 @@ export interface PlayerProfile {
   position: PlayerPosition;
   role: PlayerRole;
   skills: PlayerSkills;
+  mental: PlayerMentalAttributes;
 }
 
 export interface PlayerPolicy {
@@ -96,7 +108,7 @@ export interface Lineup {
 }
 
 export interface AutoballSave {
-  schemaVersion: 1;
+  schemaVersion: 2;
   players: PlayerProfile[];
   lineups: Record<Team, Lineup>;
   memories: Record<string, PlayerMemory>;
@@ -126,6 +138,9 @@ export interface PlayerRuntime {
   posture: TeamPosture;
   intent: PlayerIntent;
   decisionReason: DecisionReason;
+  plan: PlayerPlan | null;
+  nextThinkAt: number;
+  lastDecisionAt: number;
 }
 
 export interface Ball {
@@ -173,6 +188,27 @@ export interface AgentDecision {
   intent: PlayerIntent;
   reason: DecisionReason;
   ballAction: BallAction;
+}
+
+export type PlanTarget =
+  | { kind: "point"; position: Vec2 }
+  | { kind: "ball"; offset: Vec2 }
+  | { kind: "player"; playerId: string; offset: Vec2 }
+  | { kind: "goalkeeper" };
+
+export interface PlayerPlan {
+  target: PlanTarget;
+  burst: boolean;
+  burstDuration?: number;
+  posture: TeamPosture;
+  intent: PlayerIntent;
+  reason: DecisionReason;
+  ballAction: BallAction;
+  startedAt: number;
+  expiresAt: number;
+  possessionTeam: Team | null;
+  controllerId: string | null;
+  duringRestart: boolean;
 }
 
 export interface PendingPass {
@@ -233,8 +269,11 @@ export interface TeamShape {
 export interface TeamTacticalState {
   phase: TacticalPhase;
   phaseStartedAt: number;
+  candidatePhase: TacticalPhase;
+  candidatePhaseStartedAt: number;
   shape: TeamShape;
-  wasInFinalThird: boolean;
+  finalThirdLatched: boolean;
+  lastFinalThirdEntryAt: number;
 }
 
 export interface MatchEvent {
@@ -251,7 +290,11 @@ export interface GameState {
   events: MatchEvent[];
   elapsed: number;
   kickoffTimer: number;
+  ballControlTeam: Team | null;
   possessionTeam: Team | null;
+  possessionCandidateTeam: Team | null;
+  possessionCandidateSince: number;
+  lastPossessionChangeAt: number;
   eventCounter: number;
   randomSeed: number;
   learningEnabled: boolean;
@@ -266,5 +309,6 @@ export interface GameState {
   heatmaps: Record<Team, number[]>;
   passNetwork: Record<Team, Record<string, number>>;
   nextAnalyticsSample: number;
+  nextCognitionAt: number;
   finished: boolean;
 }

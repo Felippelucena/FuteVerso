@@ -28,7 +28,7 @@ describe("PlayerRepository", () => {
     storage.setItem("autoball.save", "{conteudo-invalido");
     const loaded = new PlayerRepository(storage).load();
     expect(loaded.players).toHaveLength(8);
-    expect(loaded.schemaVersion).toBe(1);
+    expect(loaded.schemaVersion).toBe(2);
   });
 
   it("migra saves antigos adicionando a semente padrao", () => {
@@ -41,5 +41,19 @@ describe("PlayerRepository", () => {
 
     expect(loaded.settings.randomSeed).toBe(DEFAULT_MATCH_SEED);
     expect(loaded.players).toHaveLength(8);
+  });
+
+  it("descarta saves v1 e inicia o elenco v2", () => {
+    const storage = new MemoryStorage();
+    const legacy = createDefaultSave() as unknown as { schemaVersion: number; players: unknown[] };
+    legacy.schemaVersion = 1;
+    legacy.players = [];
+    storage.setItem("autoball.save", JSON.stringify(legacy));
+
+    const loaded = new PlayerRepository(storage).load();
+
+    expect(loaded.schemaVersion).toBe(2);
+    expect(loaded.players).toHaveLength(8);
+    expect(storage.getItem("autoball.save")).toBeNull();
   });
 });

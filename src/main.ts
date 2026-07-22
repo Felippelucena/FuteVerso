@@ -18,6 +18,7 @@ import type {
   AutoballSave,
   DecisionReason,
   MovementPace,
+  PlayerMentalAttributes,
   PlayerPosition,
   PlayerProfile,
   PlayerRole,
@@ -25,6 +26,7 @@ import type {
   Team,
   TacticalPhase,
 } from "./game/model";
+import { createMentalAttributes, dominantMentalTraits, MENTAL_PRESET_LABELS, MENTAL_PRESETS, type MentalPreset } from "./game/personality";
 import { GameRenderer } from "./game/renderer";
 import { createMemory, validateLineups } from "./game/roster";
 import { PlayerRepository, updateSaveMemories } from "./game/storage";
@@ -42,6 +44,12 @@ const SKILL_FIELDS: { key: keyof PlayerSkills; label: string }[] = [
   { key: "vision", label: "Visão" }, { key: "finishing", label: "Finalização" },
   { key: "defending", label: "Defesa" }, { key: "kickPower", label: "Força" },
   { key: "goalkeeping", label: "Goleiro" },
+];
+const MENTAL_FIELDS: { key: keyof PlayerMentalAttributes; label: string }[] = [
+  { key: "decisionMaking", label: "Tomada de decisão" }, { key: "anticipation", label: "Antecipação" },
+  { key: "composure", label: "Compostura" }, { key: "aggression", label: "Agressividade" },
+  { key: "teamwork", label: "Trabalho coletivo" }, { key: "creativity", label: "Criatividade" },
+  { key: "intensity", label: "Intensidade" }, { key: "adaptability", label: "Adaptabilidade" },
 ];
 
 const POSITION_LABELS: Record<PlayerPosition, string> = {
@@ -70,6 +78,11 @@ const REASON_LABELS: Record<DecisionReason, string> = {
 const skillInputs = SKILL_FIELDS.map(({ key, label }) => `
   <label class="skill-field"><span>${label}</span><input name="${key}" type="number" min="1" max="100" value="65" required /></label>
 `).join("");
+const mentalInputs = MENTAL_FIELDS.map(({ key, label }) => `
+  <label class="skill-field"><span>${label}</span><input name="mental-${key}" type="number" min="1" max="100" value="65" required /></label>
+`).join("");
+const mentalPresetOptions = Object.entries(MENTAL_PRESET_LABELS)
+  .map(([value, label]) => `<option value="${value}">${label}</option>`).join("");
 
 app.innerHTML = `
   <main class="app-shell">
@@ -160,6 +173,9 @@ app.innerHTML = `
       </div>
       <div class="skills-heading"><strong>Atributos</strong><span>1–100</span></div>
       <div class="skills-grid">${skillInputs}</div>
+      <div class="skills-heading"><strong>Personalidade</strong><span>1–100</span></div>
+      <label class="mental-preset"><span>Preset mental</span><select id="mental-preset" name="mentalPreset">${mentalPresetOptions}<option value="custom">Personalizado</option></select></label>
+      <div class="skills-grid mental-grid">${mentalInputs}</div>
       <div class="dialog-actions"><button type="button" class="secondary-button" id="cancel-player">Cancelar</button><button type="submit" class="primary-button"><i data-lucide="save"></i>Salvar jogador</button></div>
     </form>
   </dialog>
@@ -228,10 +244,11 @@ const renderMatchRoster = (): void => {
   if (!selected) return;
   selectedPlayerId = selected.profile.id;
   const stats = selected.memory.stats;
+  const planAge = selected.plan ? Math.max(0, state.elapsed - selected.plan.startedAt) : 0;
   bySelector("#player-detail").innerHTML = `
     <div class="detail-title"><div><strong>${escapeHtml(selected.profile.name)}</strong><span>${POSITION_LABELS[selected.profile.position]} · ${ROLE_LABELS[selected.profile.role]}</span></div><span class="intent intent--${selected.team}">${INTENT_LABELS[selected.intent]}</span></div>
     <div class="decision-explanation"><small>POR QUÊ</small><strong>${REASON_LABELS[selected.decisionReason]}</strong></div>
-    <div class="detail-metrics"><span><small>POSTURA</small><strong>${selected.posture === "inPossession" ? "COM POSSE" : "SEM POSSE"}</strong></span><span><small>RITMO</small><strong>${PACE_LABELS[selected.pace]}</strong></span><span><small>GOLS</small><strong>${stats.goals}</strong></span><span><small>PASSES</small><strong>${stats.completedPasses}</strong></span></div>`;
+    <div class="detail-metrics"><span><small>POSTURA</small><strong>${selected.posture === "inPossession" ? "COM POSSE" : "SEM POSSE"}</strong></span><span><small>RITMO</small><strong>${PACE_LABELS[selected.pace]}</strong></span><span><small>PLANO</small><strong>${planAge.toFixed(1)}s</strong></span><span><small>GOLS</small><strong>${stats.goals}</strong></span><span><small>PASSES</small><strong>${stats.completedPasses}</strong></span></div>`;
 };
 
 const percentage = (value: number, total: number): string => `${total > 0 ? Math.round(value / total * 100) : 0}%`;
@@ -338,7 +355,7 @@ const updateUi = (): void => {
   bySelector("#score-coral").textContent = String(state.stats.coral.goals);
   bySelector("#match-time").textContent = formatClock(state.elapsed);
   bySelector("#match-state").textContent = state.finished ? "ENCERRADA" : "EM CURSO";
-  bySelector("#possession-label").textContent = state.possessionTeam ? `${teamLabel(state.possessionTeam)} com a bola` : "Bola em disputa";
+  bySelector("#possession-label").textContent = state.ballControlTeam ? `${teamLabel(state.ballControlTeam)} com a bola` : "Bola em disputa";
   const total = state.stats.blue.possessionSeconds + state.stats.coral.possessionSeconds;
   const blue = total > 0 ? Math.round(state.stats.blue.possessionSeconds / total * 100) : 50;
   bySelector("#possession-blue").textContent = `${blue}%`;
@@ -371,7 +388,7 @@ const renderManager = (): void => {
   }).join("");
   bySelector("#player-count").textContent = `${saveData.players.length} jogadores`;
   bySelector("#players-table").innerHTML = saveData.players.map((player) => `
-    <div class="player-table-row"><span class="shirt shirt--neutral">${player.number}</span><div class="player-table-name"><strong>${escapeHtml(player.name)}</strong><span>${POSITION_LABELS[player.position]} · ${ROLE_LABELS[player.role]}</span></div>
+    <div class="player-table-row"><span class="shirt shirt--neutral">${player.number}</span><div class="player-table-name"><strong>${escapeHtml(player.name)}</strong><span>${POSITION_LABELS[player.position]} · ${ROLE_LABELS[player.role]} · ${dominantMentalTraits(player.mental).join(" / ")}</span></div>
       <div class="player-rating"><span>CON <strong>${player.skills.control}</strong></span><span>PAS <strong>${player.skills.passing}</strong></span><span>VEL <strong>${player.skills.sprintSpeed}</strong></span></div>
       <div class="row-actions"><button class="icon-button" type="button" data-edit-player="${player.id}" aria-label="Editar ${escapeHtml(player.name)}" title="Editar"><i data-lucide="pencil"></i></button><button class="icon-button icon-button--danger" type="button" data-delete-player="${player.id}" aria-label="Excluir ${escapeHtml(player.name)}" title="Excluir"><i data-lucide="trash-2"></i></button></div></div>`).join("");
   createIcons({ icons: UI_ICONS });
@@ -543,6 +560,9 @@ const openPlayerDialog = (profile?: PlayerProfile): void => {
   (playerForm.elements.namedItem("position") as HTMLSelectElement).value = profile?.position ?? "midfielder";
   (playerForm.elements.namedItem("role") as HTMLSelectElement).value = profile?.role ?? "playmaker";
   for (const { key } of SKILL_FIELDS) (playerForm.elements.namedItem(key) as HTMLInputElement).value = String(profile?.skills[key] ?? 65);
+  const defaultMental = profile?.mental ?? createMentalAttributes("balanced");
+  for (const { key } of MENTAL_FIELDS) (playerForm.elements.namedItem(`mental-${key}`) as HTMLInputElement).value = String(defaultMental[key]);
+  (playerForm.elements.namedItem("mentalPreset") as HTMLSelectElement).value = profile ? "custom" : "balanced";
   syncRoleOptions();
   dialog.showModal();
 };
@@ -553,6 +573,19 @@ bySelector("#close-player").addEventListener("click", () => dialog.close());
   void event;
   syncRoleOptions();
 });
+bySelector<HTMLSelectElement>("#mental-preset").addEventListener("change", (event) => {
+  const preset = (event.currentTarget as HTMLSelectElement).value;
+  if (preset === "custom") return;
+  const values = MENTAL_PRESETS[preset as MentalPreset];
+  for (const { key } of MENTAL_FIELDS) {
+    (playerForm.elements.namedItem(`mental-${key}`) as HTMLInputElement).value = String(values[key]);
+  }
+});
+for (const { key } of MENTAL_FIELDS) {
+  (playerForm.elements.namedItem(`mental-${key}`) as HTMLInputElement).addEventListener("input", () => {
+    (playerForm.elements.namedItem("mentalPreset") as HTMLSelectElement).value = "custom";
+  });
+}
 
 bySelector("#players-table").addEventListener("click", (event) => {
   const edit = (event.target as HTMLElement).closest<HTMLButtonElement>("[data-edit-player]");
@@ -586,6 +619,7 @@ playerForm.addEventListener("submit", (event) => {
     position,
     role,
     skills: Object.fromEntries(SKILL_FIELDS.map(({ key }) => [key, Number(data.get(key))])) as unknown as PlayerSkills,
+    mental: Object.fromEntries(MENTAL_FIELDS.map(({ key }) => [key, Number(data.get(`mental-${key}`))])) as unknown as PlayerMentalAttributes,
   };
   const previousPlayers = saveData.players;
   const previousProfile = editingPlayerId ? saveData.players.find((player) => player.id === editingPlayerId) : null;
@@ -596,7 +630,7 @@ playerForm.addEventListener("submit", (event) => {
     return;
   }
   if (!saveData.memories[profile.id]) saveData.memories[profile.id] = createMemory(profile);
-  else if (previousProfile && previousProfile.role !== profile.role) {
+  else if (previousProfile && (previousProfile.role !== profile.role || JSON.stringify(previousProfile.mental) !== JSON.stringify(profile.mental))) {
     const previousMemory = saveData.memories[profile.id];
     const recalibrated = createMemory(profile);
     recalibrated.stats = { ...previousMemory.stats };

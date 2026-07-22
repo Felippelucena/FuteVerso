@@ -62,6 +62,35 @@ export const TACTICS = {
   buildUpEnd: 0.34,
 } as const;
 
+export const POSSESSION = {
+  confirmationSeconds: 0.32,
+  looseBallGraceSeconds: 0.55,
+  phaseDebounceSeconds: 0.45,
+  minimumPhaseSeconds: 0.75,
+  finalThirdEnter: 0.68,
+  finalThirdRearm: 0.58,
+  finalThirdEntryCooldown: 3,
+} as const;
+
+export const COGNITION = {
+  teamTickSeconds: 0.15,
+  fastestThinkSeconds: 0.14,
+  slowestThinkSeconds: 0.32,
+  planDuration: {
+    passing: 0.25,
+    shooting: 0.25,
+    carrying: 0.45,
+    sprinting: 0.45,
+    knockingOn: 0.45,
+    feinting: 0.45,
+    pressing: 0.65,
+    marking: 0.65,
+    covering: 0.65,
+    supporting: 0.85,
+    goalkeeping: 0.5,
+  },
+} as const;
+
 export const ANALYTICS_GRID = {
   columns: 12,
   rows: 8,

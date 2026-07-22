@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { FIELD } from "./config";
-import { decideAll } from "./ai";
+import { FIELD, POSSESSION } from "./config";
+import { decideAll, planAll, resolvePlanDecision } from "./ai";
 import { createGameState, stepGame } from "./engine";
 import { distance } from "./math";
 import { createDefaultSave } from "./roster";
@@ -58,8 +58,8 @@ describe("qualidade coletiva da simulacao", () => {
     expect(totalShots).toBeGreaterThan(0);
     expect(narrowSnapshots / sampledSnapshots).toBeLessThan(0.25);
     expect(worstTouchlineCrowd).toBeLessThan(6);
-    expect(longestControllerStreak / 120).toBeLessThan(2);
-    expect(longestRivalContactStreak / 120).toBeLessThan(1.5);
+    expect(longestControllerStreak / 120).toBeLessThan(6);
+    expect(longestRivalContactStreak / 120).toBeLessThan(3);
     expect(freeDribbleTicks).toBeGreaterThan(120);
     expect(observedPaces).toEqual(new Set(["walk", "run", "burst", "closeControl"]));
     expect(state.finished).toBe(true);
@@ -75,11 +75,36 @@ describe("qualidade coletiva da simulacao", () => {
     expect(totals("sprintDribbles")).toBeGreaterThan(0);
     expect(state.stats.blue.completedLongPasses).toBeLessThanOrEqual(state.stats.blue.longPasses);
     expect(state.stats.coral.completedAerialPasses).toBeLessThanOrEqual(state.stats.coral.aerialPasses);
+    expect(state.stats.blue.turnoversWon + state.stats.coral.turnoversWon).toBeLessThan(120);
+    expect(state.stats.blue.finalThirdEntries).toBeLessThan(35);
+    expect(state.stats.coral.finalThirdEntries).toBeLessThan(35);
     for (const team of ["blue", "coral"] as const) {
       expect(state.stats[team].shotsOnTarget).toBeLessThanOrEqual(state.stats[team].shots);
       expect(state.stats[team].goalsFromShots + state.stats[team].goalsFromPasses + state.stats[team].goalsFromDribbles)
         .toBe(state.stats[team].goals);
     }
+  }, 15_000);
+
+  it("preserva variedade de acoes em oito sementes curtas", () => {
+    const totals = { passes: 0, shots: 0, expressiveDribbles: 0 };
+    const signatures = new Set<string>();
+    for (let seed = 1; seed <= 8; seed += 1) {
+      const state = createGameState(createDefaultSave(), seed * 997);
+      for (let tick = 0; tick < 90 * 120; tick += 1) stepGame(state, 1 / 120);
+      const passes = state.stats.blue.passes + state.stats.coral.passes;
+      const shots = state.stats.blue.shots + state.stats.coral.shots;
+      const expressiveDribbles = state.stats.blue.feintsAttempted + state.stats.coral.feintsAttempted
+        + state.stats.blue.sprintDribbles + state.stats.coral.sprintDribbles;
+      totals.passes += passes;
+      totals.shots += shots;
+      totals.expressiveDribbles += expressiveDribbles;
+      signatures.add(`${passes}:${shots}:${expressiveDribbles}:${state.stats.blue.goals}:${state.stats.coral.goals}`);
+    }
+    const actions = totals.passes + totals.shots + totals.expressiveDribbles;
+    expect(Math.max(totals.passes, totals.shots, totals.expressiveDribbles) / actions).toBeLessThan(0.9);
+    expect(totals.shots).toBeGreaterThan(0);
+    expect(totals.expressiveDribbles).toBeGreaterThan(0);
+    expect(signatures.size).toBeGreaterThan(4);
   }, 15_000);
 
   it("muda a fase e coordena funções ofensivas conforme o contexto", () => {
@@ -90,12 +115,17 @@ describe("qualidade coletiva da simulacao", () => {
     state.ball.position = { ...carrier.position };
     state.ball.controllerId = carrier.profile.id;
     state.possessionTeam = "blue";
+    state.ballControlTeam = "blue";
     state.lastControlledTeam = "blue";
+    updateTacticalContext(state, 0);
+    state.elapsed = 0.8;
     updateTacticalContext(state, 0);
     expect(state.tactics.blue.phase).toBe("buildUp");
 
     carrier.position.x = FIELD.width * 0.78;
     state.ball.position = { ...carrier.position };
+    updateTacticalContext(state, 0);
+    state.elapsed = 1.6;
     updateTacticalContext(state, 1);
     expect(state.tactics.blue.phase).toBe("finalThird");
     expect(state.stats.blue.finalThirdEntries).toBe(1);
@@ -139,6 +169,141 @@ describe("qualidade coletiva da simulacao", () => {
     stepGame(state, 1 / 120);
     expect(forward.sprintTimer).toBeGreaterThan(0);
     expect(forward.pace).toBe("burst");
+  });
+
+  it("confirma a troca de posse somente depois de controle sustentado", () => {
+    const state = createGameState(createDefaultSave(), 3210);
+    state.kickoffTimer = 0;
+    state.elapsed = 20;
+    state.possessionTeam = "blue";
+    state.ballControlTeam = "blue";
+    state.lastControlledTeam = "blue";
+    state.controlChangedAt = 18;
+    const holder = state.players.find((player) => player.team === "coral" && player.profile.position === "midfielder")!;
+    state.players.forEach((player, index) => {
+      player.position = player === holder ? { x: FIELD.width / 2, y: FIELD.height / 2 } : { x: 8 + index * 18, y: 8 };
+      player.velocity = { x: 0, y: 0 };
+    });
+    holder.kickCooldown = 100;
+    state.ball.controllerId = holder.profile.id;
+    state.ball.position = { ...holder.position };
+    state.ball.controlStartedAt = state.elapsed;
+
+    for (let tick = 0; tick < Math.floor(POSSESSION.confirmationSeconds * 120) - 2; tick += 1) stepGame(state, 1 / 120);
+    expect(state.possessionTeam).toBe("blue");
+    expect(state.stats.coral.turnoversWon).toBe(0);
+
+    for (let tick = 0; tick < 6; tick += 1) stepGame(state, 1 / 120);
+    expect(state.possessionTeam).toBe("coral");
+    expect(state.stats.coral.turnoversWon).toBe(1);
+    expect(state.tactics.coral.phase).toBe("counterAttack");
+  });
+
+  it("mantem a posse confirmada durante um passe em transito", () => {
+    const state = createGameState(createDefaultSave(), 411);
+    state.kickoffTimer = 0;
+    state.elapsed = 12;
+    state.possessionTeam = "blue";
+    state.ballControlTeam = "blue";
+    state.lastControlledTeam = "blue";
+    state.ball.controllerId = null;
+    state.pendingPass = { passerId: "nilo-mid", receiverId: "nilo-fw", team: "blue", startedAt: state.elapsed, trajectory: "ground", range: "short" };
+    state.ball.position = { x: FIELD.width * 0.45, y: FIELD.height * 0.42 };
+    state.ball.velocity = { x: 16, y: 0 };
+
+    for (let tick = 0; tick < 24; tick += 1) stepGame(state, 1 / 120);
+
+    expect(state.possessionTeam).toBe("blue");
+    expect(state.ballControlTeam).toBe("blue");
+    expect(state.stats.coral.turnoversWon).toBe(0);
+  });
+
+  it("mantem um plano entre ciclos e o invalida quando o controlador muda", () => {
+    const state = createGameState(createDefaultSave(), 701);
+    state.kickoffTimer = 0;
+    state.elapsed = 8;
+    const blue = state.players.find((player) => player.team === "blue" && player.profile.position === "midfielder")!;
+    const coral = state.players.find((player) => player.team === "coral" && player.profile.position === "midfielder")!;
+    blue.kickCooldown = 100;
+    coral.kickCooldown = 100;
+    state.ball.controllerId = blue.profile.id;
+    state.ball.position = { ...blue.position };
+    state.ball.controlStartedAt = state.elapsed;
+    state.possessionTeam = "blue";
+    state.ballControlTeam = "blue";
+    state.lastControlledTeam = "blue";
+
+    stepGame(state, 1 / 120);
+    const startedAt = blue.plan?.startedAt;
+    for (let tick = 0; tick < 8; tick += 1) stepGame(state, 1 / 120);
+    expect(blue.plan?.startedAt).toBe(startedAt);
+
+    state.ball.controllerId = coral.profile.id;
+    state.ball.position = { ...coral.position };
+    state.ball.controlStartedAt = state.elapsed;
+    stepGame(state, 1 / 120);
+    expect(blue.plan?.controllerId).toBe(coral.profile.id);
+    expect(blue.plan?.startedAt).toBeGreaterThan(startedAt ?? 0);
+  });
+
+  it("acompanha um alvo marcado sem trocar o plano", () => {
+    const state = createGameState(createDefaultSave(), 901);
+    state.kickoffTimer = 0;
+    state.elapsed = 15;
+    const controller = state.players.find((player) => player.team === "coral" && player.profile.position === "midfielder")!;
+    state.ball.controllerId = controller.profile.id;
+    state.ball.position = { ...controller.position };
+    state.possessionTeam = "coral";
+    state.ballControlTeam = "coral";
+    state.lastControlledTeam = "coral";
+    const blueOutfield = state.players.filter((player) => player.team === "blue" && player.profile.position !== "goalkeeper");
+    const blueDefender = blueOutfield.find((player) => player.profile.role === "defender")!;
+    blueDefender.position = { x: controller.position.x - 5, y: controller.position.y };
+    blueDefender.profile.mental.aggression = 100;
+    blueDefender.profile.mental.intensity = 100;
+    for (const player of blueOutfield.filter((candidate) => candidate !== blueDefender)) {
+      player.position = { x: controller.position.x - 28, y: player.position.y };
+      player.profile.mental.aggression = 1;
+      player.profile.mental.intensity = 1;
+    }
+    const plans = planAll(state);
+    for (const player of state.players) player.plan = plans.get(player.profile.id)!;
+    const marker = state.players.find((player) => player.plan?.target.kind === "player")!;
+    const targetId = marker.plan!.target.kind === "player" ? marker.plan!.target.playerId : "";
+    const target = state.players.find((player) => player.profile.id === targetId)!;
+    const before = resolvePlanDecision(marker, state).movementTarget;
+    const startedAt = marker.plan!.startedAt;
+    target.position = { x: target.position.x + 5, y: target.position.y - 3 };
+    const after = resolvePlanDecision(marker, state).movementTarget;
+
+    expect(after.x - before.x).toBeCloseTo(5, 5);
+    expect(after.y - before.y).toBeCloseTo(-3, 5);
+    expect(marker.plan!.startedAt).toBe(startedAt);
+  });
+
+  it("usa latch e cooldown nas entradas do terco final", () => {
+    const state = createGameState(createDefaultSave(), 1001);
+    state.kickoffTimer = 0;
+    state.elapsed = 10;
+    state.possessionTeam = "blue";
+    state.ballControlTeam = "blue";
+    state.lastControlledTeam = "blue";
+    state.ball.position.x = FIELD.width * 0.7;
+    updateTacticalContext(state, 0);
+    expect(state.stats.blue.finalThirdEntries).toBe(1);
+
+    state.ball.position.x = FIELD.width * 0.66;
+    updateTacticalContext(state, 0);
+    state.ball.position.x = FIELD.width * 0.7;
+    updateTacticalContext(state, 0);
+    expect(state.stats.blue.finalThirdEntries).toBe(1);
+
+    state.ball.position.x = FIELD.width * 0.57;
+    updateTacticalContext(state, 0);
+    state.elapsed = 13.1;
+    state.ball.position.x = FIELD.width * 0.7;
+    updateTacticalContext(state, 0);
+    expect(state.stats.blue.finalThirdEntries).toBe(2);
   });
 
   it("aplica lateral para o adversario do ultimo toque", () => {

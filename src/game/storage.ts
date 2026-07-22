@@ -9,7 +9,7 @@ const clone = <T>(value: T): T => JSON.parse(JSON.stringify(value)) as T;
 const isValidSave = (value: unknown): value is AutoballSave => {
   if (!value || typeof value !== "object") return false;
   const save = value as AutoballSave;
-  if (save.schemaVersion !== 1 || !Array.isArray(save.players) || !save.players.every(isValidProfile)) return false;
+  if (save.schemaVersion !== 2 || !Array.isArray(save.players) || !save.players.every(isValidProfile)) return false;
   if (new Set(save.players.map((player) => player.id)).size !== save.players.length) return false;
   if (!save.lineups || !validateLineups(save.players, save.lineups)) return false;
   const seedIsValid = save.settings?.randomSeed === undefined
@@ -28,6 +28,10 @@ export class PlayerRepository {
       const raw = this.storage.getItem(STORAGE_KEY);
       if (!raw) return createDefaultSave();
       const parsed: unknown = JSON.parse(raw);
+      if (parsed && typeof parsed === "object" && (parsed as { schemaVersion?: unknown }).schemaVersion === 1) {
+        this.storage.removeItem(STORAGE_KEY);
+        return createDefaultSave();
+      }
       if (!isValidSave(parsed)) return createDefaultSave();
       const save = clone(parsed);
       if (!Number.isInteger(save.settings.randomSeed)) save.settings.randomSeed = DEFAULT_MATCH_SEED;

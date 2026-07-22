@@ -37,6 +37,9 @@ npm run build
 - Finalizações com curva de potência própria, claramente mais rápidas que passes longos.
 - Erros determinísticos influenciados por habilidade, pressão, distância e fadiga.
 - Memória individual com estatísticas e ajuste limitado dos pesos de decisão.
+- Posse tática confirmada, com tolerância para bolas divididas e fases coletivas sem oscilações a cada toque.
+- Ciclo cognitivo separado da física: jogadores sustentam planos de passe, corrida, pressão, marcação e cobertura.
+- Oito atributos mentais, seis presets de personalidade e evolução ampla das preferências entre partidas.
 - Gerenciamento de jogadores e escalações persistido em `localStorage`.
 - Pausa, reinício e velocidades de simulação de 0.5x, 1x, 2x, 4x e 8x.
 - Relatório tático com precisão de passe, finalizações, recuperações, entradas no terço final e métricas de forma.
@@ -56,3 +59,5 @@ npm run build
 
 O armazenamento usa uma interface de repositório para permitir uma futura troca
 por IndexedDB quando replays e históricos maiores forem adicionados.
+O schema atual é a versão 2; saves da versão 1 são descartados para inicializar os
+novos perfis mentais de forma consistente.
