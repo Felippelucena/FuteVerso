@@ -718,7 +718,7 @@ p {
   min-width: 0;
   min-height: 0;
   display: grid;
-  grid-template-rows: auto minmax(360px, 1fr) auto;
+  grid-template-rows: auto minmax(360px, 1fr) auto auto;
   background: #101512;
 }
 
@@ -952,6 +952,99 @@ p {
   display: block;
   background: var(--blue);
   transition: width 240ms ease;
+}
+
+.timeline {
+  min-height: 52px;
+  padding: 8px 20px;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  border-top: 1px solid var(--line);
+  background: #0d120f;
+}
+
+.timeline-slider {
+  width: 100%;
+  height: 20px;
+  margin: 0;
+  padding: 0;
+  cursor: pointer;
+  -webkit-appearance: none;
+  appearance: none;
+  background: transparent;
+}
+
+.timeline-slider:disabled {
+  cursor: default;
+  opacity: 0.5;
+}
+
+.timeline-slider::-webkit-slider-runnable-track {
+  height: 4px;
+  border-radius: 999px;
+  background: #2a322d;
+}
+
+.timeline-slider::-moz-range-track {
+  height: 4px;
+  border-radius: 999px;
+  background: #2a322d;
+}
+
+.timeline-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 14px;
+  height: 14px;
+  margin-top: -5px;
+  border: 0;
+  border-radius: 50%;
+  background: var(--lime);
+  box-shadow: 0 0 0 3px rgba(185, 223, 98, 0.18);
+}
+
+.timeline-slider::-moz-range-thumb {
+  width: 14px;
+  height: 14px;
+  border: 0;
+  border-radius: 50%;
+  background: var(--lime);
+}
+
+.timeline.is-scrubbing .timeline-slider::-webkit-slider-thumb {
+  background: var(--coral);
+  box-shadow: 0 0 0 3px rgba(243, 111, 86, 0.2);
+}
+
+.timeline.is-scrubbing .timeline-slider::-moz-range-thumb {
+  background: var(--coral);
+}
+
+.timeline #live-button {
+  color: var(--muted);
+}
+
+.timeline #live-button:not(:disabled) {
+  border-color: var(--lime);
+  color: var(--lime);
+}
+
+.timeline-clock {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.timeline-clock #timeline-view {
+  color: #e9efeb;
+}
+
+.timeline.is-scrubbing .timeline-clock #timeline-view {
+  color: var(--coral);
 }
 
 .inspector {
@@ -1406,7 +1499,7 @@ body,
 }
 
 .field-panel {
-  grid-template-rows: auto minmax(0, 1fr) auto;
+  grid-template-rows: auto minmax(0, 1fr) auto auto;
 }
 
 #game-canvas {

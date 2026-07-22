@@ -31,8 +31,10 @@ export class GameApplication {
   }
 
   persistMatchProgress(): void {
-    this.currentProfile = updateProfileMemories(this.currentProfile, extractPlayerMemories(this.state));
-    this.currentProfile.settings.learningEnabled = this.state.learningEnabled;
+    // Sempre persiste a fronteira ao vivo, mesmo que a linha do tempo esteja rebobinada.
+    const liveState = this.match.liveState;
+    this.currentProfile = updateProfileMemories(this.currentProfile, extractPlayerMemories(liveState));
+    this.currentProfile.settings.learningEnabled = liveState.learningEnabled;
     this.repository.save(this.currentProfile);
   }
 
@@ -52,7 +54,7 @@ export class GameApplication {
   }
 
   setLearningEnabled(enabled: boolean): void {
-    this.state.learningEnabled = enabled;
+    this.match.setLearningEnabled(enabled);
     this.currentProfile.settings.learningEnabled = enabled;
     this.persistMatchProgress();
   }

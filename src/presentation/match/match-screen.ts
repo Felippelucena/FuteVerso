@@ -33,6 +33,11 @@ export const matchScreenTemplate = (): string => `
         </div>
       </div>
       <div class="canvas-wrap"><canvas id="game-canvas" aria-label="Campo de futebol com oito agentes autônomos"></canvas></div>
+      <div class="timeline" aria-label="Linha do tempo da partida">
+        <button class="icon-button" id="live-button" type="button" aria-label="Voltar ao vivo" title="Voltar ao vivo" disabled><i data-lucide="radio"></i></button>
+        <input id="timeline-slider" class="timeline-slider" type="range" min="0" max="0" value="0" step="1" aria-label="Posição na linha do tempo" />
+        <span class="timeline-clock"><span id="timeline-view">0:00</span> / <span id="timeline-live">0:00</span></span>
+      </div>
       <div class="match-strip">
         <div><span>POSSE NILO</span><strong id="possession-blue">50%</strong></div>
         <div class="possession-track"><span id="possession-fill"></span></div>
@@ -113,6 +118,7 @@ export class MatchScreen {
     this.find("#possession-blue").textContent = `${header.bluePossession}%`;
     this.find("#possession-coral").textContent = `${header.coralPossession}%`;
     this.find<HTMLSpanElement>("#possession-fill").style.width = `${header.bluePossession}%`;
+    this.renderTimeline();
     this.renderMatchRoster();
     this.renderAnalysis();
     this.find<HTMLButtonElement>("#pause-button").disabled = state.finished;
@@ -124,6 +130,23 @@ export class MatchScreen {
 
   resize(): void {
     this.renderer.resize();
+  }
+
+  private renderTimeline(): void {
+    const match = this.application.match;
+    const slider = this.find<HTMLInputElement>("#timeline-slider");
+    slider.max = String(match.liveStep);
+    slider.value = String(match.viewStep);
+    slider.disabled = match.liveStep === 0;
+    this.find("#timeline-view").textContent = formatClock(match.viewElapsed);
+    this.find("#timeline-live").textContent = formatClock(match.liveElapsed);
+    this.find<HTMLButtonElement>("#live-button").disabled = !match.scrubbing;
+    this.find(".timeline").classList.toggle("is-scrubbing", match.scrubbing);
+  }
+
+  private renderScrubFrame(): void {
+    this.renderer.render(this.application.state);
+    this.render();
   }
 
   private bindEvents(): void {
@@ -147,6 +170,15 @@ export class MatchScreen {
         this.root.querySelectorAll("[data-speed]").forEach((item) => item.classList.toggle("is-active", item === button));
       });
     }
+    const slider = this.find<HTMLInputElement>("#timeline-slider");
+    slider.addEventListener("input", () => {
+      this.application.match.seek(Number(slider.value));
+      this.renderScrubFrame();
+    });
+    this.find("#live-button").addEventListener("click", () => {
+      this.application.match.resumeLive();
+      this.renderScrubFrame();
+    });
     this.find("#match-roster").addEventListener("click", (event) => {
       const button = (event.target as HTMLElement).closest<HTMLButtonElement>("[data-inspect-player]");
       if (!button) return;
