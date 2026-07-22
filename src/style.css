@@ -1377,3 +1377,250 @@ p {
     border-left: 0;
   }
 }
+
+/* Viewport layout: the match stays fixed while dense data is compartmentalized. */
+html,
+body,
+#app {
+  height: 100%;
+  overflow: hidden;
+}
+
+.app-shell {
+  height: 100dvh;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.workspace {
+  overflow: hidden;
+}
+
+.field-panel {
+  grid-template-rows: auto minmax(0, 1fr) auto;
+}
+
+#game-canvas {
+  min-height: 0;
+}
+
+.inspector {
+  display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr);
+  overflow: hidden;
+}
+
+.inspector-heading .icon-button {
+  color: var(--muted);
+}
+
+.mobile-settings-button {
+  display: none;
+}
+
+.inspector-tabs {
+  min-height: 42px;
+  padding: 0 10px;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  align-items: end;
+  gap: 3px;
+  border-bottom: 1px solid var(--line);
+  background: #111613;
+}
+
+.inspector-tabs button {
+  height: 42px;
+  padding: 0 6px;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  background: transparent;
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 750;
+  cursor: pointer;
+}
+
+.inspector-tabs button:hover,
+.inspector-tabs button:focus-visible,
+.inspector-tabs button.is-active {
+  border-bottom-color: var(--lime);
+  color: #edf2ef;
+  outline: none;
+}
+
+.inspector-panel {
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-color: #455149 transparent;
+  scrollbar-width: thin;
+}
+
+.inspector-panel::-webkit-scrollbar {
+  width: 6px;
+}
+
+.inspector-panel::-webkit-scrollbar-thumb {
+  border-radius: 6px;
+  background: #455149;
+}
+
+.inspector-panel.analysis-section,
+.inspector-panel.events-section {
+  border-bottom: 0;
+}
+
+.events-heading {
+  padding-bottom: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid var(--line);
+}
+
+.events-heading small {
+  color: var(--muted);
+  font-size: 8px;
+}
+
+.settings-dialog {
+  width: min(460px, calc(100vw - 28px));
+  max-height: calc(100dvh - 28px);
+  padding: 0;
+  border: 1px solid #465049;
+  border-radius: 8px;
+  background: var(--panel);
+  color: #eef2ef;
+}
+
+.settings-dialog::backdrop {
+  background: rgba(5, 8, 6, 0.78);
+  backdrop-filter: blur(3px);
+}
+
+.settings-dialog form {
+  padding: 20px;
+}
+
+.settings-dialog .dialog-heading {
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--line);
+}
+
+.settings-dialog .dialog-heading h2 {
+  margin-top: 2px;
+  font-size: 18px;
+}
+
+.settings-group {
+  padding: 16px 0;
+  display: grid;
+  gap: 12px;
+  border-bottom: 1px solid var(--line);
+}
+
+.settings-group--inline {
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+}
+
+.settings-group strong {
+  font-size: 12px;
+}
+
+.settings-group p {
+  margin-top: 3px;
+  color: var(--muted);
+  font-size: 9px;
+  line-height: 1.45;
+}
+
+.seed-control--dialog {
+  width: 100%;
+  grid-template-columns: minmax(0, 1fr) 42px;
+}
+
+.seed-control--dialog input {
+  padding-inline: 10px;
+}
+
+.settings-reset {
+  width: 100%;
+  margin-top: 14px;
+}
+
+.settings-dialog .dialog-actions {
+  margin-top: 18px;
+}
+
+@media (max-width: 900px) {
+  .mobile-settings-button {
+    display: grid;
+  }
+
+  .workspace {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr) minmax(190px, 34vh);
+  }
+
+  .inspector {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto auto minmax(0, 1fr);
+    align-items: stretch;
+    border-top: 1px solid var(--line);
+    border-left: 0;
+  }
+
+  .inspector-heading,
+  .inspector-tabs,
+  .inspector-panel,
+  .inspector .match-roster,
+  .inspector .player-detail,
+  .inspector .analysis-section,
+  .inspector .events-section {
+    grid-column: auto;
+    grid-row: auto;
+  }
+
+  .inspector-heading {
+    display: none;
+  }
+
+  .inspector .match-roster {
+    grid-template-columns: 1fr 1fr;
+    border-right: 0;
+  }
+
+  .inspector .roster-team + .roster-team {
+    border-top: 0;
+    border-left: 1px solid var(--line);
+  }
+}
+
+@media (max-width: 580px) {
+  .workspace {
+    grid-template-rows: minmax(0, 1fr) minmax(180px, 32vh);
+  }
+
+  .inspector .match-roster {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .inspector .roster-team + .roster-team {
+    border-top: 0;
+    border-left: 1px solid var(--line);
+  }
+
+  .roster-player {
+    min-height: 42px;
+  }
+
+  .player-detail {
+    padding: 12px;
+  }
+
+  .settings-dialog form {
+    padding: 16px;
+  }
+}

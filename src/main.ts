@@ -93,11 +93,7 @@ app.innerHTML = `
         <div class="field-toolbar">
           <div class="toolbar-title"><strong>Partida autônoma</strong><span id="possession-label">Bola em disputa</span></div>
           <div class="toolbar-actions">
-            <div class="seed-control" aria-label="Semente da partida">
-              <label for="seed-input">SEMENTE</label>
-              <input id="seed-input" type="number" min="0" max="4294967295" step="1" inputmode="numeric" aria-label="Semente numerica da partida" />
-              <button id="random-seed-button" type="button" aria-label="Gerar nova semente" title="Gerar nova semente"><i data-lucide="dices"></i></button>
-            </div>
+            <button class="icon-button mobile-settings-button" data-open-match-settings type="button" aria-label="Abrir configurações da partida" title="Configurações"><i data-lucide="sliders-horizontal"></i></button>
             <button class="icon-button" id="pause-button" type="button" aria-label="Pausar simulação" title="Pausar simulação"><i data-lucide="pause"></i></button>
             <button class="icon-button" id="reset-button" type="button" aria-label="Reiniciar partida" title="Reiniciar partida"><i data-lucide="rotate-ccw"></i></button>
             <div class="speed-control" aria-label="Velocidade da simulação">
@@ -114,11 +110,21 @@ app.innerHTML = `
         </div>
       </div>
 
-      <aside class="inspector">
-        <div class="inspector-heading"><div><span class="eyebrow">AGENTES</span><h2>Leitura da partida</h2></div><i data-lucide="sliders-horizontal"></i></div>
-        <div id="match-roster" class="match-roster"></div>
-        <div id="player-detail" class="player-detail"></div>
-        <section class="analysis-section" aria-label="Análise tática da partida">
+      <aside class="inspector" aria-label="Painel da partida">
+        <div class="inspector-heading">
+          <div><span class="eyebrow">CENTRAL DA PARTIDA</span><h2>Leitura ao vivo</h2></div>
+          <button class="icon-button" data-open-match-settings type="button" aria-label="Abrir configurações da partida" title="Configurações"><i data-lucide="sliders-horizontal"></i></button>
+        </div>
+        <div class="inspector-tabs" role="tablist" aria-label="Dados da partida">
+          <button type="button" role="tab" aria-selected="true" aria-controls="inspector-players" class="is-active" data-inspector-tab="players">Jogadores</button>
+          <button type="button" role="tab" aria-selected="false" aria-controls="inspector-analysis" data-inspector-tab="analysis">Análise</button>
+          <button type="button" role="tab" aria-selected="false" aria-controls="inspector-events" data-inspector-tab="events">Eventos</button>
+        </div>
+        <section id="inspector-players" class="inspector-panel is-active" role="tabpanel" data-inspector-panel="players">
+          <div id="match-roster" class="match-roster"></div>
+          <div id="player-detail" class="player-detail"></div>
+        </section>
+        <section id="inspector-analysis" class="inspector-panel analysis-section" role="tabpanel" data-inspector-panel="analysis" hidden aria-label="Análise tática da partida">
           <div class="analysis-heading"><div><span class="eyebrow">TÁTICA</span><strong id="analysis-title">Relatório ao vivo</strong></div><span id="contest-metric">Disputa 0%</span></div>
           <div class="phase-grid">
             <div class="phase-card phase-card--blue"><small>NILO</small><strong id="phase-blue">Bloco médio</strong><span id="shape-blue">Largura 0 · Prof. 0</span><canvas id="tactical-map-blue" width="128" height="72" aria-label="Mapa de calor e rede de passes do Nilo"></canvas></div>
@@ -127,11 +133,10 @@ app.innerHTML = `
           <div class="analysis-table" id="analysis-table"></div>
           <p id="match-summary" class="match-summary">A análise será atualizada conforme a partida evolui.</p>
         </section>
-        <div class="learning-section">
-          <div class="learning-copy"><div><span class="eyebrow">MEMÓRIA</span><strong>Ajuste individual</strong></div><label class="switch" title="Ativar aprendizado"><input id="learning-toggle" type="checkbox" checked /><span></span></label></div>
-          <button id="reset-learning" class="text-button" type="button">Restaurar memórias iniciais</button>
-        </div>
-        <div class="events-section"><span class="eyebrow">ÚLTIMOS EVENTOS</span><ol id="event-list" class="event-list"></ol></div>
+        <section id="inspector-events" class="inspector-panel events-section" role="tabpanel" data-inspector-panel="events" hidden>
+          <div class="events-heading"><span class="eyebrow">ÚLTIMOS EVENTOS</span><small>Atualização ao vivo</small></div>
+          <ol id="event-list" class="event-list"></ol>
+        </section>
       </aside>
     </section>
 
@@ -156,6 +161,25 @@ app.innerHTML = `
       <div class="skills-heading"><strong>Atributos</strong><span>1–100</span></div>
       <div class="skills-grid">${skillInputs}</div>
       <div class="dialog-actions"><button type="button" class="secondary-button" id="cancel-player">Cancelar</button><button type="submit" class="primary-button"><i data-lucide="save"></i>Salvar jogador</button></div>
+    </form>
+  </dialog>
+
+  <dialog id="match-settings-dialog" class="settings-dialog">
+    <form method="dialog">
+      <div class="dialog-heading"><div><span class="eyebrow">PARTIDA</span><h2>Configurações</h2></div><button class="icon-button" value="cancel" aria-label="Fechar configurações" title="Fechar"><i data-lucide="x"></i></button></div>
+      <div class="settings-group">
+        <div><strong>Semente da partida</strong><p>Use o mesmo número para reproduzir uma simulação.</p></div>
+        <div class="seed-control seed-control--dialog" aria-label="Semente da partida">
+          <input id="settings-seed-input" type="number" min="0" max="4294967295" step="1" inputmode="numeric" aria-label="Semente numérica da partida" />
+          <button id="settings-random-seed" type="button" aria-label="Gerar nova semente" title="Gerar nova semente"><i data-lucide="dices"></i></button>
+        </div>
+      </div>
+      <div class="settings-group settings-group--inline">
+        <div><strong>Memória dos agentes</strong><p>Permite que jogadores ajustem suas decisões.</p></div>
+        <label class="switch" title="Ativar aprendizado"><input id="learning-toggle" type="checkbox" checked /><span></span></label>
+      </div>
+      <button id="reset-learning" class="secondary-button settings-reset" type="button">Restaurar memórias iniciais</button>
+      <div class="dialog-actions"><button class="primary-button" value="default">Concluir</button></div>
     </form>
   </dialog>
 `;
@@ -391,6 +415,22 @@ for (const button of document.querySelectorAll<HTMLButtonElement>("[data-view]")
   });
 }
 
+for (const button of document.querySelectorAll<HTMLButtonElement>("[data-inspector-tab]")) {
+  button.addEventListener("click", () => {
+    const tab = button.dataset.inspectorTab;
+    document.querySelectorAll<HTMLButtonElement>("[data-inspector-tab]").forEach((item) => {
+      const active = item === button;
+      item.classList.toggle("is-active", active);
+      item.setAttribute("aria-selected", String(active));
+    });
+    document.querySelectorAll<HTMLElement>("[data-inspector-panel]").forEach((panel) => {
+      const active = panel.dataset.inspectorPanel === tab;
+      panel.hidden = !active;
+      panel.classList.toggle("is-active", active);
+    });
+  });
+}
+
 const pauseButton = bySelector<HTMLButtonElement>("#pause-button");
 pauseButton.addEventListener("click", () => {
   paused = !paused;
@@ -402,7 +442,8 @@ pauseButton.addEventListener("click", () => {
   document.querySelector(".live-dot")!.classList.toggle("is-paused", paused);
 });
 bySelector("#reset-button").addEventListener("click", resetMatch);
-const seedInput = bySelector<HTMLInputElement>("#seed-input");
+const settingsDialog = bySelector<HTMLDialogElement>("#match-settings-dialog");
+const seedInput = bySelector<HTMLInputElement>("#settings-seed-input");
 seedInput.value = String(saveData.settings.randomSeed);
 const applySeed = (rawValue: string): void => {
   const parsed = Number(rawValue);
@@ -420,12 +461,19 @@ seedInput.addEventListener("change", () => applySeed(seedInput.value));
 seedInput.addEventListener("keydown", (event) => {
   if (event.key === "Enter") seedInput.blur();
 });
-bySelector("#random-seed-button").addEventListener("click", () => {
+bySelector("#settings-random-seed").addEventListener("click", () => {
   const values = new Uint32Array(1);
   crypto.getRandomValues(values);
   const nextSeed = values[0] === saveData.settings.randomSeed ? (values[0] + 1) >>> 0 : values[0];
   applySeed(String(nextSeed));
 });
+for (const button of document.querySelectorAll<HTMLButtonElement>("[data-open-match-settings]")) {
+  button.addEventListener("click", () => {
+    seedInput.value = String(saveData.settings.randomSeed);
+    bySelector<HTMLInputElement>("#learning-toggle").checked = state.learningEnabled;
+    settingsDialog.showModal();
+  });
+}
 bySelector<HTMLInputElement>("#learning-toggle").addEventListener("change", (event) => {
   state.learningEnabled = (event.currentTarget as HTMLInputElement).checked;
   saveData.settings.learningEnabled = state.learningEnabled;
