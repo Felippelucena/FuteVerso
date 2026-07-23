@@ -94,7 +94,9 @@ export const executeBallAction = (state: MatchState, player: PlayerRuntime, acti
       speed = 25 + quality * 9;
       state.stats[player.team].sprintDribbles += 1;
       const touchRange = action.touchRange ?? "medium";
-      const touchCooldown = touchRange === "short" ? 105 : touchRange === "medium" ? 120 : 105;
+      // Cadência entre toques: curta o bastante para o avanço ser uma sequência de piques.
+      // Na prática o jogador só volta a tocar ao alcançar a bola; isto só evita toque duplo.
+      const touchCooldown = touchRange === "short" ? 0.3 : touchRange === "medium" ? 0.42 : 0.55;
       player.dribbleTouchCooldown = Math.max(player.dribbleTouchCooldown, touchCooldown);
       if (touchRange === "short") state.stats[player.team].shortSprintDribbles += 1;
       else if (touchRange === "medium") state.stats[player.team].mediumSprintDribbles += 1;
@@ -147,9 +149,10 @@ export const executeBallAction = (state: MatchState, player: PlayerRuntime, acti
       const travelPlan = dribbleTravelPlan(player, action.style, action.touchRange, dribbleTarget, quality);
       speed = travelPlan.launchSpeed;
       // Quem empurra a bola à frente precisa disparar atrás dela — a não ser exaurido.
+      // Não trava o sprintCooldown: a perseguição pode se sustentar em piques encadeados,
+      // limitada pela energia volátil, não por um cooldown fixo.
       if ((action.style === "knockOn" || action.style === "feint") && player.sprintEnergy > 0.1) {
         player.sprintTimer = Math.max(player.sprintTimer, travelPlan.chaseDuration);
-        player.sprintCooldown = Math.max(player.sprintCooldown, PHYSICS.burstCooldown);
       }
     }
     const direction = rotate(chosenDirection, signedMatchNoise(state) * (1 - quality) * errorFactor);

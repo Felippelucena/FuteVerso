@@ -68,7 +68,7 @@ export const STAMINA = {
   longIdleCostPerSecond: 0.00092,
   longFloor: 0.2,
   // Escala global do desgaste longo, ajustada pela calibração (médio termina ~55%).
-  longDrainScale: 0.23,
+  longDrainScale: 0.215,
   // --- Interação longa → volátil (penalidade modesta) ---
   // Custo da volátil ×(1 + (1-longa)·slope); recarga ×(1 - (1-longa)·slope).
   fatigueVolatileCostSlope: 0.5,

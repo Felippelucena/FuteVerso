@@ -87,7 +87,9 @@ const updatePlayer = (state: MatchState, player: PlayerRuntime, decision: AgentD
     ? PHYSICS.controlledSpeedFactor
     : goalkeeperSetting ? GOALKEEPING.approachSpeedFactor
       : player.sprintTimer > 0 ? PHYSICS.burstSpeedFactor : running ? PHYSICS.runSpeedFactor : PHYSICS.walkSpeedFactor;
-  player.pace = player.sprintTimer > 0 ? "burst" : controlsBall ? "closeControl" : running || goalkeeperSetting ? "run" : "walk";
+  // Com a bola colada é sempre close control (lento): um pique residual não acelera nem
+  // conta como disparada; avançar em velocidade exige soltar a bola (knock-on).
+  player.pace = controlsBall ? "closeControl" : player.sprintTimer > 0 ? "burst" : running || goalkeeperSetting ? "run" : "walk";
   const maximumSpeed = baseSpeed * speedFactor * fatigueSpeedFactor(player);
   const desired = scale(normalize(subtract(decision.movementTarget, player.position)), maximumSpeed);
   const steering = subtract(desired, player.velocity);

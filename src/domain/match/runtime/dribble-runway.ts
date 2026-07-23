@@ -63,10 +63,11 @@ export const chooseDribbleTouch = (
   let reductionReason: DribbleRangeReason | null = null;
   for (const rule of RANGE_RULES) {
     if (runway.distance < rule.runway) continue;
-    if (player.dribbleTouchCooldown > 0 || player.sprintCooldown > 0) {
+    if (player.dribbleTouchCooldown > 0) {
       reductionReason ??= "touchCooldown";
       continue;
     }
+    // A energia volátil é o limitador do avanço em piques — não um cooldown fixo.
     if (player.sprintEnergy <= rule.energy) {
       reductionReason ??= "reducedForEnergy";
       continue;
