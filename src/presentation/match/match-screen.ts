@@ -181,9 +181,12 @@ export class MatchScreen {
     }
     const slider = this.find<HTMLInputElement>("#timeline-slider");
     slider.addEventListener("input", () => {
+      this.application.match.beginSeek();
       this.application.match.seek(Number(slider.value));
       this.renderScrubFrame();
     });
+    // Ao soltar o slider, a reprodução volta: continua tocando se não estiver pausada.
+    slider.addEventListener("change", () => this.application.match.endSeek());
     this.find("#live-button").addEventListener("click", () => {
       this.application.match.resumeLive();
       this.renderScrubFrame();

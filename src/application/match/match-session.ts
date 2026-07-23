@@ -23,6 +23,9 @@ export class MatchSession {
   // um clone reconstruído do passado quando o usuário rebobina.
   private viewState: MatchState;
   private isPaused = false;
+  // Verdadeiro enquanto o usuário arrasta o slider: a reprodução automática cede
+  // o controle para o arrasto e volta a rodar quando ele solta.
+  private isSeeking = false;
   private currentSpeed: SimulationSpeed = 1;
   private accumulator = 0;
   private liveStepCount = 0;
@@ -76,8 +79,8 @@ export class MatchSession {
   }
 
   advance(realDeltaSeconds: number): number {
-    // Congela a simulação enquanto o usuário inspeciona o passado.
-    if (this.isPaused || this.frontier.finished || this.scrubbing) {
+    // Pausado ou arrastando a linha do tempo: nada avança sozinho.
+    if (this.isPaused || this.isSeeking) {
       this.accumulator = 0;
       return 0;
     }
@@ -85,6 +88,16 @@ export class MatchSession {
       ? Math.min(Math.max(realDeltaSeconds, 0), MAX_REAL_DELTA_SECONDS)
       : 0;
     this.accumulator += safeDelta * this.currentSpeed;
+    // Rebobinado, o play reproduz o passado; ao vivo, avança a fronteira.
+    return this.scrubbing ? this.playReplayForward() : this.advanceFrontier();
+  }
+
+  // Ao vivo: só a fronteira avança no tempo, ditada por play/pausa e velocidade.
+  private advanceFrontier(): number {
+    if (this.frontier.finished) {
+      this.accumulator = 0;
+      return 0;
+    }
     let steps = 0;
     while (this.accumulator >= FIXED_STEP && steps < MAX_STEPS_PER_ADVANCE) {
       stepMatch(this.frontier, FIXED_STEP);
@@ -99,6 +112,30 @@ export class MatchSession {
     return steps;
   }
 
+  // Rebobinado: reproduz a história para frente re-simulando o clone exibido. A
+  // simulação é determinística, então cada passo reproduz exatamente o que a
+  // fronteira fez — sem tocar na fronteira nem nos keyframes.
+  private playReplayForward(): number {
+    let steps = 0;
+    while (
+      this.accumulator >= FIXED_STEP
+      && steps < MAX_STEPS_PER_ADVANCE
+      && this.viewStepCount < this.liveStepCount
+    ) {
+      stepMatch(this.viewState, FIXED_STEP);
+      this.viewStepCount += 1;
+      this.accumulator -= FIXED_STEP;
+      steps += 1;
+    }
+    // Alcançou a fronteira? Reancora ao vivo (mesma referência, custo zero).
+    if (this.viewStepCount >= this.liveStepCount) {
+      this.accumulator = 0;
+      this.viewStepCount = this.liveStepCount;
+      this.viewState = this.frontier;
+    }
+    return steps;
+  }
+
   /** Posiciona a linha do tempo em um passo qualquer entre 0 e a fronteira. */
   seek(step: number): void {
     const target = Math.max(0, Math.min(Math.round(step), this.liveStepCount));
@@ -110,6 +147,16 @@ export class MatchSession {
   /** Reancora a visão na fronteira ao vivo (fim da linha do tempo). */
   resumeLive(): void {
     this.seek(this.liveStepCount);
+  }
+
+  /** O usuário pegou o slider: suspende a reprodução automática enquanto arrasta. */
+  beginSeek(): void {
+    this.isSeeking = true;
+  }
+
+  /** O usuário soltou o slider: a reprodução automática volta a valer. */
+  endSeek(): void {
+    this.isSeeking = false;
   }
 
   private reconstructAt(step: number): MatchState {
