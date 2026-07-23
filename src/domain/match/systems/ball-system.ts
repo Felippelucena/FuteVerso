@@ -189,7 +189,7 @@ export const executeBallAction = (state: MatchState, player: PlayerRuntime, acti
     const direction = rotate(normalize(subtract(action.target, state.ball.position)), signedMatchNoise(state) * (1 - quality) * (technique === "volley" ? 0.64 : 0.5));
     const skillFactor = 0.78 + player.profile.skills.kickPower / 220;
     const techniqueSpeed = technique === "header" ? 0.76 : technique === "redirect" ? 0.82 : 1;
-    const speed = lerp(58, 98, action.power) * skillFactor * techniqueSpeed;
+    const speed = lerp(54, 92, action.power) * skillFactor * techniqueSpeed;
     const executedTarget = targetAlongDirection(state.ball.position, action.target, direction);
     const requestedHeight = clamp(action.targetHeight ?? (technique === "header" ? 2.9 : technique === "volley" ? 2.65 : 0.35), 0.1, FIELD.goalHeight - 0.25);
     const solution = solveShotTrajectory(state.ball.position, executedTarget, contactHeight, requestedHeight, speed);

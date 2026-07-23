@@ -136,8 +136,10 @@ export const GOALKEEPING = {
   lowHeight: 0.35,
   mediumHeight: 1.8,
   highHeight: 3.8,
-  minimumReaction: 0.08,
-  maximumReaction: 0.28,
+  // Reflexo do goleiro depois de ler o chute. Goleiro é reação rápida: mesmo o mais fraco
+  // dispara em ~0,16s e o de elite em ~0,05s — nada de ficar "acordando" enquanto a bola passa.
+  minimumReaction: 0.05,
+  maximumReaction: 0.16,
   catchThreshold: 0.62,
   parryThreshold: 0.25,
   catchRecovery: 0.56,
@@ -146,11 +148,13 @@ export const GOALKEEPING = {
   // Reach beyond the body, as a multiple of the keeper's own radius: one radius of arm.
   // Everything past that has to be earned by actually moving the body there.
   handReachFactor: 1,
-  // Launch impulse of a dive, in field units per second. Comparable to a sprint
+  // Launch impulse of a dive, in field units per second. A touch beyond a sprint
   // (PHYSICS.burstSpeedFactor puts a sprint near 26) because a dive is an explosive
-  // push, not a teleport. It decays under diveDrag and cannot be steered.
-  diveLaunchSpeed: 27,
-  diveDrag: 1.45,
+  // whole-body lunge, not a teleport. It decays under diveDrag and cannot be steered.
+  // Dimensionado para um mergulho pleno cobrir na casa de 4× o raio do goleiro além do
+  // alcance de braço na janela típica de um chute — um voo de verdade, não um estica.
+  diveLaunchSpeed: 31,
+  diveDrag: 3,
   // Vertical impulse and gravity of the jump, in goal-height units.
   jumpLaunchVertical: 5.6,
   jumpGravity: 15.5,
@@ -165,9 +169,10 @@ export const GOALKEEPING = {
   // Upper bound on how far ahead the launch solver looks along the ball path.
   launchSearchStep: 0.02,
   // Margem de segurança do commit: o goleiro salta assim que faltar só este tempo de
-  // sobra para o mergulho ainda chegar, em vez de esperar o último tick possível. Isso dá
-  // tempo de voo ao corpo (mergulho pleno) e evita a bola passar enquanto ele "se prepara".
-  commitLead: 0.16,
+  // sobra para o mergulho ainda chegar, em vez de esperar o último tick possível. Folgado
+  // de propósito para o corpo decolar logo após o chute (mergulho pleno) em vez de ficar
+  // ajustando os pés enquanto a bola passa.
+  commitLead: 0.24,
   // O impulso do mergulho é dimensionado para pousar no ponto de interceptação (a
   // perpendicular à rota da bola), limitado a este múltiplo do diveLaunchSpeed.
   maxDiveSpeedFactor: 1,

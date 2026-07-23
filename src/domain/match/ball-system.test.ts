@@ -195,7 +195,9 @@ describe("ações e física da bola", () => {
     const passSpeed = length(passState.ball.velocity);
 
     expect(shotSpeed).toBeGreaterThan(85);
-    expect(shotSpeed).toBeGreaterThan(passSpeed * 1.3);
+    // Chute deliberadamente um pouco menos veloz que antes, mas ainda claramente na frente
+    // de um passe longo no talo.
+    expect(shotSpeed).toBeGreaterThan(passSpeed * 1.2);
   });
 
   it("faz a finta vencedora passar pelo defensor sem permitir resposta imediata", () => {

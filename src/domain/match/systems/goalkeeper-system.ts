@@ -13,7 +13,9 @@ const ownsPenaltyArea = (goalkeeper: PlayerRuntime, point: Vec2): boolean => {
   return insideDepth && point.y >= top && point.y <= top + FIELD.penaltyWidth;
 };
 
-const goalkeeperQuality = (goalkeeper: PlayerRuntime): number => (
+/** Qualidade de base do goleiro (só skill/mental): o termo dominante da fórmula da defesa,
+ *  disponível a qualquer momento — inclusive durante o voo, antes de haver contato. */
+export const goalkeeperQuality = (goalkeeper: PlayerRuntime): number => (
   goalkeeper.profile.skills.goalkeeping * 0.55
   + goalkeeper.profile.mental.anticipation * 0.17
   + goalkeeper.profile.mental.decisionMaking * 0.13

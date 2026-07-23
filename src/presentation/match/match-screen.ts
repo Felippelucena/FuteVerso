@@ -3,6 +3,7 @@ import { SIMULATION_SPEEDS, type SimulationSpeed } from "../../application/match
 import { ANALYTICS_GRID, FIELD } from "../../domain/match/config";
 import type { MatchState } from "../../domain/match";
 import type { PlayerRuntime } from "../../domain/match/model";
+import { goalkeeperQuality } from "../../domain/match/systems/goalkeeper-system";
 import type { Team } from "../../domain/shared/model";
 import type { GameRenderer } from "../canvas/game-renderer";
 import { DRIBBLE_RANGE_REASON_LABELS, DRIBBLE_TOUCH_LABELS, escapeHtml, formatClock, INTENT_LABELS, PACE_LABELS, PASS_PURPOSE_LABELS, percentage, PHASE_LABELS, POSITION_LABELS, REASON_LABELS, ROLE_LABELS, SHOT_TECHNIQUE_LABELS, teamLabel } from "../app/labels";
@@ -298,8 +299,20 @@ export class MatchScreen {
       ? `<div class="decision-explanation"><small>FINALIZAÇÃO</small><strong>${SHOT_TECHNIQUE_LABELS[shotAction.technique ?? "power"]} · valor ${shotAction.utility?.toFixed(2) ?? "–"}<br>Linha ${shotAction.blocked ? "bloqueada" : "livre"} · espaço do goleiro ${shotAction.goalkeeperGap?.toFixed(1) ?? "–"}</strong></div>`
       : "";
     const saveAttempt = selected.goalkeeperAttempt;
+    // A qualidade do contato (contactQuality) só existe no instante em que a bola é tocada;
+    // durante o voo mostramos a qualidade de base do goleiro (a mesma que alimenta a fórmula),
+    // e acrescentamos a qualidade do lance assim que ele se resolve.
+    const saveActionLabel = saveAttempt
+      ? saveAttempt.launchedAt === null ? "Ajustando posição" : saveAttempt.action === "standingSave" ? "Em pé" : saveAttempt.action === "lowDive" ? "Mergulho baixo" : saveAttempt.action === "highDive" ? "Mergulho alto" : saveAttempt.action === "verticalJump" ? "Salto vertical" : saveAttempt.action === "punch" ? "Soco" : "Saída aérea"
+      : "";
+    const saveFormula = saveAttempt
+      ? saveAttempt.launchedAt === null ? "Ainda no chão" : `Impulso ${saveAttempt.launchSpeed.toFixed(1)} · salto ${saveAttempt.launchVertical.toFixed(1)}${saveAttempt.desperate ? " · desesperado" : ""}`
+      : "";
+    const saveQuality = saveAttempt
+      ? `qualidade do goleiro ${goalkeeperQuality(selected).toFixed(2)}${saveAttempt.contactQuality !== null ? ` · lance ${saveAttempt.contactQuality.toFixed(2)}` : ""}`
+      : "";
     const saveDiagnostic = saveAttempt
-      ? `<div class="decision-explanation"><small>DEFESA</small><strong>${saveAttempt.launchedAt === null ? "Ajustando posição" : saveAttempt.action === "standingSave" ? "Em pé" : saveAttempt.action === "lowDive" ? "Mergulho baixo" : saveAttempt.action === "highDive" ? "Mergulho alto" : saveAttempt.action === "verticalJump" ? "Salto vertical" : saveAttempt.action === "punch" ? "Soco" : "Saída aérea"} · ${saveAttempt.outcome ?? "em andamento"}<br>${saveAttempt.launchedAt === null ? "Ainda no chão" : `Impulso ${saveAttempt.launchSpeed.toFixed(1)} · salto ${saveAttempt.launchVertical.toFixed(1)}${saveAttempt.desperate ? " · desesperado" : ""}`} · qualidade ${saveAttempt.contactQuality?.toFixed(2) ?? "–"}</strong></div>`
+      ? `<div class="decision-explanation"><small>DEFESA</small><strong>${saveActionLabel} · ${saveAttempt.outcome ?? "em andamento"}<br>${saveFormula} · ${saveQuality}</strong></div>`
       : "";
     this.find("#player-detail").innerHTML = `
       <div class="detail-title"><div><strong>${escapeHtml(selected.profile.name)}</strong><span>${POSITION_LABELS[selected.profile.position]} · ${ROLE_LABELS[selected.profile.role]}</span></div><span class="intent intent--${selected.team}">${intentLabel(state, selected)}</span></div>
