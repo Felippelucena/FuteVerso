@@ -34,6 +34,7 @@ const makePlayer = (participant: MatchParticipant): PlayerRuntime => {
     team,
     lineupIndex,
     position: { x: 0, y: 0 },
+    homeAnchor: { x: 0, y: 0 },
     velocity: { x: 0, y: 0 },
     facing: { x: team === "blue" ? 1 : -1, y: 0 },
     radius: FIELD.playerRadius,
@@ -61,12 +62,15 @@ const makePlayer = (participant: MatchParticipant): PlayerRuntime => {
     goalkeeperHoldUntil: 0,
     goalkeeperAlertUntil: 0,
   };
-  player.position = formationAnchor(player);
   return player;
 };
 
 export function createMatchState(config: MatchConfig): MatchState {
   const players = config.participants.map(makePlayer);
+  for (const player of players) {
+    player.homeAnchor = formationAnchor(player, players.filter((mate) => mate.team === player.team));
+    player.position = { ...player.homeAnchor };
+  }
   return {
     players,
     ball: {

@@ -138,9 +138,10 @@ describe("qualidade coletiva da simulacao", () => {
 
     const decisions = decideAll(state);
     const forward = state.players.find((player) => player.team === "blue" && player.profile.role === "finisher")!;
-    const defender = state.players.find((player) => player.team === "blue" && player.profile.role === "defender" && player.profile.position !== "goalkeeper")!;
+    const defenders = state.players.filter((player) => player.team === "blue" && player.profile.role === "defender" && player.profile.position !== "goalkeeper");
     expect(decisions.get(forward.profile.id)?.reason).toBe("runInBehind");
-    expect(decisions.get(defender.profile.id)?.reason).toBe("restDefense");
+    // Com o time avançado, ao menos um defensor segura a retaguarda (rest defense).
+    expect(defenders.some((defender) => decisions.get(defender.profile.id)?.reason === "restDefense")).toBe(true);
   });
 
   it("faz o atacante arrancar para oferecer passe depois de uma retomada defensiva", () => {

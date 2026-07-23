@@ -28,7 +28,11 @@ export const attackDirection = (team: Team): number => (team === "blue" ? 1 : -1
 
 const fieldX = (original: number): number => original * FIELD.width / 100;
 const fieldY = (original: number): number => original * FIELD.height / 60;
-const laneY = (player: PlayerRuntime): number => [fieldY(15), fieldY(30), fieldY(45)][Math.max(0, player.lineupIndex - 1)] ?? FIELD.height / 2;
+// Faixa lateral da âncora: espalha os jogadores de linha do time pela largura, da lane de
+// cima (fieldY 15) à de baixo (fieldY 45), simétrica em torno do centro. Independe do total,
+// então serve para 4x4, 5x5, 11x11... Para 3 jogadores reproduz 15/30/45; para 4, 15/25/35/45.
+const lateralLane = (rank: number, count: number): number =>
+  count <= 1 ? FIELD.height / 2 : fieldY(15) + (fieldY(45) - fieldY(15)) * rank / (count - 1);
 
 const PERCEPTION = {
   intervention: fieldX(12),
@@ -66,17 +70,23 @@ const decisionNoise = (player: PlayerRuntime, state: MatchState, salt: number): 
   return normalized * (1 - player.profile.mental.decisionMaking / 100) * 0.34;
 };
 
-export const formationAnchor = (player: PlayerRuntime): Vec2 => {
+// Âncora de formação: profundidade (x) pela posição, faixa lateral (y) pela ordem do jogador
+// entre os companheiros de linha. `teammates` deve conter o time inteiro (com goleiro) para
+// que o total de jogadores de linha seja conhecido — assim o espalhamento se adapta ao formato.
+export const formationAnchor = (player: PlayerRuntime, teammates: PlayerRuntime[]): Vec2 => {
   const direction = attackDirection(player.team);
   const mirroredX = (blueX: number): number => direction > 0 ? blueX : FIELD.width - blueX;
+  if (player.profile.position === "goalkeeper") return { x: mirroredX(fieldX(6)), y: FIELD.height / 2 };
   const roleAdvance = fieldX(player.profile.role === "finisher" ? 4 : player.profile.role === "defender" ? -3 : 0);
-  switch (player.profile.position) {
-    case "goalkeeper": return { x: mirroredX(fieldX(6)), y: FIELD.height / 2 };
-    case "centerBack": return { x: mirroredX(fieldX(22) + roleAdvance), y: laneY(player) };
-    case "fullBack": return { x: mirroredX(fieldX(29) + roleAdvance), y: player.lineupIndex % 2 === 0 ? fieldY(47) : fieldY(13) };
-    case "midfielder": return { x: mirroredX(fieldX(38) + roleAdvance), y: laneY(player) };
-    case "forward": return { x: mirroredX(fieldX(47) + roleAdvance), y: laneY(player) };
-  }
+  const depth = player.profile.position === "centerBack" ? 22
+    : player.profile.position === "fullBack" ? 29
+    : player.profile.position === "midfielder" ? 38
+    : 47; // forward
+  const outfield = teammates
+    .filter((mate) => mate.profile.position !== "goalkeeper")
+    .sort((first, second) => first.lineupIndex - second.lineupIndex);
+  const rank = Math.max(0, outfield.findIndex((mate) => mate.profile.id === player.profile.id));
+  return { x: mirroredX(fieldX(depth) + roleAdvance), y: lateralLane(rank, outfield.length) };
 };
 
 const goalCenter = (team: Team, ownGoal: boolean): Vec2 => {
@@ -428,7 +438,7 @@ const supportTarget = (
   state: MatchState,
 ): { target: Vec2; reason: DecisionReason; burst: boolean } => {
   const direction = attackDirection(player.team);
-  const anchor = formationAnchor(player);
+  const anchor = player.homeAnchor;
   const supportDepth = perceptionDepth(player, state.ball.position);
   const phase = state.tactics[player.team].phase;
   const collective = state.tactics[player.team].collectivePlan;
@@ -533,7 +543,7 @@ const defensiveTarget = (
   state: MatchState,
   coverSlot: number,
 ): { target: Vec2; intent: AgentDecision["intent"]; burst: boolean; reason: DecisionReason; burstDuration?: number } => {
-  const anchor = formationAnchor(player);
+  const anchor = player.homeAnchor;
   const direction = attackDirection(player.team);
   const thinkingTime = perceptionDepth(player, state.ball.position);
   const ownGoal = goalCenter(player.team, true);
@@ -795,7 +805,7 @@ export const resolvePlanDecision = (player: PlayerRuntime, state: MatchState): A
   const plan = player.plan;
   if (!plan) {
     return {
-      movementTarget: formationAnchor(player), burst: false, posture: "outOfPossession",
+      movementTarget: player.homeAnchor, burst: false, posture: "outOfPossession",
       intent: player.profile.position === "goalkeeper" ? "goalkeeping" : "covering",
       reason: player.profile.position === "goalkeeper" ? "protectGoal" : "coverGoal", ballAction: { kind: "none" },
     };
@@ -815,7 +825,7 @@ export const resolvePlanDecision = (player: PlayerRuntime, state: MatchState): A
   else {
     const targetPlayerId = plan.target.playerId;
     const targetPlayer = state.players.find((candidate) => candidate.profile.id === targetPlayerId);
-    movementTarget = targetPlayer ? add(targetPlayer.position, plan.target.offset) : formationAnchor(player);
+    movementTarget = targetPlayer ? add(targetPlayer.position, plan.target.offset) : player.homeAnchor;
   }
   const controlsBall = state.ball.controllerId === player.profile.id;
   const ballAction = controlsBall ? plan.ballAction : { kind: "none" } as const;

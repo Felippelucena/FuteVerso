@@ -103,6 +103,8 @@ export interface PlayerRuntime {
   team: Team;
   lineupIndex: number;
   position: Vec2;
+  /** Posição-base na formação (âncora fixa do jogador), calculada uma vez na criação da partida. */
+  homeAnchor: Vec2;
   velocity: Vec2;
   facing: Vec2;
   radius: number;

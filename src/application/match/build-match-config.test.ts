@@ -3,13 +3,13 @@ import { createDefaultProfile } from "../profile/create-default-profile";
 import { buildMatchConfig } from "./build-match-config";
 
 describe("buildMatchConfig", () => {
-  it("monta os oito participantes na ordem das escalações", () => {
+  it("monta os dez participantes na ordem das escalações", () => {
     const profile = createDefaultProfile();
     const config = buildMatchConfig(profile);
 
     expect(config.participants.map(({ team, lineupIndex, profile: player }) => [team, lineupIndex, player.id])).toEqual([
-      ["blue", 0, "nilo-gk"], ["blue", 1, "nilo-cb"], ["blue", 2, "nilo-mid"], ["blue", 3, "nilo-fw"],
-      ["coral", 0, "maya-gk"], ["coral", 1, "maya-cb"], ["coral", 2, "maya-mid"], ["coral", 3, "maya-fw"],
+      ["blue", 0, "nilo-gk"], ["blue", 1, "nilo-cb"], ["blue", 2, "nilo-mid"], ["blue", 3, "nilo-vol"], ["blue", 4, "nilo-fw"],
+      ["coral", 0, "maya-gk"], ["coral", 1, "maya-cb"], ["coral", 2, "maya-mid"], ["coral", 3, "maya-vol"], ["coral", 4, "maya-fw"],
     ]);
     expect(config.seed).toBe(profile.settings.randomSeed);
     expect(config.learningEnabled).toBe(true);

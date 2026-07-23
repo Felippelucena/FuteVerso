@@ -17,13 +17,14 @@ describe("estado inicial e escalações", () => {
     expect(FIELD.goalDepth).toBe(7);
   });
 
-  it("cria oito titulares com um goleiro por time", () => {
+  it("cria dez titulares com um goleiro por time", () => {
     const save = createDefaultProfile();
     const state = createTestMatch(save);
     expect(validateLineups(save.players, save.lineups)).toBe(true);
-    expect(state.players).toHaveLength(8);
+    expect(state.players).toHaveLength(10);
     for (const team of ["blue", "coral"] as const) {
       expect(state.players.filter((player) => player.team === team && player.profile.position === "goalkeeper")).toHaveLength(1);
+      expect(state.players.filter((player) => player.team === team && player.profile.position !== "goalkeeper")).toHaveLength(4);
     }
   });
 
@@ -36,8 +37,9 @@ describe("estado inicial e escalações", () => {
   it("faz posição e função alterarem a âncora", () => {
     const state = createTestMatch(createDefaultProfile());
     const defender = state.players.find((player) => player.profile.position === "centerBack")!;
-    const original = formationAnchor(defender);
+    const teammates = state.players.filter((player) => player.team === defender.team);
+    const original = formationAnchor(defender, teammates);
     defender.profile.role = "finisher";
-    expect(formationAnchor(defender).x).not.toBe(original.x);
+    expect(formationAnchor(defender, teammates).x).not.toBe(original.x);
   });
 });

@@ -1,4 +1,3 @@
-import { formationAnchor } from "../ai";
 import { DUEL, FIELD, PHYSICS, STAMINA } from "../config";
 import { add, clamp, distance, dot, lerp, length, limit, normalize, rotate, scale, subtract } from "../../shared/math";
 import type { AgentDecision, BallAction, DribbleStyle, DribbleTouchRange, MatchState, PlayerRuntime, Team, Vec2 } from "../model";
@@ -338,7 +337,7 @@ export const updateControlledBall = (state: MatchState, decisions: Map<string, A
 const resetPositions = (state: MatchState, kickoffTeam: Team): void => {
   const restartOffset = signedMatchNoise(state) * 5;
   for (const player of state.players) {
-    player.position = formationAnchor(player);
+    player.position = { ...player.homeAnchor };
     player.position.y = clamp(player.position.y + restartOffset * (player.team === "blue" ? 0.2 : -0.2), 4, FIELD.height - 4);
     player.velocity = { x: 0, y: 0 };
     player.facing = { x: player.team === "blue" ? 1 : -1, y: 0 };

@@ -7,7 +7,7 @@ const format = (event: MatchEvent) => formatMatchEvent(event, createDefaultProfi
 
 describe("formatMatchEvent", () => {
   it("formata o ciclo da partida", () => {
-    expect(format({ id: 1, time: 0, type: "match-started" })).toBe("Simulacao 4 x 4 iniciada");
+    expect(format({ id: 1, time: 0, type: "match-started" })).toBe("Simulacao 5 x 5 iniciada");
     expect(format({ id: 2, time: 600, type: "match-finished" })).toBe("Fim de partida");
   });
 

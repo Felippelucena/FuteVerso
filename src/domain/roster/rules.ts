@@ -57,13 +57,18 @@ export const isValidProfile = (value: unknown): value is PlayerProfile => {
 export const validateLineups = (players: PlayerProfile[], lineups: Record<Team, Lineup>): boolean => {
   const profiles = new Map(players.map((player) => [player.id, player]));
   const allIds: string[] = [];
+  let fieldCount: number | null = null;
   for (const team of ["blue", "coral"] as const) {
     const lineup = lineups[team];
-    if (!lineup || lineup.fieldPlayerIds.length !== 3) return false;
+    if (!lineup || lineup.fieldPlayerIds.length < 1) return false;
+    // Ambos os times precisam do mesmo número de jogadores de linha (4x4, 5x5, 11x11...).
+    if (fieldCount === null) fieldCount = lineup.fieldPlayerIds.length;
+    else if (lineup.fieldPlayerIds.length !== fieldCount) return false;
     const goalkeeper = profiles.get(lineup.goalkeeperId);
     if (!goalkeeper || goalkeeper.position !== "goalkeeper") return false;
     if (lineup.fieldPlayerIds.some((id) => profiles.get(id)?.position === "goalkeeper" || !profiles.has(id))) return false;
     allIds.push(lineup.goalkeeperId, ...lineup.fieldPlayerIds);
   }
-  return new Set(allIds).size === 8;
+  // Todos distintos: (goleiro + N de linha) por time, sem repetição entre as equipes.
+  return new Set(allIds).size === (fieldCount! + 1) * 2;
 };

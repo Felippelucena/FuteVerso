@@ -67,7 +67,10 @@ export interface PlayerMemory {
 
 export interface Lineup {
   goalkeeperId: string;
-  fieldPlayerIds: [string, string, string];
+  // Jogadores de linha do time (sem o goleiro). O tamanho define o formato da partida:
+  // 4 para o 5x5 atual, e no futuro outros valores (ex.: 10 para 11x11). Ambos os times
+  // precisam ter o mesmo número — ver validateLineups.
+  fieldPlayerIds: string[];
 }
 
 export interface GameProfile {

@@ -26,14 +26,40 @@ describe("LocalStorageSaveRepository", () => {
     repository.save(profile);
 
     expect(repository.load()).toEqual(profile);
-    expect(JSON.parse(storage.getItem(STORAGE_KEY)!).schemaVersion).toBe(2);
+    expect(JSON.parse(storage.getItem(STORAGE_KEY)!).schemaVersion).toBe(3);
+  });
+
+  it("migra um save 4x4 (v2, três de linha) para 5x5 completando cada escalação", () => {
+    const storage = new MemoryStorage();
+    const base = createDefaultProfile();
+    // Reconstrói o save antigo: elenco sem o volante e escalações com três jogadores de linha.
+    const legacyPlayers = base.players.filter((player) => !player.id.endsWith("-vol"));
+    const legacy = {
+      ...toSaveDocument({ ...base, players: legacyPlayers }),
+      schemaVersion: 2,
+      lineups: {
+        blue: { goalkeeperId: "nilo-gk", fieldPlayerIds: ["nilo-cb", "nilo-mid", "nilo-fw"] },
+        coral: { goalkeeperId: "maya-gk", fieldPlayerIds: ["maya-cb", "maya-mid", "maya-fw"] },
+      },
+    };
+    storage.setItem(STORAGE_KEY, JSON.stringify(legacy));
+
+    const loaded = createRepository(storage).load();
+
+    expect(loaded.lineups.blue.fieldPlayerIds).toHaveLength(4);
+    expect(loaded.lineups.coral.fieldPlayerIds).toHaveLength(4);
+    // Sem reservas no banco, sintetiza um jogador a mais por time (8 → 10).
+    expect(loaded.players).toHaveLength(10);
+    // O save migrado só é regravado no próximo autosave; ao regravar, sobe para v3.
+    createRepository(storage).save(loaded);
+    expect(JSON.parse(storage.getItem(STORAGE_KEY)!).schemaVersion).toBe(3);
   });
 
   it("restaura os padrões quando o conteúdo está corrompido", () => {
     const storage = new MemoryStorage();
     storage.setItem(STORAGE_KEY, "{conteudo-invalido");
 
-    expect(createRepository(storage).load().players).toHaveLength(8);
+    expect(createRepository(storage).load().players).toHaveLength(10);
   });
 
   it("normaliza documentos v2 sem semente", () => {
@@ -45,7 +71,7 @@ describe("LocalStorageSaveRepository", () => {
     const loaded = createRepository(storage).load();
 
     expect(loaded.settings.randomSeed).toBe(DEFAULT_MATCH_SEED);
-    expect(loaded.players).toHaveLength(8);
+    expect(loaded.players).toHaveLength(10);
   });
 
   it("descarta saves v1 e inicia o perfil padrão", () => {
@@ -54,7 +80,7 @@ describe("LocalStorageSaveRepository", () => {
 
     const loaded = createRepository(storage).load();
 
-    expect(loaded.players).toHaveLength(8);
+    expect(loaded.players).toHaveLength(10);
     expect(storage.getItem(STORAGE_KEY)).toBeNull();
   });
 

@@ -7,7 +7,7 @@ import { MatchSession } from "./match/match-session";
 import type { SaveRepository } from "./ports/save-repository";
 import { updateProfileMemories } from "./profile/update-profile-memories";
 
-export type LineupSlot = "goalkeeper" | 0 | 1 | 2;
+export type LineupSlot = "goalkeeper" | number;
 export type ProfileCommandError = "invalid-lineup" | "invalid-player" | "player-in-lineup" | "player-not-found";
 export type ProfileCommandResult = { ok: true } | { ok: false; reason: ProfileCommandError };
 

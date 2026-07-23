@@ -5,7 +5,7 @@ import type { Team } from "../../domain/shared/model";
 const teamLabel = (team: Team): string => team === "blue" ? "NILO" : "MAYA";
 
 export const formatMatchEvent = (event: MatchEvent, roster: readonly PlayerProfile[]): string => {
-  if (event.type === "match-started") return "Simulacao 4 x 4 iniciada";
+  if (event.type === "match-started") return "Simulacao 5 x 5 iniciada";
   if (event.type === "match-finished") return "Fim de partida";
   if (event.type === "restart-awarded") {
     const restart = event.restartKind === "throwIn" ? "Lateral" : event.restartKind === "corner" ? "Escanteio" : "Tiro de meta";
