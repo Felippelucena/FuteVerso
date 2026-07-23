@@ -1,5 +1,5 @@
 // Deterministic match rules. Keep these values independent from presentation settings.
-const FIELD_SCALE = 1.8;
+const FIELD_SCALE = 2.5;
 const GOAL_SCALE = 1.4;
 const fieldWidth = 100 * FIELD_SCALE;
 const fieldHeight = 60 * FIELD_SCALE;
