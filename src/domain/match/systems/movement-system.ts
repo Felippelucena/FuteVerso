@@ -75,6 +75,10 @@ const updatePlayer = (state: MatchState, player: PlayerRuntime, decision: AgentD
   }
   const movementGap = distance(decision.movementTarget, player.position);
   const goalkeeperSetting = decision.intent === "preparingSave" && player.profile.position === "goalkeeper";
+  // Depois de rebater, o goleiro fica em alerta e se reposiciona em velocidade (não na
+  // corridinha de ajuste), para caçar a sobra e voltar ao gol rápido.
+  const goalkeeperAlert = !controlsBall && !goalkeeperSetting
+    && player.profile.position === "goalkeeper" && player.goalkeeperAlertUntil > state.elapsed;
   const running = !controlsBall && (
     movementGap > FIELD.width * 0.095
     || decision.intent === "pressing"
@@ -86,10 +90,11 @@ const updatePlayer = (state: MatchState, player: PlayerRuntime, decision: AgentD
   const speedFactor = controlsBall
     ? PHYSICS.controlledSpeedFactor
     : goalkeeperSetting ? GOALKEEPING.approachSpeedFactor
-      : player.sprintTimer > 0 ? PHYSICS.burstSpeedFactor : running ? PHYSICS.runSpeedFactor : PHYSICS.walkSpeedFactor;
+      : goalkeeperAlert ? GOALKEEPING.alertSpeedFactor
+        : player.sprintTimer > 0 ? PHYSICS.burstSpeedFactor : running ? PHYSICS.runSpeedFactor : PHYSICS.walkSpeedFactor;
   // Com a bola colada é sempre close control (lento): um pique residual não acelera nem
   // conta como disparada; avançar em velocidade exige soltar a bola (knock-on).
-  player.pace = controlsBall ? "closeControl" : player.sprintTimer > 0 ? "burst" : running || goalkeeperSetting ? "run" : "walk";
+  player.pace = controlsBall ? "closeControl" : player.sprintTimer > 0 || goalkeeperAlert ? "burst" : running || goalkeeperSetting ? "run" : "walk";
   const maximumSpeed = baseSpeed * speedFactor * fatigueSpeedFactor(player);
   const desired = scale(normalize(subtract(decision.movementTarget, player.position)), maximumSpeed);
   const steering = subtract(desired, player.velocity);

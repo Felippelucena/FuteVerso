@@ -270,6 +270,14 @@ const carrierDecision = (
   opponents: PlayerRuntime[],
   state: MatchState,
 ): AgentDecision => {
+  if (player.profile.position === "goalkeeper" && player.goalkeeperHoldUntil > state.elapsed) {
+    // Bola nas mãos: segura a posse e espera o time se reposicionar antes de distribuir,
+    // ignorando o marcador que pressiona (ele não pode desarmar as mãos do goleiro).
+    return {
+      movementTarget: { ...player.position }, burst: false, posture: "inPossession",
+      intent: "holdingBall", reason: "holdInHands", ballAction: { kind: "none" },
+    };
+  }
   const duelOpponent = nearestPlayer(player.position, opponents);
   const closestOpponent = duelOpponent ? distance(player.position, duelOpponent.position) : FIELD.width;
   const opponentToCarrier = duelOpponent ? normalize(subtract(player.position, duelOpponent.position)) : { x: 0, y: 0 };

@@ -166,7 +166,9 @@ export const updatePossession = (state: MatchState, dt: number): void => {
         && !isEvadedDefender(state, player)
         && distance(player.position, current.position) < current.radius + player.radius + 0.75)
       .sort((a, b) => distance(a.position, current.position) - distance(b.position, current.position))[0];
-    if (challenger) {
+    // Goleiro com a bola nas mãos é intocável: ninguém desarma uma posse segura na área.
+    const keeperHolding = current.profile.position === "goalkeeper" && current.goalkeeperHoldUntil > state.elapsed;
+    if (challenger && !keeperHolding) {
       state.stats[challenger.team].tacklesAttempted += 1;
       const holderScore = (current.profile.skills.control * 0.64 + current.profile.skills.burst * 0.2) / 100
         + current.stamina * 0.16 + current.profile.mental.composure / 1000;

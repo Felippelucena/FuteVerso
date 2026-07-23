@@ -1,10 +1,9 @@
 import { FIELD, FIXED_STEP, GOALKEEPING } from "../config";
 import { add, clamp, distance, dot, length, normalize, scale, subtract } from "../../shared/math";
-import type { AgentDecision, GoalkeeperAction, GoalkeeperAttempt, MatchState, PlayerRuntime, SaveOutcome, Vec2 } from "../model";
+import type { AgentDecision, GoalkeeperAction, GoalkeeperAttempt, GoalkeeperSource, MatchState, PlayerRuntime, SaveOutcome, Vec2 } from "../model";
 import { clearDribbleOwner, registerControlledTeam, registerLooseBall } from "../runtime/control";
 import { emitCognitiveEvent, relevantPlayersNear } from "../runtime/cognitive-events";
 import { emitMatchEvent } from "../runtime/events";
-import { playerSkillSpeed } from "../runtime/player-metrics";
 import { signedMatchNoise } from "../runtime/random";
 import { predictShotPoint, timeToX } from "../runtime/shot-trajectory";
 
@@ -33,17 +32,32 @@ const reactionDelay = (goalkeeper: PlayerRuntime): number => {
 export const goalkeeperReachRadius = (goalkeeper: PlayerRuntime): number =>
   goalkeeper.radius * (1 + GOALKEEPING.handReachFactor);
 
+/** Impulso máximo que este goleiro consegue imprimir num mergulho (explosão). */
 const diveLaunchSpeed = (goalkeeper: PlayerRuntime): number =>
-  GOALKEEPING.diveLaunchSpeed * (0.82 + goalkeeper.profile.skills.goalkeeping / 100 * 0.3) * (0.8 + goalkeeper.sprintEnergy * 0.2);
+  GOALKEEPING.diveLaunchSpeed * (0.82 + goalkeeper.profile.skills.goalkeeping / 100 * 0.3) * (0.8 + goalkeeper.sprintEnergy * 0.2)
+  * GOALKEEPING.maxDiveSpeedFactor;
+
+/** Tempo que um mergulho no impulso máximo leva para o corpo cobrir `bodyGap`, ou Infinity se nem no talo chega. */
+const diveTimeToCover = (bodyGap: number, maxSpeed: number): number => {
+  if (bodyGap <= 0) return 0;
+  const ratio = bodyGap * GOALKEEPING.diveDrag / maxSpeed;
+  if (ratio >= 1) return Infinity;
+  return -Math.log(1 - ratio) / GOALKEEPING.diveDrag;
+};
+
+/**
+ * O impulso exato para o corpo pousar sobre o ponto de interceptação em `seconds`: inverte
+ * diveDisplacement. É isto que projeta o goleiro na perpendicular à rota da bola em vez de
+ * um empurrão fixo — mergulho pleno para bola longe, alcance controlado para bola perto.
+ */
+const launchSpeedToReach = (bodyGap: number, seconds: number, maxSpeed: number): number => {
+  if (bodyGap <= 0) return 0;
+  const reachable = 1 - Math.exp(-GOALKEEPING.diveDrag * Math.max(0.02, seconds));
+  return Math.min(maxSpeed, bodyGap * GOALKEEPING.diveDrag / Math.max(0.001, reachable));
+};
 
 const maximumVertical = (goalkeeper: PlayerRuntime): number =>
   GOALKEEPING.jumpLaunchVertical * (0.84 + goalkeeper.profile.skills.goalkeeping / 100 * 0.3);
-
-/** How far a body launched at `speed` has travelled after `seconds`, decaying under dive drag. */
-const diveDisplacement = (speed: number, seconds: number): number => {
-  const drag = GOALKEEPING.diveDrag;
-  return speed / drag * (1 - Math.exp(-drag * Math.max(0, seconds)));
-};
 
 /** Height of the keeper's body above the ground, from the vertical impulse he committed to. */
 export const goalkeeperJumpHeight = (attempt: GoalkeeperAttempt, elapsed: number): number => {
@@ -60,7 +74,7 @@ const verticalImpulseFor = (height: number, seconds: number): number =>
   (height - GOALKEEPING.standingReach + 0.5 * GOALKEEPING.jumpGravity * seconds * seconds) / Math.max(0.02, seconds);
 
 const describeAction = (
-  source: "shot" | "cross",
+  source: GoalkeeperSource,
   lateral: number,
   vertical: number,
   height: number,
@@ -75,7 +89,7 @@ const describeAction = (
 const createAttempt = (
   state: MatchState,
   goalkeeper: PlayerRuntime,
-  source: "shot" | "cross",
+  source: GoalkeeperSource,
   sourceId: number,
 ): GoalkeeperAttempt => ({
   source,
@@ -112,10 +126,42 @@ const crossAttempt = (state: MatchState, goalkeeper: PlayerRuntime): GoalkeeperA
   return createAttempt(state, goalkeeper, "cross", pass.id);
 };
 
+const nearestGap = (players: PlayerRuntime[], point: Vec2): number =>
+  players.length === 0 ? Infinity : Math.min(...players.map((player) => distance(player.position, point)));
+
+/**
+ * Bola solta e perigosa dentro da própria área, mesmo sem ser um chute a gol: o goleiro sai
+ * para recolher/mergulhar, mas só quando é ele quem chega primeiro — senão fica na linha.
+ */
+const looseAttempt = (state: MatchState, goalkeeper: PlayerRuntime): GoalkeeperAttempt | null => {
+  const ball = state.ball;
+  if (ball.controllerId !== null) return null;
+  if (state.pendingPass?.team === goalkeeper.team) return null;
+  if (length(ball.velocity) > GOALKEEPING.looseClaimMaxBallSpeed) return null;
+  if (ball.height > GOALKEEPING.mediumHeight) return null;
+  const soon = predictShotPoint(ball.position, ball.velocity, ball.height, ball.verticalVelocity, 0.35);
+  const inBoxNow = ownsPenaltyArea(goalkeeper, ball.position);
+  const target = inBoxNow ? ball.position : soon.position;
+  if (!inBoxNow && !ownsPenaltyArea(goalkeeper, soon.position)) return null;
+  const keeperGap = distance(goalkeeper.position, target);
+  const opponents = state.players.filter((player) => player.team !== goalkeeper.team);
+  const threatGap = nearestGap(opponents, target);
+  // Só sai quando há um adversário ameaçando a bola e ele chega antes (com uma margem). Bola
+  // solta inofensiva, sem adversário por perto, fica para os zagueiros — o goleiro segura a linha.
+  if (threatGap > GOALKEEPING.looseClaimThreatRange) return null;
+  if (keeperGap > threatGap + GOALKEEPING.looseClaimBeatMargin) return null;
+  return createAttempt(state, goalkeeper, "loose", 0);
+};
+
 /** How long until the ball is past the point where this keeper could still touch it. */
 const windowRemaining = (state: MatchState, goalkeeper: PlayerRuntime, attempt: GoalkeeperAttempt): number => {
   if (attempt.source === "cross") {
     return Math.max(0, (state.pendingPass?.expectedArrivalAt ?? state.elapsed) - state.elapsed);
+  }
+  if (attempt.source === "loose") {
+    // Bola lenta na área: o solver já descarta pontos fora da área/alcance, então basta uma
+    // janela curta para ele sair e recolher.
+    return Math.min(1.2, GOALKEEPING.maximumAttemptAge - (state.elapsed - attempt.startedAt));
   }
   const behindGoalLine = goalkeeper.team === "blue" ? -FIELD.ballRadius : FIELD.width + FIELD.ballRadius;
   const crossing = timeToX(state.ball.position.x, state.ball.velocity.x, behindGoalLine);
@@ -128,22 +174,29 @@ interface LaunchSolution {
   height: number;
   seconds: number;
   gap: number;
+  /** Distância que o corpo precisa cobrir além do alcance de braço. */
+  bodyGap: number;
+  /** Tempo mínimo do mergulho no talo para chegar; usado para decidir o instante do commit. */
+  diveTime: number;
   vertical: number;
   punch: boolean;
 }
 
 /**
  * Walk the ball's future path and find the contact the keeper could still physically make.
- * Returns null when nothing on the path is within reach of a dive launched right now.
+ * Escolhe o ponto de interceptação de menor esforço — a perpendicular entre o goleiro e a
+ * rota da bola — entre os que um mergulho no talo ainda alcança. Devolve null quando nada na
+ * rota é alcançável nem no impulso máximo.
  */
 const solveLaunch = (
   state: MatchState,
   goalkeeper: PlayerRuntime,
   attempt: GoalkeeperAttempt,
   horizon: number,
-  launchSpeed: number,
+  maxSpeed: number,
 ): LaunchSolution | null => {
   const ceiling = maximumVertical(goalkeeper);
+  let best: LaunchSolution | null = null;
   for (let seconds = GOALKEEPING.launchSearchStep; seconds <= horizon; seconds += GOALKEEPING.launchSearchStep) {
     const predicted = predictShotPoint(
       state.ball.position,
@@ -155,21 +208,28 @@ const solveLaunch = (
     if (!ownsPenaltyArea(goalkeeper, predicted.position)) continue;
     if (predicted.height > FIELD.goalHeight + 0.4) continue;
     const gap = distance(goalkeeper.position, predicted.position);
-    if (gap > diveDisplacement(launchSpeed, seconds) + attempt.reachRadius) continue;
+    const bodyGap = Math.max(0, gap - attempt.reachRadius);
+    const diveTime = diveTimeToCover(bodyGap, maxSpeed);
+    // Precisa dar tempo do corpo chegar antes da bola cruzar este ponto.
+    if (diveTime > seconds) continue;
     const vertical = verticalImpulseFor(predicted.height, seconds);
     if (vertical > ceiling) continue;
     const nearbyOpponent = attempt.source === "cross" && state.players.some((player) => player.team !== goalkeeper.team
       && distance(player.position, predicted.position) < goalkeeper.radius * 2.5);
-    return {
+    const solution: LaunchSolution = {
       point: predicted.position,
       height: predicted.height,
       seconds,
       gap,
+      bodyGap,
+      diveTime,
       vertical: Math.max(0, vertical),
       punch: nearbyOpponent || predicted.speed > 52 || predicted.height > 3.8,
     };
+    // O ponto de menor esforço (menor mergulho) é o alvo: a perpendicular à rota da bola.
+    if (!best || solution.bodyGap < best.bodyGap) best = solution;
   }
-  return null;
+  return best;
 };
 
 const launch = (
@@ -196,21 +256,23 @@ const launch = (
 };
 
 /**
- * Decide, on this tick, whether to stay on the feet or commit.
- * The keeper waits as long as waiting is free: he launches on the last tick where the dive
- * still gets there. That is what produces the short shuffle followed by a jump, and what
- * makes an unreachable ball end in a dive that falls short instead of a magnetic save.
+ * Decide, a cada tick, entre ajustar os pés no chão ou se comprometer com o mergulho.
+ * O goleiro escolhe o ponto de interceptação de menor esforço (a perpendicular à rota da bola)
+ * e faz a corridinha de ajuste enquanto sobra folga; assim que faltar apenas o tempo de voo do
+ * mergulho mais uma margem de segurança, ele decola com o impulso dimensionado para pousar
+ * exatamente sobre esse ponto. Isso produz um mergulho pleno que chega a tempo, em vez de um
+ * lance curto e tardio. Uma bola inalcançável mesmo no talo termina num mergulho que cai curto.
  */
-const updateLaunchDecision = (state: MatchState, goalkeeper: PlayerRuntime, attempt: GoalkeeperAttempt, dt: number): void => {
+const updateLaunchDecision = (state: MatchState, goalkeeper: PlayerRuntime, attempt: GoalkeeperAttempt, _dt: number): void => {
   if (attempt.launchedAt !== null || state.elapsed < attempt.reactionReadyAt) return;
   const horizon = windowRemaining(state, goalkeeper, attempt);
   if (horizon <= 0) return;
-  const launchSpeed = diveLaunchSpeed(goalkeeper);
-  const solution = solveLaunch(state, goalkeeper, attempt, horizon, launchSpeed);
+  const maxSpeed = diveLaunchSpeed(goalkeeper);
+  const solution = solveLaunch(state, goalkeeper, attempt, horizon, maxSpeed);
 
   if (!solution) {
-    // Nothing reachable yet. Shuffle towards the ball's path and re-evaluate next tick,
-    // unless the ball is about to pass — then throw the body at it and hope.
+    // Nem no impulso máximo se alcança. Encosta na rota e re-avalia; se a bola está prestes a
+    // passar, joga o corpo assim mesmo (mergulho de desespero, que cai curto).
     const predicted = predictShotPoint(
       state.ball.position, state.ball.velocity, state.ball.height, state.ball.verticalVelocity,
       Math.max(GOALKEEPING.launchSearchStep, horizon * 0.5),
@@ -218,18 +280,19 @@ const updateLaunchDecision = (state: MatchState, goalkeeper: PlayerRuntime, atte
     attempt.approachTarget = { ...predicted.position };
     if (horizon <= GOALKEEPING.desperationLead) {
       const vertical = clamp(verticalImpulseFor(predicted.height, Math.max(0.06, horizon)), 0, maximumVertical(goalkeeper));
-      launch(state, goalkeeper, attempt, predicted.position, predicted.height, vertical, launchSpeed, false, true);
+      launch(state, goalkeeper, attempt, predicted.position, predicted.height, vertical, maxSpeed, false, true);
     }
     return;
   }
 
-  // Reachable. Would it still be reachable if he spent one more beat setting his feet?
-  const lookahead = Math.max(dt, GOALKEEPING.launchSearchStep);
-  const approachStep = playerSkillSpeed(goalkeeper) * GOALKEEPING.approachSpeedFactor * lookahead;
-  const futureGap = Math.max(0, solution.gap - approachStep);
-  const futureReach = diveDisplacement(launchSpeed, Math.max(0, solution.seconds - lookahead)) + attempt.reachRadius;
   attempt.approachTarget = { ...solution.point };
-  if (futureGap <= futureReach && solution.seconds - lookahead > GOALKEEPING.desperationLead) return;
+  // Faz a corridinha de ajuste enquanto sobra folga; compromete-se assim que faltar apenas o
+  // tempo do mergulho mais a margem de segurança. Isso dá voo pleno ao corpo (mergulho que
+  // chega ao ponto) e impede a bola de passar enquanto ele ainda "se prepara".
+  if (solution.seconds > solution.diveTime + GOALKEEPING.commitLead) return;
+  // Dimensiona o impulso para o corpo pousar exatamente sobre o ponto de interceptação — a
+  // perpendicular entre o goleiro e a rota da bola.
+  const launchSpeed = launchSpeedToReach(solution.bodyGap, solution.seconds, maxSpeed);
   launch(state, goalkeeper, attempt, solution.point, solution.height, solution.vertical, launchSpeed, solution.punch, false);
 };
 
@@ -266,7 +329,7 @@ export const updateGoalkeeperAnticipation = (state: MatchState, dt: number = FIX
       const sameCross = attempt.source === "cross" && state.pendingPass?.id === attempt.sourceId;
       if (sameShot || sameCross) continue;
     }
-    goalkeeper.goalkeeperAttempt = shotAttempt(state, goalkeeper) ?? crossAttempt(state, goalkeeper);
+    goalkeeper.goalkeeperAttempt = shotAttempt(state, goalkeeper) ?? crossAttempt(state, goalkeeper) ?? looseAttempt(state, goalkeeper);
     if (goalkeeper.goalkeeperAttempt) {
       if (goalkeeper.goalkeeperAttempt.source === "shot") state.stats[goalkeeper.team].saveAttempts += 1;
       updateLaunchDecision(state, goalkeeper, goalkeeper.goalkeeperAttempt, dt);
@@ -283,7 +346,7 @@ export const goalkeeperDecision = (goalkeeper: PlayerRuntime, state: MatchState)
   }
   const attempt = goalkeeper.goalkeeperAttempt;
   if (!attempt || attempt.outcome !== null) return null;
-  const reason = attempt.source === "cross" ? "attackCross" : "reactToShot";
+  const reason = attempt.source === "cross" ? "attackCross" : attempt.source === "loose" ? "smotherLoose" : "reactToShot";
   if (state.elapsed < attempt.reactionReadyAt) {
     return {
       movementTarget: { ...attempt.origin }, burst: false, posture: "outOfPossession",
@@ -378,6 +441,9 @@ const resolveCatch = (state: MatchState, goalkeeper: PlayerRuntime, attempt: Goa
   }
   state.activeShot = null;
   setAttemptResult(state, goalkeeper, attempt, "catch", quality);
+  // Bola nas mãos: segura a posse (imune a desarme) e espera o time subir antes de distribuir.
+  goalkeeper.goalkeeperHoldUntil = state.elapsed + GOALKEEPING.catchRecovery + GOALKEEPING.secureHoldSeconds;
+  goalkeeper.goalkeeperAlertUntil = 0;
   emitCognitiveEvent(state, "controlClaimed", null, { controllerId: goalkeeper.profile.id });
 };
 
@@ -423,6 +489,13 @@ const resolveLooseContact = (
     state.pendingPass = null;
   }
   setAttemptResult(state, goalkeeper, attempt, outcome, quality);
+  // Rebateu: a bola segue viva. Levanta mais rápido do que numa defesa segura e entra em
+  // alerta para caçar a sobra e se reposicionar em velocidade.
+  goalkeeper.goalkeeperRecoveryUntil = Math.min(
+    goalkeeper.goalkeeperRecoveryUntil,
+    state.elapsed + (attempt.launchedAt === null ? 0.16 : GOALKEEPING.diveRecovery * 0.55),
+  );
+  goalkeeper.goalkeeperAlertUntil = state.elapsed + GOALKEEPING.alertSeconds;
   emitCognitiveEvent(state, "ballTrajectoryChanged", relevantPlayersNear(state, contact), {
     shotId: attempt.source === "shot" ? attempt.sourceId : undefined,
     passId: attempt.source === "cross" ? attempt.sourceId : undefined,
@@ -486,5 +559,7 @@ export const clearGoalkeeperAttempts = (state: MatchState): void => {
   for (const goalkeeper of state.players.filter((player) => player.profile.position === "goalkeeper")) {
     goalkeeper.goalkeeperAttempt = null;
     goalkeeper.goalkeeperRecoveryUntil = 0;
+    goalkeeper.goalkeeperHoldUntil = 0;
+    goalkeeper.goalkeeperAlertUntil = 0;
   }
 };

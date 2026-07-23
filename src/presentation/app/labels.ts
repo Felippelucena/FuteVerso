@@ -36,6 +36,7 @@ export const INTENT_LABELS = {
   claimingHighBall: "Saindo no cruzamento",
   recoveringSave: "Recuperando da defesa",
   goalkeeping: "Protegendo o gol",
+  holdingBall: "Segurando a bola",
 } as const;
 
 export const DRIBBLE_TOUCH_LABELS: Record<DribbleTouchRange, string> = {
@@ -110,6 +111,9 @@ export const REASON_LABELS: Record<DecisionReason, string> = {
   attackCross: "Atacar o cruzamento",
   recoverFromSave: "Recuperar após a defesa",
   protectGoal: "Proteger o gol",
+  holdInHands: "Segurar a bola nas mãos",
+  reboundAlert: "Alerta após o rebote",
+  smotherLoose: "Recolher bola solta",
 };
 
 export const escapeHtml = (value: string): string => value.replace(

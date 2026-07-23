@@ -128,6 +128,7 @@ export const COGNITION = {
     jumping: 0.32,
     claimingHighBall: 0.4,
     recoveringSave: 0.35,
+    holdingBall: 0.3,
   },
 } as const;
 
@@ -163,6 +164,26 @@ export const GOALKEEPING = {
   desperationLead: 0.07,
   // Upper bound on how far ahead the launch solver looks along the ball path.
   launchSearchStep: 0.02,
+  // Margem de segurança do commit: o goleiro salta assim que faltar só este tempo de
+  // sobra para o mergulho ainda chegar, em vez de esperar o último tick possível. Isso dá
+  // tempo de voo ao corpo (mergulho pleno) e evita a bola passar enquanto ele "se prepara".
+  commitLead: 0.16,
+  // O impulso do mergulho é dimensionado para pousar no ponto de interceptação (a
+  // perpendicular à rota da bola), limitado a este múltiplo do diveLaunchSpeed.
+  maxDiveSpeedFactor: 1,
+  // Bola solta perigosa na própria área: o goleiro sai/mergulha para recolher mesmo sem ser
+  // um chute a gol. Só dispara quando a bola está lenta, um adversário ameaça recolhê-la, e o
+  // goleiro chega antes dele — senão fica na linha e deixa para a defesa.
+  looseClaimMaxBallSpeed: 46,
+  looseClaimBeatMargin: 1.4,
+  looseClaimThreatRange: 16,
+  // Depois de agarrar nas mãos, segura a posse (imune a desarme) por este tempo, esperando o
+  // time se reposicionar antes de distribuir — ignorando o marcador que pressiona.
+  secureHoldSeconds: 1.9,
+  // Depois de espalmar/rebater, fica em alerta e se reposiciona em velocidade por este tempo.
+  alertSeconds: 2.6,
+  // Velocidade de reposicionamento durante o alerta (corrida, não a corridinha de ajuste).
+  alertSpeedFactor: 1.85,
 } as const;
 
 export const ANALYTICS_GRID = {

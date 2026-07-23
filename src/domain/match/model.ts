@@ -43,7 +43,7 @@ export type PressTrigger = "looseBall" | "counterPress" | "touchline" | "compact
 export type PassPurpose = "feet" | "throughBall" | "cross" | "cutback" | "switch" | "layoff";
 export type ShotTechnique = "placed" | "power" | "volley" | "header" | "redirect";
 export type GoalkeeperAction = "standingSave" | "lowDive" | "highDive" | "verticalJump" | "aerialClaim" | "punch";
-export type GoalkeeperSource = "shot" | "cross";
+export type GoalkeeperSource = "shot" | "cross" | "loose";
 export type SaveOutcome = "catch" | "parry" | "glance" | "miss";
 export type PlayerObjective = "aggressiveBreak" | null;
 export type PreparedReceptionKind = "shot" | "pass" | "control" | "redirect";
@@ -68,7 +68,10 @@ export type DecisionReason =
   | "reactToShot"
   | "attackCross"
   | "recoverFromSave"
-  | "protectGoal";
+  | "protectGoal"
+  | "holdInHands"
+  | "reboundAlert"
+  | "smotherLoose";
 export type PlayerIntent =
   | "carrying"
   | "sprinting"
@@ -88,7 +91,8 @@ export type PlayerIntent =
   | "jumping"
   | "claimingHighBall"
   | "recoveringSave"
-  | "goalkeeping";
+  | "goalkeeping"
+  | "holdingBall";
 export type MovementPace = "walk" | "run" | "burst" | "closeControl";
 
 export interface PlayerRuntime {
@@ -123,6 +127,10 @@ export interface PlayerRuntime {
   objectiveExpiresAt: number;
   goalkeeperAttempt: GoalkeeperAttempt | null;
   goalkeeperRecoveryUntil: number;
+  /** Enquanto ativo, o goleiro segura a bola nas mãos: imune a desarme, esperando o time subir. */
+  goalkeeperHoldUntil: number;
+  /** Após rebater/espalmar, o goleiro fica em alerta e se reposiciona em velocidade. */
+  goalkeeperAlertUntil: number;
 }
 
 export interface Ball {

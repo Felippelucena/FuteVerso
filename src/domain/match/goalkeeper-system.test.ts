@@ -6,6 +6,7 @@ import { stepMatch } from "./engine";
 import type { GoalkeeperAttempt, MatchState, PlayerRuntime, Vec2 } from "./model";
 import { createMatchState } from "./state";
 import { updateBall } from "./systems/ball-system";
+import { updatePossession } from "./systems/possession-system";
 import { goalkeeperReachRadius, updateGoalkeeperAnticipation } from "./systems/goalkeeper-system";
 
 const createState = (seed = 55) => {
@@ -348,5 +349,105 @@ describe("ciclo de vida da tentativa", () => {
     updateGoalkeeperAnticipation(state);
 
     expect(keeper.goalkeeperAttempt).toBe(original);
+  });
+});
+
+describe("geometria do mergulho", () => {
+  it("dimensiona o mergulho para alcancar o canto e se compromete a tempo", () => {
+    const state = createState();
+    // Chute a meia altura para o lado: exige um mergulho de verdade, mas alcancavel.
+    const keeper = fireShotAtGoal(state, FIELD.height / 2 + 11, 46, 1.1, 38);
+    makeElite(keeper);
+
+    let launchSpeedAtTakeoff = 0;
+    const trace = traceSave(state, keeper, 200, () => {
+      const attempt = keeper.goalkeeperAttempt;
+      if (launchSpeedAtTakeoff === 0 && attempt?.launchedAt != null) launchSpeedAtTakeoff = attempt.launchSpeed;
+    });
+
+    expect(trace.launchedAtFrame).not.toBeNull();
+    // Ele chega ao ponto sem precisar do lance de desespero, e o corpo se projeta (impulso > 0).
+    expect(trace.desperate).toBe(false);
+    expect(launchSpeedAtTakeoff).toBeGreaterThan(0);
+    expect(trace.outcome).not.toBeNull();
+    expect(trace.outcome).not.toBe("miss");
+  });
+});
+
+describe("bola solta na area", () => {
+  it("sai para recolher uma bola solta perigosa mesmo sem ser chute a gol", () => {
+    const state = createState();
+    const keeper = goalkeeper(state);
+    makeElite(keeper);
+    keeper.position = { x: 10, y: FIELD.height / 2 };
+    state.activeShot = null;
+    state.pendingPass = null;
+    // Bola lenta parada na area, longe do alcance de braco: precisa sair.
+    state.ball.controllerId = null;
+    state.ball.position = { x: 16, y: FIELD.height / 2 + 6 };
+    state.ball.velocity = { x: -2, y: 1 };
+    state.ball.height = 0;
+    state.ball.verticalVelocity = 0;
+    // Um adversario ameaca a bola, mas mais longe que o goleiro.
+    const attacker = state.players.find((player) => player.team === "coral" && player.profile.position !== "goalkeeper")!;
+    attacker.position = { x: 28, y: FIELD.height / 2 + 9 };
+
+    updateGoalkeeperAnticipation(state);
+    expect(keeper.goalkeeperAttempt?.source).toBe("loose");
+  });
+
+  it("ignora bola solta inofensiva sem adversario por perto", () => {
+    const state = createState();
+    const keeper = goalkeeper(state);
+    keeper.position = { x: 10, y: FIELD.height / 2 };
+    state.activeShot = null;
+    state.pendingPass = null;
+    state.ball.controllerId = null;
+    state.ball.position = { x: 16, y: FIELD.height / 2 + 6 };
+    state.ball.velocity = { x: -2, y: 1 };
+    state.ball.height = 0;
+    // Afasta todos os adversarios: ninguem ameaca, o goleiro segura a linha.
+    for (const player of state.players.filter((entry) => entry.team === "coral")) {
+      player.position = { x: FIELD.width - 20, y: FIELD.height / 2 };
+    }
+
+    updateGoalkeeperAnticipation(state);
+    expect(keeper.goalkeeperAttempt).toBeNull();
+  });
+});
+
+describe("posse segura nas maos", () => {
+  it("agarra, entra em posse segura e fica imune a desarme", () => {
+    const state = createState();
+    const keeper = goalkeeper(state);
+    makeElite(keeper);
+    armLaunchedAttempt(state, keeper, 40, 1.3);
+
+    updateBall(state, 0.06);
+    expect(keeper.goalkeeperAttempt?.outcome).toBe("catch");
+    expect(state.ball.controllerId).toBe(keeper.profile.id);
+    expect(keeper.goalkeeperHoldUntil).toBeGreaterThan(state.elapsed);
+
+    // Um adversario colado tenta o desarme repetidas vezes e nunca tira a bola das maos.
+    const attacker = state.players.find((player) => player.team === "coral" && player.profile.position !== "goalkeeper")!;
+    attacker.profile.skills.defending = 100;
+    attacker.position = { x: keeper.position.x + 3, y: keeper.position.y };
+    attacker.reactionTimer = 0;
+    for (let i = 0; i < 30; i += 1) updatePossession(state, FIXED_STEP);
+    expect(state.ball.controllerId).toBe(keeper.profile.id);
+  });
+});
+
+describe("alerta apos o rebote", () => {
+  it("entra em alerta depois de espalmar a bola", () => {
+    const state = createState();
+    const keeper = goalkeeper(state);
+    makeElite(keeper);
+    armLaunchedAttempt(state, keeper, 108, 1.4);
+
+    updateBall(state, 0.05);
+
+    expect(keeper.goalkeeperAttempt?.outcome).toBe("parry");
+    expect(keeper.goalkeeperAlertUntil).toBeGreaterThan(state.elapsed);
   });
 });

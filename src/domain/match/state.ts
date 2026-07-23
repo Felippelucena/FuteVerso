@@ -58,6 +58,8 @@ const makePlayer = (participant: MatchParticipant): PlayerRuntime => {
     objectiveExpiresAt: 0,
     goalkeeperAttempt: null,
     goalkeeperRecoveryUntil: 0,
+    goalkeeperHoldUntil: 0,
+    goalkeeperAlertUntil: 0,
   };
   player.position = formationAnchor(player);
   return player;
