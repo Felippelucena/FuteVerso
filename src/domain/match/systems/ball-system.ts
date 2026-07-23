@@ -1,5 +1,5 @@
 import { formationAnchor } from "../ai";
-import { FIELD, PHYSICS, STAMINA } from "../config";
+import { DUEL, FIELD, PHYSICS, STAMINA } from "../config";
 import { add, clamp, distance, dot, lerp, length, limit, normalize, rotate, scale, subtract } from "../../shared/math";
 import type { AgentDecision, BallAction, DribbleStyle, DribbleTouchRange, MatchState, PlayerRuntime, Team, Vec2 } from "../model";
 import {
@@ -106,7 +106,8 @@ export const executeBallAction = (state: MatchState, player: PlayerRuntime, acti
         .filter((candidate) => candidate.team !== player.team
           && candidate.reactionTimer <= 0
           && candidate.duelCooldown <= 0
-          && distance(candidate.position, player.position) < FIELD.width * 0.075)
+          // Só finta contra um marcador REAL no raio de colisão (raios quase se tocando).
+          && distance(candidate.position, player.position) < player.radius + candidate.radius + DUEL.feintEngageMargin)
         .sort((a, b) => distance(a.position, player.position) - distance(b.position, player.position))[0];
       if (defender) {
         state.stats[player.team].feintsAttempted += 1;
@@ -145,39 +146,46 @@ export const executeBallAction = (state: MatchState, player: PlayerRuntime, acti
       errorFactor = success ? 0.14 : 0.72;
       speed = success ? 23 + quality * 7 : 11.5;
     }
-    if (action.style !== "feint" || success) {
-      const travelPlan = dribbleTravelPlan(player, action.style, action.touchRange, dribbleTarget, quality);
-      speed = travelPlan.launchSpeed;
-      // Quem empurra a bola à frente precisa disparar atrás dela — a não ser exaurido.
-      // Não trava o sprintCooldown: a perseguição pode se sustentar em piques encadeados,
-      // limitada pela energia volátil, não por um cooldown fixo.
-      if ((action.style === "knockOn" || action.style === "feint") && player.sprintEnergy > 0.1) {
-        player.sprintTimer = Math.max(player.sprintTimer, travelPlan.chaseDuration);
-      }
+    // Finta lida pelo marcador: o atacante NÃO perde a posse por tentar o drible. Mantém a bola
+    // no pé (close control) e come um cooldown; o eventual desarme fica a cargo do contato real
+    // (resolveContact), que dispara quando os raios colidem. (Antes o releaseBall incondicional
+    // largava a bola solta sem dono → perda de posse gratuita.)
+    if (action.style === "feint" && !success) {
+      state.ball.lastAction = "dribble";
+      state.ball.lastShotOnTarget = false;
+      state.ball.lastTouch = player.team;
+      state.ball.lastTouchPlayerId = player.profile.id;
+      state.ball.controlStartedAt = controlStartedAt;
+      state.feintEvasion = null;
+      clearDribbleOwner(state);
+      registerControlledTeam(state, player.team);
+      player.kickCooldown = 0.42;
+      return;
+    }
+    const travelPlan = dribbleTravelPlan(player, action.style, action.touchRange, dribbleTarget, quality);
+    speed = travelPlan.launchSpeed;
+    // Quem empurra a bola à frente precisa disparar atrás dela — a não ser exaurido. Não trava o
+    // sprintCooldown: a perseguição se sustenta em piques encadeados, limitada pela energia volátil.
+    if ((action.style === "knockOn" || action.style === "feint") && player.sprintEnergy > 0.1) {
+      player.sprintTimer = Math.max(player.sprintTimer, travelPlan.chaseDuration);
     }
     const direction = rotate(chosenDirection, signedMatchNoise(state) * (1 - quality) * errorFactor);
     releaseBall(state, player, direction, speed, 0);
     state.ball.lastAction = "dribble";
     state.ball.lastShotOnTarget = false;
     if (action.style === "feint") {
-      state.feintEvasion = success && defender
+      state.feintEvasion = defender
         ? { attackerId: player.profile.id, defenderId: defender.profile.id, expiresAt: state.elapsed + PHYSICS.feintEvasionDuration }
         : null;
     }
-    if (action.style !== "feint" || success) {
-      state.ball.dribbleOwnerId = player.profile.id;
-      state.ball.dribbleTarget = { ...dribbleTarget };
-      state.ball.dribbleStyle = action.style;
-      state.ball.dribbleTouchRange = action.style === "knockOn" ? action.touchRange ?? "medium" : null;
-      state.ball.dribbleStartedAt = state.elapsed;
-      state.ball.controlStartedAt = controlStartedAt;
-      registerControlledTeam(state, player.team);
-    }
-    player.kickCooldown = action.style === "feint"
-      ? success ? 0.32 : 0.42
-      : action.style === "knockOn"
-        ? 0.3
-        : 0.16;
+    state.ball.dribbleOwnerId = player.profile.id;
+    state.ball.dribbleTarget = { ...dribbleTarget };
+    state.ball.dribbleStyle = action.style;
+    state.ball.dribbleTouchRange = action.style === "knockOn" ? action.touchRange ?? "medium" : null;
+    state.ball.dribbleStartedAt = state.elapsed;
+    state.ball.controlStartedAt = controlStartedAt;
+    registerControlledTeam(state, player.team);
+    player.kickCooldown = action.style === "feint" ? 0.32 : action.style === "knockOn" ? 0.3 : 0.16;
     return;
   }
   if (action.kind === "shot") {

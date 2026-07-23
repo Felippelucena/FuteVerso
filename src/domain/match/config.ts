@@ -229,6 +229,9 @@ export const DUEL = {
   knockPastMinSpace: 0.045, // espaço livre mínimo atrás (fração de width) para valer a pena
   knockPastSpeed: 26,
   knockPastLift: 7, // apex ≈ v²/(2·gravity) ≈ 0,85 < 1,8 → bola segue jogável
+  // Finta/contato só engajam quando os raios dos jogadores quase colidem: distância <
+  // (raio + raio + isto). Antes a finta disparava a ~18u (espaço vazio); agora ~6,5u.
+  feintEngageMargin: 2,
 } as const;
 
 // Lookahead de condução→finalização: valoriza conduzir para abrir um chute melhor.

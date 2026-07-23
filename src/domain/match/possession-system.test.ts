@@ -131,7 +131,7 @@ describe("posse e domínio", () => {
     attacker.memory.policy.dribble = 0.9;
     attacker.memory.policy.pass = 0.28;
     attacker.memory.policy.shoot = 0.28;
-    defender.position = { x: attacker.position.x + 10, y: attacker.position.y };
+    defender.position = { x: attacker.position.x + 5, y: attacker.position.y };
     defender.velocity = { x: -8, y: 0 };
     state.players.forEach((player, index) => {
       if (player.team === attacker.team && player !== attacker) player.position = { x: 10 + index * 6, y: 12 + index * 8 };

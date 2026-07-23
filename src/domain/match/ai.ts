@@ -1,4 +1,4 @@
-import { COGNITION, CONDUCT, DEFENSE, FIELD, PHYSICS, TACTICS } from "./config";
+import { COGNITION, CONDUCT, DEFENSE, DUEL, FIELD, PHYSICS, TACTICS } from "./config";
 import { add, clamp, distance, dot, normalize, scale, subtract } from "../shared/math";
 import type { AgentDecision, BallAction, DecisionReason, DribbleStyle, MatchState, PlanTarget, PlayerPlan, PlayerRuntime, Team, Vec2 } from "./model";
 import { activeBallPlayerId } from "./runtime/control";
@@ -371,9 +371,12 @@ const carrierDecision = (
     ? "aggressiveBreak"
     : pressure > 0.58 || edgeRisk(player.position) > 0.38 ? "escapePressure" : "carryIntoSpace";
   const defenderCanDuel = Boolean(duelOpponent && duelOpponent.reactionTimer <= 0 && duelOpponent.duelCooldown <= 0);
+  // A finta só engaja quando o marcador está no raio de colisão (raios quase se tocando),
+  // não em espaço vazio: distância < raio + raio + margem.
+  const radiiTouch = player.radius + (duelOpponent ? duelOpponent.radius : player.radius);
   const defenderIsCommitting = defenderCanDuel
-    && closestOpponent < fieldX(7.2)
-    && (closingSpeed > 0.65 || closestOpponent < fieldX(4.6));
+    && closestOpponent < radiiTouch + DUEL.feintEngageMargin
+    && (closingSpeed > 0.65 || closestOpponent < radiiTouch);
   const canFeint = controlAge >= PHYSICS.feintControlSettleTime
     && player.reactionTimer <= 0
     && player.duelCooldown <= 0
