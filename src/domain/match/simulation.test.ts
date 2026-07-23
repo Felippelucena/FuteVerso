@@ -80,8 +80,10 @@ describe("qualidade coletiva da simulacao", () => {
     expect(state.stats.blue.completedLongPasses).toBeLessThanOrEqual(state.stats.blue.longPasses);
     expect(state.stats.coral.completedAerialPasses).toBeLessThanOrEqual(state.stats.coral.aerialPasses);
     expect(state.stats.blue.turnoversWon + state.stats.coral.turnoversWon).toBeLessThan(120);
-    expect(state.stats.blue.finalThirdEntries).toBeLessThan(35);
-    expect(state.stats.coral.finalThirdEntries).toBeLessThan(35);
+    // Knock-ons empurram a bola à frente com mais frequência que a antiga condução colada,
+    // então há um pouco mais de entradas no terço final — comportamento desejado, sem colapso.
+    expect(state.stats.blue.finalThirdEntries).toBeLessThan(42);
+    expect(state.stats.coral.finalThirdEntries).toBeLessThan(42);
     for (const team of ["blue", "coral"] as const) {
       expect(state.stats[team].shotsOnTarget).toBeLessThanOrEqual(state.stats[team].shots);
       expect(state.stats[team].goalsFromShots + state.stats[team].goalsFromPasses + state.stats[team].goalsFromDribbles)

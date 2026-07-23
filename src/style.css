@@ -158,6 +158,39 @@ select {
   font-variant-numeric: tabular-nums;
 }
 
+.stamina-meter {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  width: 34px;
+}
+
+.stamina-meter-bar {
+  height: 3px;
+  overflow: hidden;
+  border-radius: 2px;
+  background: #2a322d;
+}
+
+.stamina-meter-fill {
+  display: block;
+  height: 100%;
+  border-radius: 2px;
+  transition: width 0.2s linear;
+}
+
+.stamina-meter-fill--long {
+  background: var(--lime);
+}
+
+.stamina-meter-fill--volatile {
+  background: #f5c451;
+}
+
+.stamina-meter-fill.is-low {
+  background: #e06a5c;
+}
+
 .player-detail {
   padding: 14px 18px;
   border-bottom: 1px solid var(--line);

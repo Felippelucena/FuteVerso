@@ -131,10 +131,10 @@ describe("calibracao deterministica da partida", () => {
           for (const player of state.players) {
             if (player.profile.position !== "midfielder" && player.profile.position !== "forward") continue;
             const role = energy[player.profile.position];
-            role.sum += player.energy;
+            role.sum += player.sprintEnergy;
             role.samples += 1;
-            if (player.energy < 0.5) role.belowHalf += 1;
-            if (player.energy <= 0.351) role.atFloor += 1;
+            if (player.sprintEnergy < 0.5) role.belowHalf += 1;
+            if (player.sprintEnergy <= 0.351) role.atFloor += 1;
           }
         }
       }

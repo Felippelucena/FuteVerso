@@ -40,7 +40,6 @@ export const PHYSICS = {
   maxBallSpeed: 108,
   walkSpeedFactor: 0.62,
   controlledSpeedFactor: 0.68,
-  controlledSprintSpeedFactor: 1.08,
   runSpeedFactor: 1.32,
   burstSpeedFactor: 2.05,
   burstAccelerationFactor: 2.25,
@@ -50,6 +49,34 @@ export const PHYSICS = {
   feintEvasionDuration: 0.72,
   ballCarryTurnRate: 20,
   ballActionAlignment: 0.64,
+} as const;
+
+// Duas barras de estamina. A longa (fôlego) só decai na partida e termina entre 50%–60%
+// para um atleta médio; a volátil (piques) drena em disparada e recupera em ~4,5s parado.
+// Custos são por unidade de distância percorrida, então "atravessar o campo" tem preço fixo.
+export const STAMINA = {
+  // --- Volátil (piques/explosões) ---
+  // 0,0035/u × ~170u (gol a gol em disparada) ≈ 0,60 da barra.
+  volatileBurstCostPerUnit: 0.0035,
+  volatileRunCostPerUnit: 0.0009,
+  // Do zero ao cheio em ~4,5s parado/trotando.
+  volatileRecoveryPerSecond: 0.22,
+  // --- Longa (fôlego de partida): só decai ---
+  longBurstCostPerUnit: 0.00040,
+  longRunCostPerUnit: 0.00022,
+  longWalkCostPerUnit: 0.00010,
+  longIdleCostPerSecond: 0.00092,
+  longFloor: 0.2,
+  // Escala global do desgaste longo, ajustada pela calibração (médio termina ~55%).
+  longDrainScale: 0.23,
+  // --- Interação longa → volátil (penalidade modesta) ---
+  // Custo da volátil ×(1 + (1-longa)·slope); recarga ×(1 - (1-longa)·slope).
+  fatigueVolatileCostSlope: 0.5,
+  fatigueVolatileRecoverySlope: 0.35,
+  // Queda sutil de velocidade de topo com o cansaço: vel ×(1 - (1-longa)·slope) → ~5% a 50%.
+  fatigueSpeedSlope: 0.1,
+  // Recuperação da volátil concedida a cada bola parada (a longa não recupera).
+  volatileDeadBallRecovery: 0.34,
 } as const;
 
 export const FIXED_STEP = 1 / 120;

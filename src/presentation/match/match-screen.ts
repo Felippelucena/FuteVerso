@@ -18,6 +18,15 @@ const intentLabel = (state: MatchState, player: PlayerRuntime): string => {
   return range ? DRIBBLE_TOUCH_LABELS[range] : INTENT_LABELS.knockingOn;
 };
 
+// Duas barras no painel lateral: fôlego (longa) e pique (volátil). Sem overlay no campo.
+const staminaMeter = (player: PlayerRuntime): string => {
+  const long = Math.round(player.stamina * 100);
+  const volatile = Math.round(player.sprintEnergy * 100);
+  const bar = (kind: "long" | "volatile", value: number): string =>
+    `<span class="stamina-meter-bar"><span class="stamina-meter-fill stamina-meter-fill--${kind}${value <= 30 ? " is-low" : ""}" style="width:${Math.max(0, Math.min(100, value))}%"></span></span>`;
+  return `<span class="stamina-meter" title="Fôlego ${long}% · Pique ${volatile}%">${bar("long", long)}${bar("volatile", volatile)}</span>`;
+};
+
 export const matchScreenTemplate = (): string => `
   <section id="match-view" class="workspace">
     <div class="field-panel">
@@ -260,7 +269,7 @@ export class MatchScreen {
       <div class="roster-team"><span class="roster-team-name roster-team-name--${team}">${teamLabel(team)}</span>
         ${state.players.filter((player) => player.team === team).map((player) => `
           <button type="button" class="roster-player ${this.selectedPlayerId === player.profile.id ? "is-selected" : ""}" data-inspect-player="${player.profile.id}">
-            <span class="shirt shirt--${team}">${player.profile.number}</span><span><strong>${escapeHtml(player.profile.name)}</strong><small>${POSITION_LABELS[player.profile.position]} · ${intentLabel(state, player)}</small></span><i>${Math.round(player.energy * 100)}</i>
+            <span class="shirt shirt--${team}">${player.profile.number}</span><span><strong>${escapeHtml(player.profile.name)}</strong><small>${POSITION_LABELS[player.profile.position]} · ${intentLabel(state, player)}</small></span>${staminaMeter(player)}
           </button>`).join("")}
       </div>`).join("");
     const selected = state.players.find((player) => player.profile.id === this.selectedPlayerId) ?? state.players[0];

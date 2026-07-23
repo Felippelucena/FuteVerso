@@ -40,7 +40,8 @@ const fingerprint = (state: MatchState) => ({
     id: player.profile.id,
     position: { x: round(player.position.x), y: round(player.position.y) },
     velocity: { x: round(player.velocity.x), y: round(player.velocity.y) },
-    energy: round(player.energy),
+    stamina: round(player.stamina),
+    sprintEnergy: round(player.sprintEnergy),
   })),
   stats: {
     blue: state.stats.blue,
@@ -64,6 +65,6 @@ describe("caracterizacao deterministica", () => {
       short: hashFingerprint(actual.short),
       long: hashFingerprint(actual.long),
     };
-    expect(hashes).toEqual({ short: "3e304cc2", long: "9344f852" });
+    expect(hashes).toEqual({ short: "e9a7b8af", long: "2a735791" });
   });
 });

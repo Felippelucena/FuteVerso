@@ -82,7 +82,7 @@ const firstTouchOutcome = (
   const receptionBonus = preparedReceiver
     ? facingAlignment * 0.03 + player.profile.mental.anticipation / 100 * 0.03
     : 0;
-  const margin = quality * 0.72 + player.energy * 0.1 + dribbleBonus + receptionBonus + signedMatchNoise(state) * 0.16
+  const margin = quality * 0.72 + player.stamina * 0.1 + dribbleBonus + receptionBonus + signedMatchNoise(state) * 0.16
     - speedDifficulty - heightDifficulty - positioningDifficulty - pressureDifficulty - passControlDifficulty;
   if (margin > (ownBox ? 0.08 : 0.16)) return "clean";
   if (margin > -0.13) return "heavy";
@@ -169,12 +169,12 @@ export const updatePossession = (state: MatchState, dt: number): void => {
     if (challenger) {
       state.stats[challenger.team].tacklesAttempted += 1;
       const holderScore = (current.profile.skills.control * 0.64 + current.profile.skills.burst * 0.2) / 100
-        + current.energy * 0.16 + current.profile.mental.composure / 1000;
+        + current.stamina * 0.16 + current.profile.mental.composure / 1000;
       const defenderScore = (
         challenger.profile.skills.defending * 0.56
         + challenger.profile.skills.acceleration * 0.22
         + challenger.profile.skills.control * 0.12
-      ) / 100 + challenger.energy * 0.1 + challenger.profile.mental.aggression / 1000;
+      ) / 100 + challenger.stamina * 0.1 + challenger.profile.mental.aggression / 1000;
       const defenderWins = defenderScore - holderScore + signedMatchNoise(state) * 0.34 > 0.04;
       current.duelCooldown = defenderWins ? 0.72 : 0.55;
       challenger.duelCooldown = defenderWins ? 0.85 : 0.62;

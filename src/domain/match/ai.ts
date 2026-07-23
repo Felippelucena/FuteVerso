@@ -299,10 +299,10 @@ const carrierDecision = (
   const touchChoice = chooseDribbleTouch(state, player, forwardRunway);
   const etaAdvantage = touchChoice.opponentEta - touchChoice.carrierEta;
   const breakEligible = forwardRunway.distance >= fieldX(23)
-    && player.energy > 0.55
+    && player.sprintEnergy > 0.5
     && etaAdvantage >= 0.35;
   const activeBreak = player.objective === "aggressiveBreak" && state.elapsed < player.objectiveExpiresAt
-    && forwardRunway.distance >= fieldX(13) && player.energy > 0.48;
+    && forwardRunway.distance >= fieldX(13) && player.sprintEnergy > 0.4;
   const dribbleSpace = predictedSpaceAt(baseDribbleTarget, opponents, predictionHorizon(player, pressure));
   const dribbleUtility = policy.dribble * 0.62
     + clamp(dribbleSpace / fieldX(15), 0, 1.4)
@@ -357,31 +357,27 @@ const carrierDecision = (
     && player.duelCooldown <= 0
     && creativity > 0.48;
   const laneSpace = openDribbleLane(player, baseDribbleTarget, opponents);
+  // Avançar em espaço é sempre knock-on (empurra a bola e corre atrás). A bola colada
+  // (carry) fica reservada para quando não há pique possível: apertado, sem corredor,
+  // ou vencendo um marcador que se comprometeu (feint).
   const style: DribbleStyle = defenderIsCommitting && duelQuality > 0.56 && canFeint
     ? "feint"
     : touchChoice.range
       ? "knockOn"
-      : forwardRunway.distance > 9
-        && player.energy > 0.44
-        ? "controlledSprint"
-        : "carry";
+      : "carry";
   const touchDistance = style === "knockOn"
     ? touchChoice.touchDistance
-    : style === "controlledSprint"
-      ? clamp(laneSpace * 0.58, fieldX(9), fieldX(14))
-      : style === "feint"
-        ? clamp(laneSpace * 0.62, fieldX(10), fieldX(16))
-        : clamp(laneSpace * 0.66, fieldX(9.6), fieldX(14.4));
+    : style === "feint"
+      ? clamp(laneSpace * 0.62, fieldX(10), fieldX(16))
+      : clamp(laneSpace * 0.66, fieldX(9.6), fieldX(14.4));
   const dribbleTarget = style === "knockOn"
     ? touchChoice.target
     : clampToField(add(player.position, scale(normalize(subtract(baseDribbleTarget, player.position)), touchDistance)), 5);
   const intent: AgentDecision["intent"] = style === "knockOn"
     ? "knockingOn"
-    : style === "controlledSprint"
-      ? "sprinting"
-      : style === "feint"
-        ? "feinting"
-        : "carrying";
+    : style === "feint"
+      ? "feinting"
+      : "carrying";
   return {
     movementTarget: dribbleTarget,
     burst: style === "knockOn" || style === "feint",
@@ -497,7 +493,7 @@ const supportTarget = (
     && targetGap > fieldX(11)
     && (phaseIsFinal || phaseIsFast || controller.velocity.x * direction > 2.5);
   const workThreshold = 0.58 - player.profile.mental.intensity / 500;
-  const burst = player.energy > workThreshold && player.sprintCooldown <= 0 && (transitionRun || depthRun);
+  const burst = player.sprintEnergy > workThreshold && player.sprintCooldown <= 0 && (transitionRun || depthRun);
   return { target, reason, burst };
 };
 
@@ -536,7 +532,7 @@ const defensiveTarget = (
   const target = clampToField(blend(contextualTarget, { x: contextualTarget.x, y: anchor.y }, laneDiscipline), 3);
   const intent = roleCoverBias > 0.52 ? "marking" : "covering";
   const reason: DecisionReason = intent === "marking" ? "markThreat" : "coverGoal";
-  const defensiveBurst = player.energy > 0.5
+  const defensiveBurst = player.sprintEnergy > 0.5
     && player.sprintCooldown <= 0
     && player.profile.mental.intensity > 78
     && distance(player.position, target) > fieldX(12)
@@ -562,7 +558,7 @@ const receptionDecision = (player: PlayerRuntime, opponents: PlayerRuntime[], st
     / Math.max(1, playerSkillSpeed(opponent) * PHYSICS.runSpeedFactor)));
   const requiredSpeed = distance(player.position, target) / remaining;
   const urgentRace = opponentEta <= receiverEta + 0.35;
-  const burst = player.energy > 0.48 && player.sprintCooldown <= 0
+  const burst = player.sprintEnergy > 0.48 && player.sprintCooldown <= 0
     && (requiredSpeed > runSpeed * 0.88 || urgentRace);
   return {
     movementTarget: target,
@@ -615,15 +611,13 @@ export const decideAll = (state: MatchState): Map<string, AgentDecision> => {
           const style = state.ball.dribbleStyle ?? "carry";
           const lookAhead = style === "knockOn"
             ? state.ball.dribbleTouchRange === "short" ? 0.34 : state.ball.dribbleTouchRange === "medium" ? 0.52 : 0.72
-            : style === "controlledSprint" ? 0.48 : style === "feint" ? 0.58 : 0.36;
+            : style === "feint" ? 0.58 : 0.36;
           const chaseTarget = clampToField(predictBallPosition(state, lookAhead), 3);
           const intent: AgentDecision["intent"] = style === "knockOn"
             ? "knockingOn"
-            : style === "controlledSprint"
-              ? "sprinting"
-              : style === "feint"
-                ? "feinting"
-                : "carrying";
+            : style === "feint"
+              ? "feinting"
+              : "carrying";
           decisions.set(player.profile.id, {
             movementTarget: chaseTarget,
             burst: style === "knockOn" || style === "feint",
@@ -753,7 +747,7 @@ export const resolvePlanDecision = (player: PlayerRuntime, state: MatchState): A
     const style = state.ball.dribbleStyle ?? "carry";
     const lookAhead = style === "knockOn"
       ? state.ball.dribbleTouchRange === "short" ? 0.34 : state.ball.dribbleTouchRange === "medium" ? 0.52 : 0.72
-      : style === "controlledSprint" ? 0.48 : style === "feint" ? 0.58 : 0.36;
+      : style === "feint" ? 0.58 : 0.36;
     movementTarget = predictBallPosition(state, lookAhead);
   } else if (state.pendingPass?.receiverId === player.profile.id && !state.ball.controllerId) {
     movementTarget = receptionTarget(state);

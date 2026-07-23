@@ -5,6 +5,8 @@ import { createPhaseSeconds, createTacticalState } from "./systems/tactics-syste
 
 const clone = <T>(value: T): T => JSON.parse(JSON.stringify(value)) as T;
 
+const clamp01 = (value: number): number => Math.min(1, Math.max(0, value));
+
 const teamStats = () => ({
   goals: 0, shots: 0, shotsOnTarget: 0, saves: 0, saveAttempts: 0,
   catches: 0, parries: 0, glancingTouches: 0, highBallClaims: 0, punches: 0,
@@ -35,7 +37,8 @@ const makePlayer = (participant: MatchParticipant): PlayerRuntime => {
     velocity: { x: 0, y: 0 },
     facing: { x: team === "blue" ? 1 : -1, y: 0 },
     radius: FIELD.playerRadius,
-    energy: 1,
+    stamina: clamp01(participant.startingStamina ?? 1),
+    sprintEnergy: 1,
     kickCooldown: 0,
     sprintTimer: 0,
     sprintCooldown: 0,

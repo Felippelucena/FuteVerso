@@ -16,7 +16,7 @@ const arrangeCarrier = () => {
   const carrier = state.players.find((player) => player.team === "blue" && player.profile.position === "midfielder")!;
   carrier.position = { x: 55, y: FIELD.height / 2 };
   carrier.velocity = { x: 0, y: 0 };
-  carrier.energy = 1;
+  carrier.sprintEnergy = 1;
   state.players.filter((player) => player.team !== carrier.team).forEach((opponent, index) => {
     opponent.position = { x: 25 - index * 3, y: 10 + index * 18 };
     opponent.velocity = { x: 0, y: 0 };
@@ -50,17 +50,17 @@ describe("corredor frontal e faixas de pique", () => {
     expect(runway.distance).toBeLessThan(20);
   });
 
-  it("reduz a faixa conforme energia sem depender da fase tatica", () => {
+  it("reduz a faixa conforme a energia volátil sem depender da fase tatica", () => {
     const { state, carrier } = arrangeCarrier();
     state.tactics.blue.phase = "buildUp";
 
-    carrier.energy = 0.8;
+    carrier.sprintEnergy = 0.8;
     expect(chooseDribbleTouch(state, carrier).range).toBe("long");
-    carrier.energy = 0.53;
+    carrier.sprintEnergy = 0.45;
     expect(chooseDribbleTouch(state, carrier).range).toBe("medium");
-    carrier.energy = 0.45;
+    carrier.sprintEnergy = 0.3;
     expect(chooseDribbleTouch(state, carrier).range).toBe("short");
-    carrier.energy = 0.4;
+    carrier.sprintEnergy = 0.2;
     expect(chooseDribbleTouch(state, carrier).range).toBeNull();
   });
 

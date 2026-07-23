@@ -139,7 +139,7 @@ describe("ataque contextual e eventos cognitivos", () => {
     carrier.position = { x: FIELD.width * 0.24, y: FIELD.height / 2 };
     carrier.objective = "aggressiveBreak";
     carrier.objectiveExpiresAt = 42;
-    carrier.energy = 0.9;
+    carrier.sprintEnergy = 0.9;
     state.players.filter((player) => player.team === "blue" && player !== carrier)
       .forEach((player, index) => { player.position = { x: 10 + index * 7, y: 10 + index * 25 }; });
     state.players.filter((player) => player.team === "coral")

@@ -1,26 +1,48 @@
-import { FIELD, GOALKEEPING, PHYSICS } from "../config";
+import { FIELD, GOALKEEPING, PHYSICS, STAMINA } from "../config";
 import { add, clamp, distance, length, limit, normalize, scale, subtract } from "../../shared/math";
-import type { AgentDecision, MatchState, PlayerRuntime } from "../model";
+import type { AgentDecision, MatchState, MovementPace, PlayerRuntime } from "../model";
 import { playerSkillAcceleration, playerSkillSpeed } from "../runtime/player-metrics";
 import { goalkeeperAirborne } from "./goalkeeper-system";
 
+// Queda sutil de velocidade de topo conforme a estamina longa (fôlego) baixa: ~5% a 50%.
+export const fatigueSpeedFactor = (player: PlayerRuntime): number =>
+  1 - (1 - player.stamina) * STAMINA.fatigueSpeedSlope;
+
 export const playerSpeedLimit = (player: PlayerRuntime, controlsBall: boolean, running = false): number => {
+  // Com a bola colada é sempre close control (lento): avançar em velocidade exige soltar a
+  // bola à frente (knock-on), quando o portador vira dribbleOwner e deixa de "controlar".
   const factor = controlsBall
-    ? player.sprintTimer > 0 ? PHYSICS.controlledSprintSpeedFactor : PHYSICS.controlledSpeedFactor
+    ? PHYSICS.controlledSpeedFactor
     : player.sprintTimer > 0 ? PHYSICS.burstSpeedFactor : running ? PHYSICS.runSpeedFactor : PHYSICS.walkSpeedFactor;
-  return playerSkillSpeed(player) * factor;
+  return playerSkillSpeed(player) * factor * fatigueSpeedFactor(player);
 };
 
-const applyEnergy = (player: PlayerRuntime, sprinting: boolean, running: boolean, dt: number): void => {
-  const stamina = player.profile.skills.stamina / 100;
-  const effortCost = 0.85 + player.profile.mental.intensity / 200;
-  const recovery = 0.022 + stamina * 0.01 + clamp((0.72 - player.energy) * 0.45, 0, 0.125);
-  const energyDelta = sprinting
-    ? -(0.035 - stamina * 0.0137)
-    : running
-      ? -(0.0042 - stamina * 0.0024)
-      : recovery;
-  player.energy = clamp(player.energy + energyDelta * (energyDelta < 0 ? effortCost : 1) * dt, 0.35, 1);
+export const applyStamina = (player: PlayerRuntime, pace: MovementPace, dt: number): void => {
+  const travelled = length(player.velocity) * dt;
+  const staminaSkill = player.profile.skills.stamina / 100;
+  const fatigue = 1 - player.stamina;
+
+  // --- Estamina longa: só decai, ponderada por regime e distância percorrida. ---
+  const longUnitCost = pace === "burst" ? STAMINA.longBurstCostPerUnit
+    : pace === "run" ? STAMINA.longRunCostPerUnit
+      : pace === "walk" || pace === "closeControl" ? STAMINA.longWalkCostPerUnit
+        : 0;
+  const longSkillScale = 1.3 - staminaSkill * 0.6;                 // skill 100 → 0,7×; skill 0 → 1,3×
+  const intensityScale = 0.9 + player.profile.mental.intensity / 500;
+  const longDrain = (longUnitCost * travelled + STAMINA.longIdleCostPerSecond * dt)
+    * longSkillScale * intensityScale * STAMINA.longDrainScale;
+  player.stamina = clamp(player.stamina - longDrain, STAMINA.longFloor, 1);
+
+  // --- Estamina volátil: só o pique drena; fora dele recupera rápido. ---
+  // Longa baixa encarece o pique e atrasa a recarga (penalidade modesta).
+  const costMultiplier = 1 + fatigue * STAMINA.fatigueVolatileCostSlope;
+  const recoveryMultiplier = Math.max(0, 1 - fatigue * STAMINA.fatigueVolatileRecoverySlope)
+    * (0.85 + staminaSkill * 0.3);
+  const volatileCost = pace === "burst" ? STAMINA.volatileBurstCostPerUnit * travelled * costMultiplier
+    : pace === "run" ? STAMINA.volatileRunCostPerUnit * travelled * costMultiplier
+      : 0;
+  const volatileRecovery = pace === "burst" ? 0 : STAMINA.volatileRecoveryPerSecond * recoveryMultiplier * dt;
+  player.sprintEnergy = clamp(player.sprintEnergy - volatileCost + volatileRecovery, 0, 1);
 };
 
 const updatePlayer = (state: MatchState, player: PlayerRuntime, decision: AgentDecision, controlsBall: boolean, dt: number): void => {
@@ -34,7 +56,7 @@ const updatePlayer = (state: MatchState, player: PlayerRuntime, decision: AgentD
   player.reactionTimer = Math.max(0, player.reactionTimer - dt);
   player.duelCooldown = Math.max(0, player.duelCooldown - dt);
   player.controlCooldown = Math.max(0, player.controlCooldown - dt);
-  if (decision.burst && player.sprintCooldown <= 0 && player.energy > 0.52) {
+  if (decision.burst && player.sprintCooldown <= 0 && player.sprintEnergy > 0.12) {
     player.sprintTimer = decision.burstDuration ?? PHYSICS.burstDuration;
     player.sprintCooldown = PHYSICS.burstCooldown;
   }
@@ -46,7 +68,7 @@ const updatePlayer = (state: MatchState, player: PlayerRuntime, decision: AgentD
     player.velocity = scale(player.velocity, Math.exp(-GOALKEEPING.diveDrag * dt));
     player.position = add(player.position, scale(player.velocity, dt));
     if (length(player.velocity) > 0.3) player.facing = normalize(player.velocity);
-    applyEnergy(player, true, false, dt);
+    applyStamina(player, "burst", dt);
     player.position.x = clamp(player.position.x, player.radius, FIELD.width - player.radius);
     player.position.y = clamp(player.position.y, player.radius, FIELD.height - player.radius);
     return;
@@ -62,23 +84,24 @@ const updatePlayer = (state: MatchState, player: PlayerRuntime, decision: AgentD
     || decision.intent === "feinting"
   );
   const speedFactor = controlsBall
-    ? player.sprintTimer > 0 ? PHYSICS.controlledSprintSpeedFactor : PHYSICS.controlledSpeedFactor
+    ? PHYSICS.controlledSpeedFactor
     : goalkeeperSetting ? GOALKEEPING.approachSpeedFactor
       : player.sprintTimer > 0 ? PHYSICS.burstSpeedFactor : running ? PHYSICS.runSpeedFactor : PHYSICS.walkSpeedFactor;
   player.pace = player.sprintTimer > 0 ? "burst" : controlsBall ? "closeControl" : running || goalkeeperSetting ? "run" : "walk";
-  const maximumSpeed = baseSpeed * speedFactor;
+  const maximumSpeed = baseSpeed * speedFactor * fatigueSpeedFactor(player);
   const desired = scale(normalize(subtract(decision.movementTarget, player.position)), maximumSpeed);
   const steering = subtract(desired, player.velocity);
   const reactionFactor = player.reactionTimer > 0 ? 0.38 : 1;
   const burstAcceleration = player.sprintTimer > 0 ? PHYSICS.burstAccelerationFactor : 1;
-  const acceleration = scale(normalize(steering), playerSkillAcceleration(player) * (0.72 + player.energy * 0.28) * reactionFactor * burstAcceleration);
+  // Explosividade vem da barra volátil: sem pique na perna, a arrancada é mais fraca.
+  const acceleration = scale(normalize(steering), playerSkillAcceleration(player) * (0.72 + player.sprintEnergy * 0.28) * reactionFactor * burstAcceleration);
   player.velocity = add(player.velocity, scale(acceleration, dt));
   player.velocity = scale(player.velocity, Math.exp(-PHYSICS.playerDrag * dt));
   player.velocity = limit(player.velocity, maximumSpeed * (player.reactionTimer > 0 ? 0.7 : 1));
   player.position = add(player.position, scale(player.velocity, dt));
   const speed = length(player.velocity);
   if (speed > 0.3 && (!controlsBall || decision.ballAction.kind === "dribble")) player.facing = normalize(player.velocity);
-  applyEnergy(player, player.sprintTimer > 0, running || goalkeeperSetting, dt);
+  applyStamina(player, player.pace, dt);
   player.position.x = clamp(player.position.x, player.radius, FIELD.width - player.radius);
   player.position.y = clamp(player.position.y, player.radius, FIELD.height - player.radius);
 };

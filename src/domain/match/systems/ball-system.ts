@@ -1,5 +1,5 @@
 import { formationAnchor } from "../ai";
-import { FIELD, PHYSICS } from "../config";
+import { FIELD, PHYSICS, STAMINA } from "../config";
 import { add, clamp, distance, dot, lerp, length, limit, normalize, rotate, scale, subtract } from "../../shared/math";
 import type { AgentDecision, BallAction, DribbleStyle, DribbleTouchRange, MatchState, PlayerRuntime, Team, Vec2 } from "../model";
 import {
@@ -28,23 +28,21 @@ const dribbleTravelPlan = (
   const ballTravelDistance = Math.max(2.2, intendedDistance - controlOffset);
   const speedFactor = style === "knockOn" || style === "feint"
     ? PHYSICS.burstSpeedFactor
-    : style === "controlledSprint"
-      ? PHYSICS.runSpeedFactor
-      : PHYSICS.controlledSpeedFactor;
+    : PHYSICS.controlledSpeedFactor;
   const expectedPlayerSpeed = playerSkillSpeed(player) * speedFactor * (0.78 + quality * 0.14);
   const minimumDuration = style === "knockOn"
     ? touchRange === "short" ? 0.42 : touchRange === "medium" ? 0.62 : 0.86
-    : style === "feint" ? 0.72 : style === "controlledSprint" ? 0.56 : 0.38;
+    : style === "feint" ? 0.72 : 0.38;
   const maximumDuration = style === "knockOn"
     ? touchRange === "short" ? 0.68 : touchRange === "medium" ? 0.96 : 1.35
-    : style === "feint" ? 1.2 : style === "controlledSprint" ? 1.05 : 0.76;
+    : style === "feint" ? 1.2 : 0.76;
   const chaseDuration = clamp(intendedDistance / Math.max(1, expectedPlayerSpeed) + 0.12, minimumDuration, maximumDuration);
   const ballTravelTime = chaseDuration * (style === "carry" ? 0.82 : 0.72);
   const dragDistanceFactor = 1 - Math.exp(-PHYSICS.ballDrag * ballTravelTime);
   const distanceMatchedSpeed = ballTravelDistance * PHYSICS.ballDrag / Math.max(0.01, dragDistanceFactor);
   const minimumLaunchSpeed = style === "knockOn"
     ? touchRange === "short" ? 18 : touchRange === "medium" ? 24 : 30
-    : style === "feint" ? 25 : style === "controlledSprint" ? 19 : 17;
+    : style === "feint" ? 25 : 17;
   return {
     launchSpeed: clamp(distanceMatchedSpeed, minimumLaunchSpeed, PHYSICS.maxBallSpeed),
     chaseDuration,
@@ -73,7 +71,9 @@ export const executeBallAction = (state: MatchState, player: PlayerRuntime, acti
     const controlStartedAt = state.ball.controlStartedAt || state.elapsed;
     const quality = (player.profile.skills.control * 0.75 + player.profile.skills.burst * 0.25) / 100;
     const targetDirection = normalize(subtract(action.target, player.position));
-    if (action.style === "carry" || action.style === "controlledSprint") {
+    if (action.style === "carry") {
+      // Close control: a bola fica colada no pé, em velocidade baixa. Avançar em pique
+      // exige soltar a bola à frente (knockOn), nunca a condução colada.
       state.ball.lastAction = "dribble";
       state.ball.lastShotOnTarget = false;
       state.ball.lastTouch = player.team;
@@ -81,10 +81,6 @@ export const executeBallAction = (state: MatchState, player: PlayerRuntime, acti
       state.ball.controlStartedAt = controlStartedAt;
       clearDribbleOwner(state);
       registerControlledTeam(state, player.team);
-      if (action.style === "controlledSprint" && player.energy > 0.44) {
-        player.sprintTimer = Math.max(player.sprintTimer, 0.36 + quality * 0.18);
-        player.kickCooldown = 0.18;
-      }
       return;
     }
     let success = true;
@@ -94,7 +90,7 @@ export const executeBallAction = (state: MatchState, player: PlayerRuntime, acti
     let dribbleTarget = action.target;
     let defender: PlayerRuntime | null = null;
     if (action.style === "knockOn") {
-      errorFactor = 0.58 + pressure * 0.42 + (1 - player.energy) * 0.35;
+      errorFactor = 0.58 + pressure * 0.42 + (1 - player.sprintEnergy) * 0.35;
       speed = 25 + quality * 9;
       state.stats[player.team].sprintDribbles += 1;
       const touchRange = action.touchRange ?? "medium";
@@ -150,7 +146,8 @@ export const executeBallAction = (state: MatchState, player: PlayerRuntime, acti
     if (action.style !== "feint" || success) {
       const travelPlan = dribbleTravelPlan(player, action.style, action.touchRange, dribbleTarget, quality);
       speed = travelPlan.launchSpeed;
-      if ((action.style === "knockOn" || action.style === "feint") && player.energy > 0.5) {
+      // Quem empurra a bola à frente precisa disparar atrás dela — a não ser exaurido.
+      if ((action.style === "knockOn" || action.style === "feint") && player.sprintEnergy > 0.1) {
         player.sprintTimer = Math.max(player.sprintTimer, travelPlan.chaseDuration);
         player.sprintCooldown = Math.max(player.sprintCooldown, PHYSICS.burstCooldown);
       }
@@ -177,9 +174,7 @@ export const executeBallAction = (state: MatchState, player: PlayerRuntime, acti
       ? success ? 0.32 : 0.42
       : action.style === "knockOn"
         ? 0.3
-        : action.style === "controlledSprint"
-          ? 0.22
-          : 0.16;
+        : 0.16;
     return;
   }
   if (action.kind === "shot") {
@@ -235,7 +230,7 @@ export const executeBallAction = (state: MatchState, player: PlayerRuntime, acti
   const passDistance = distance(state.ball.position, action.target);
   const distanceDifficulty = action.range === "long" ? clamp(passDistance / FIELD.width, 0.08, 0.34) * 0.42 + 0.015 : 0;
   const difficulty = distanceDifficulty + (action.trajectory === "air" ? 0.07 : action.range === "short" ? 0.12 : 0)
-    + pressure * 0.2 + (1 - player.energy) * 0.12;
+    + pressure * 0.2 + (1 - player.stamina) * 0.12;
   const quality = clamp(baseQuality - difficulty, 0.18, 0.97);
   const angularError = action.range === "long" ? 0.56 : action.trajectory === "air" ? 0.48 : 0.82;
   const direction = rotate(normalize(subtract(action.target, state.ball.position)), signedMatchNoise(state) * (1 - quality) * angularError);
@@ -350,7 +345,8 @@ const resetPositions = (state: MatchState, kickoffTeam: Team): void => {
     player.goalkeeperRecoveryUntil = 0;
     player.nextThinkAt = state.elapsed;
     player.pace = "walk";
-    player.energy = Math.min(1, player.energy + 0.16);
+    // Bola parada dá fôlego para a volátil; a longa (fôlego de partida) não recupera.
+    player.sprintEnergy = Math.min(1, player.sprintEnergy + STAMINA.volatileDeadBallRecovery);
   }
   state.ball.position = { x: kickoffTeam === "blue" ? FIELD.width / 2 - 1.5 : FIELD.width / 2 + 1.5, y: FIELD.height / 2 + restartOffset };
   state.ball.velocity = { x: 0, y: 0 };

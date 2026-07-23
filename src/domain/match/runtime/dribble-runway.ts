@@ -21,10 +21,13 @@ export interface DribbleTouchChoice {
   reason: DribbleRangeReason;
 }
 
+// Gates de energia leem a barra volátil (piques). Avançar em espaço = knock-on por padrão,
+// então os limiares de corredor/energia são baixos; a bola colada (carry) fica de reserva
+// para apertado/pressão/finta.
 const RANGE_RULES = [
-  { range: "long", runway: 40, minimum: 25, maximum: 38, energy: 0.56, raceMargin: 0.55, fraction: 0.72 },
-  { range: "medium", runway: 28, minimum: 16, maximum: 24, energy: 0.48, raceMargin: 0.3, fraction: 0.68 },
-  { range: "short", runway: 13, minimum: 9, maximum: 13, energy: 0.42, raceMargin: 0, fraction: 0.62 },
+  { range: "long", runway: 40, minimum: 25, maximum: 38, energy: 0.5, raceMargin: 0.55, fraction: 0.72 },
+  { range: "medium", runway: 26, minimum: 16, maximum: 24, energy: 0.4, raceMargin: 0.3, fraction: 0.68 },
+  { range: "short", runway: 10, minimum: 8, maximum: 13, energy: 0.26, raceMargin: 0, fraction: 0.62 },
 ] as const;
 
 const opponentEtaAt = (state: MatchState, player: PlayerRuntime, target: Vec2): number => Math.min(
@@ -64,7 +67,7 @@ export const chooseDribbleTouch = (
       reductionReason ??= "touchCooldown";
       continue;
     }
-    if (player.energy <= rule.energy) {
+    if (player.sprintEnergy <= rule.energy) {
       reductionReason ??= "reducedForEnergy";
       continue;
     }

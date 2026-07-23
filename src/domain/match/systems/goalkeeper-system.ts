@@ -34,7 +34,7 @@ export const goalkeeperReachRadius = (goalkeeper: PlayerRuntime): number =>
   goalkeeper.radius * (1 + GOALKEEPING.handReachFactor);
 
 const diveLaunchSpeed = (goalkeeper: PlayerRuntime): number =>
-  GOALKEEPING.diveLaunchSpeed * (0.82 + goalkeeper.profile.skills.goalkeeping / 100 * 0.3) * (0.8 + goalkeeper.energy * 0.2);
+  GOALKEEPING.diveLaunchSpeed * (0.82 + goalkeeper.profile.skills.goalkeeping / 100 * 0.3) * (0.8 + goalkeeper.sprintEnergy * 0.2);
 
 const maximumVertical = (goalkeeper: PlayerRuntime): number =>
   GOALKEEPING.jumpLaunchVertical * (0.84 + goalkeeper.profile.skills.goalkeeping / 100 * 0.3);
@@ -469,7 +469,7 @@ export const resolveGoalkeeperContact = (
     const quality = clamp(goalkeeperQuality(goalkeeper) * 0.62 * (0.84 + planarMargin * 0.16)
       + planarMargin * 0.42 + verticalMargin * 0.07 + composure * 0.24
       - speedPenalty * (1 - planarMargin * 0.55) - verticalSpeedPenalty
-      - (1 - goalkeeper.energy) * 0.08 + signedMatchNoise(state) * 0.055, 0, 1);
+      - (1 - goalkeeper.stamina) * 0.08 + signedMatchNoise(state) * 0.055, 0, 1);
     const catchSpeed = 79 + goalkeeper.profile.skills.goalkeeping * 0.25;
     const catchingShapeBonus = planarMargin * 0.25 + composure * 0.12;
     const outcome: SaveOutcome = attempt.action !== "punch"

@@ -10,19 +10,20 @@ import type { GameProfile } from "../roster/model";
 const createTestMatch = (profile: GameProfile = createDefaultProfile(), seed?: number) => createMatchState(buildMatchConfig(profile, seed));
 
 describe("movimento dos jogadores", () => {
-  it("diferencia condução, pique com bola e explosão sem a bola", () => {
+  it("mantém a bola colada sempre lenta e diferencia corrida e explosão sem a bola", () => {
     const player = createTestMatch(createDefaultProfile()).players[3];
     const walk = playerSpeedLimit(player, false);
     const run = playerSpeedLimit(player, false, true);
     const controlled = playerSpeedLimit(player, true);
     player.sprintTimer = 0.2;
-    const controlledSprint = playerSpeedLimit(player, true);
+    const controlledWhileSprinting = playerSpeedLimit(player, true);
     const burst = playerSpeedLimit(player, false);
     expect(controlled / walk).toBeCloseTo(PHYSICS.controlledSpeedFactor / PHYSICS.walkSpeedFactor, 5);
-    expect(controlledSprint / controlled).toBeCloseTo(PHYSICS.controlledSprintSpeedFactor / PHYSICS.controlledSpeedFactor, 5);
+    // Bola colada é sempre close control: ter pique na perna não acelera; avançar exige soltar a bola.
+    expect(controlledWhileSprinting).toBeCloseTo(controlled, 5);
+    expect(controlled).toBeLessThan(run);
     expect(run / walk).toBeCloseTo(PHYSICS.runSpeedFactor / PHYSICS.walkSpeedFactor, 5);
     expect(burst / run).toBeCloseTo(PHYSICS.burstSpeedFactor / PHYSICS.runSpeedFactor, 5);
-    expect(controlledSprint / controlled).toBeGreaterThan(1.5);
     expect(burst / run).toBeGreaterThan(1.5);
   });
 

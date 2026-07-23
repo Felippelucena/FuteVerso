@@ -19,6 +19,11 @@ export interface MatchParticipant {
   lineupIndex: number;
   profile: PlayerProfile;
   memory: PlayerMemory;
+  /**
+   * Estamina longa com que o atleta entra em campo (0..1). No jogo rápido é sempre 1;
+   * em modos com progressão diária (carreira/roguelike) carrega o desgaste do dia.
+   */
+  startingStamina?: number;
 }
 
 export interface MatchConfig {
@@ -95,7 +100,10 @@ export interface PlayerRuntime {
   velocity: Vec2;
   facing: Vec2;
   radius: number;
-  energy: number;
+  /** Estamina longa (fôlego de partida): só decai em jogo e modula a volátil. */
+  stamina: number;
+  /** Estamina volátil (piques/explosões): drena em disparada e recupera rápido. */
+  sprintEnergy: number;
   kickCooldown: number;
   sprintTimer: number;
   sprintCooldown: number;
@@ -139,7 +147,7 @@ export interface Ball {
 export type PassTrajectory = "ground" | "air";
 export type PassRange = "short" | "long";
 export type PassTargeting = "feet" | "space";
-export type DribbleStyle = "carry" | "controlledSprint" | "knockOn" | "feint";
+export type DribbleStyle = "carry" | "knockOn" | "feint";
 export type DribbleTouchRange = "short" | "medium" | "long";
 export type DribbleRangeReason = "clearRunway" | "reducedForEnergy" | "reducedForRace" | "touchCooldown" | "insufficientRunway";
 
