@@ -12,6 +12,7 @@ import {
 import { signedMatchNoise } from "../runtime/random";
 import { emitCognitiveEvent, relevantPlayersNear } from "../runtime/cognitive-events";
 import { executeBallAction } from "./ball-system";
+import { resolveContact } from "./contact-resolution";
 
 const ballClaimQuality = (state: MatchState, player: PlayerRuntime, ownBox: boolean): number => {
   const skills = player.profile.skills;
@@ -170,48 +171,12 @@ export const updatePossession = (state: MatchState, dt: number): void => {
     const keeperHolding = current.profile.position === "goalkeeper" && current.goalkeeperHoldUntil > state.elapsed;
     if (challenger && !keeperHolding) {
       state.stats[challenger.team].tacklesAttempted += 1;
-      const holderScore = (current.profile.skills.control * 0.64 + current.profile.skills.burst * 0.2) / 100
-        + current.stamina * 0.16 + current.profile.mental.composure / 1000;
-      const defenderScore = (
-        challenger.profile.skills.defending * 0.56
-        + challenger.profile.skills.acceleration * 0.22
-        + challenger.profile.skills.control * 0.12
-      ) / 100 + challenger.stamina * 0.1 + challenger.profile.mental.aggression / 1000;
-      const defenderWins = defenderScore - holderScore + signedMatchNoise(state) * 0.34 > 0.04;
-      current.duelCooldown = defenderWins ? 0.72 : 0.55;
-      challenger.duelCooldown = defenderWins ? 0.85 : 0.62;
-      if (defenderWins) {
-        const approach = normalize(subtract(current.position, challenger.position));
-        const side = signedMatchNoise(state) >= 0 ? 1 : -1;
-        const pokeDirection = normalize(add(scale(approach, 0.62), { x: -approach.y * side * 0.78, y: approach.x * side * 0.78 }));
-        state.ball.position = add(current.position, scale(pokeDirection, current.radius + state.ball.radius + 0.35));
-        state.ball.velocity = scale(pokeDirection, 9 + challenger.profile.skills.defending * 0.055);
-        state.ball.controllerId = null;
-        state.ball.lastTouch = challenger.team;
-        state.ball.lastTouchPlayerId = challenger.profile.id;
-        state.ball.lastAction = null;
-        state.ball.lastShotOnTarget = false;
-        clearDribbleOwner(state);
-        state.ball.controlStartedAt = 0;
-        registerLooseBall(state);
-        current.reactionTimer = Math.max(current.reactionTimer, 0.24);
-        current.kickCooldown = Math.max(current.kickCooldown, 0.38);
-        current.velocity = scale(current.velocity, 0.45);
-        state.stats[challenger.team].tacklesWon += 1;
+      // Item 2: o desfecho do contato é selecionado por resolveContact (cardápio autoral com
+      // física de momento). Retorna false quando a bola sai do controle do portador.
+      if (!resolveContact(state, current, challenger)) {
         state.contestedSeconds += dt;
         return;
       }
-      const rawSeparation = subtract(challenger.position, current.position);
-      const separationDirection = length(rawSeparation) > 0.01
-        ? normalize(rawSeparation)
-        : { x: -current.facing.y, y: current.facing.x };
-      challenger.reactionTimer = Math.max(challenger.reactionTimer, 0.92);
-      challenger.velocity = add(challenger.velocity, scale(separationDirection, 9));
-      current.velocity = add(current.velocity, scale(separationDirection, -6));
-      const minimumGap = current.radius + challenger.radius + 1.45;
-      const separation = Math.max(0.72, (minimumGap - length(rawSeparation)) / 2 + 0.08);
-      challenger.position = add(challenger.position, scale(separationDirection, separation));
-      current.position = subtract(current.position, scale(separationDirection, separation));
     }
     registerControlledTeam(state, current.team);
     state.stats[current.team].possessionSeconds += dt;

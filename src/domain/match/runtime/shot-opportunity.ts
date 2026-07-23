@@ -30,7 +30,12 @@ export const evaluateShotOpportunity = (
   state: MatchState,
   prepared = false,
   preparedTechnique?: ShotTechnique,
+  origin?: { position: Vec2; facing: Vec2 },
 ): ShotOpportunity | null => {
+  // Item 3: opcionalmente avalia o chute a partir de uma posição/orientação futura (após conduzir),
+  // mantendo a pressão medida na posição atual (conservador).
+  const shooterPosition = origin?.position ?? player.position;
+  const shooterFacing = normalize(origin?.facing ?? player.facing);
   const direction = player.team === "blue" ? 1 : -1;
   const goalX = direction > 0 ? FIELD.width : 0;
   const goalkeeper = opponents.find((opponent) => opponent.profile.position === "goalkeeper") ?? null;
@@ -38,16 +43,16 @@ export const evaluateShotOpportunity = (
   const aimCandidates = [FIELD.goalTop + 2.2, FIELD.height / 2, FIELD.goalBottom - 2.2];
   const aimY = [...aimCandidates].sort((a, b) => Math.abs(b - keeperFuture.y) - Math.abs(a - keeperFuture.y))[0];
   const target = { x: goalX, y: aimY };
-  const goalDistance = distance(player.position, target);
+  const goalDistance = distance(shooterPosition, target);
   const maximumRange = fieldX(22 + player.profile.skills.kickPower * 0.16);
   if (goalDistance > maximumRange * (prepared ? 1.04 : 1)) return null;
   const defenders = opponents.filter((opponent) => opponent !== goalkeeper);
   const closingHorizon = clamp(goalDistance / 80, 0.16, 0.48);
-  const blockers = defenders.filter((opponent) => distanceToSegment(predictPlayerPosition(opponent, closingHorizon), player.position, target) < 3.2);
+  const blockers = defenders.filter((opponent) => distanceToSegment(predictPlayerPosition(opponent, closingHorizon), shooterPosition, target) < 3.2);
   const blocked = blockers.length > 0;
   const goalkeeperGap = Math.abs(aimY - keeperFuture.y);
-  const facing = normalize(player.facing);
-  const shotDirection = normalize(subtract(target, player.position));
+  const facing = shooterFacing;
+  const shotDirection = normalize(subtract(target, shooterPosition));
   const alignment = clamp((dot(facing, shotDirection) + 1) / 2, 0, 1);
   const visibleAngle = clamp((FIELD.goalBottom - FIELD.goalTop) / Math.max(fieldX(10), goalDistance), 0, 1);
   const rangeCloseness = 1 - goalDistance / maximumRange;

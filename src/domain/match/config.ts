@@ -153,14 +153,15 @@ export const GOALKEEPING = {
   // whole-body lunge, not a teleport. It decays under diveDrag and cannot be steered.
   // Dimensionado para um mergulho pleno cobrir na casa de 4× o raio do goleiro além do
   // alcance de braço na janela típica de um chute — um voo de verdade, não um estica.
-  diveLaunchSpeed: 31,
-  diveDrag: 3,
-  // Vertical impulse and gravity of the jump, in goal-height units.
+  diveLaunchSpeed: 31, 
+  diveDrag: 1.4,
+  // Tempo de voo do mergulho, do impulso até o pouso, quando a bola está no alcance do corpo.
   jumpLaunchVertical: 5.6,
+  // Gravidade durante o salto, em unidades de altura do gol.
   jumpGravity: 15.5,
-  // A dive with no vertical component still commits the body for this long.
+  // Tempo de voo do salto, do impulso até o pouso, quando a bola está no alcance do corpo.
   groundedDiveTime: 0.42,
-  // Vertical reach of a grounded keeper (crossbar sits at FIELD.goalHeight).
+  // Alcance do goleiro em pé, do chão até a ponta dos dedos, em unidades de altura do gol.
   standingReach: 2.85,
   // How fast the keeper shuffles across the line while waiting for the launch window.
   approachSpeedFactor: 1.25,
@@ -189,6 +190,53 @@ export const GOALKEEPING = {
   alertSeconds: 2.6,
   // Velocidade de reposicionamento durante o alerta (corrida, não a corridinha de ajuste).
   alertSpeedFactor: 1.85,
+} as const;
+
+// Comportamento defensivo além do presser único. Frações são múltiplos de FIELD.width/height,
+// resolvidas em quem consome (o config mantém o vocabulário absoluto do resto do motor).
+export const DEFENSE = {
+  // --- Item 1: segundo engajador na zona de perigo ---
+  // Só quando a bola do adversário está no nosso terço defensivo (progresso 0 = nosso gol).
+  dangerZoneProgress: 0.33,
+  // O 1º presser precisa estar ao menos isto longe da bola (fração de width) para o portador
+  // contar como "sem pressão real" — espelha o raio de pressão fieldX(7)/width = 0,07.
+  secondPresserUnpressuredGap: 0.07,
+  // Não puxar um zagueiro que esteja mais longe que isto (fração de width) do portador.
+  secondPresserEngageRange: 0.16,
+  // --- Item 4: recomposição garantida do zagueiro adiantado ---
+  // Quão à frente do próprio anchor (fração de width) conta como "adiantado".
+  recoverAdvancedGap: 0.07,
+  // Janela após perder a posse em que a recomposição em disparada é garantida.
+  recoverWindow: 3.5,
+  // Teto de duração do pique de recomposição.
+  recoverBurstMax: 1.6,
+  // Risco mínimo do plano coletivo para liberar o lateral a sobrepor no ataque.
+  overlapMinRisk: 0.5,
+} as const;
+
+// Desfechos de contato (tabela resolveContact). Os gates de "roubo limpo" exigem momento real
+// do defensor; sem eles o duelo cai no desfecho neutro (pokeLoose), idêntico ao histórico.
+export const DUEL = {
+  // Roubo com agressividade controlada (defensor segue com a bola freando).
+  cleanStealMinClosing: 6, // pique do defensor ATRAVÉS do portador (u/s) mínimo
+  cleanStealMarginGate: 0.12, // margem de vitória no duelo além do limiar base (0,04)
+  cleanStealCarryFactor: 0.6, // fração da velocidade do defensor levada à bola (freada)
+  cleanStealMinCarry: 8,
+  cleanStealMaxCarry: 22,
+  cleanStealSpitBack: 5, // impulso que cospe o atacante no contrário do toque
+  // Balão baixo por cima da dividida (o atacante venceu o contato).
+  knockPastProbe: 0.08, // até onde sondar espaço atrás do defensor (fração de width)
+  knockPastMinSpace: 0.045, // espaço livre mínimo atrás (fração de width) para valer a pena
+  knockPastSpeed: 26,
+  knockPastLift: 7, // apex ≈ v²/(2·gravity) ≈ 0,85 < 1,8 → bola segue jogável
+} as const;
+
+// Lookahead de condução→finalização: valoriza conduzir para abrir um chute melhor.
+export const CONDUCT = {
+  carryShotWeight: 0.6, // peso do bônus na utilidade de drible
+  carryShotMinGain: 0.3, // só conta se o chute futuro superar o atual por esta margem
+  carryShotCap: 1.2, // teto do ganho considerado
+  carryShotMaxDistance: 20, // o chute futuro precisa ser de dentro de fieldX(20) para valer
 } as const;
 
 export const ANALYTICS_GRID = {

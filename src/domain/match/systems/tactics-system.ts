@@ -1,4 +1,4 @@
-import { FIELD, MATCH_DURATION, POSSESSION, TACTICS } from "../config";
+import { DEFENSE, FIELD, MATCH_DURATION, POSSESSION, TACTICS } from "../config";
 import { clamp, distance } from "../../shared/math";
 import type {
   AttackChannel,
@@ -153,6 +153,50 @@ const choosePresser = (state: MatchState, team: Team, players: PlayerRuntime[]):
   })[0]?.profile.id ?? null;
 };
 
+// Item 1: um segundo defensor sai da linha para dividir quando a bola do adversário entra no
+// nosso terço defensivo e o portador não tem pressão real (o 1º presser está longe).
+const chooseSecondPresser = (state: MatchState, team: Team, players: PlayerRuntime[], presserId: string | null): string | null => {
+  if (collectivePosture(state, team) !== "outOfPossession") return null;
+  const carrier = state.players.find((player) => player.profile.id === activeBallPlayerId(state));
+  if (!carrier || carrier.team === team) return null;
+  if (attackingProgress(team, state.ball.position.x) >= DEFENSE.dangerZoneProgress) return null;
+  const presser = players.find((player) => player.profile.id === presserId) ?? null;
+  const presserGap = presser ? distance(presser.position, state.ball.position) : Number.POSITIVE_INFINITY;
+  if (presserGap <= DEFENSE.secondPresserUnpressuredGap * FIELD.width) return null;
+  const carrierFuture = predictPlayerPosition(carrier, predictionHorizon(carrier, 0.7) * 0.4);
+  const eligible = players.filter((player) => player.profile.role === "defender"
+    && player.profile.position !== "goalkeeper"
+    && player.profile.id !== presserId
+    && distance(player.position, carrierFuture) < DEFENSE.secondPresserEngageRange * FIELD.width);
+  return [...eligible].sort((first, second) =>
+    distance(first.position, carrierFuture) - distance(second.position, carrierFuture)
+    || first.profile.id.localeCompare(second.profile.id))[0]?.profile.id ?? null;
+};
+
+// Item 4: em posse e fases de progressão/ataque, um lateral do lado do canal é liberado a subir
+// como peça de triangulação. Só um por vez, nunca o jogador de segurança (rest defense).
+const chooseOverlapFullBack = (
+  state: MatchState,
+  team: Team,
+  outfield: PlayerRuntime[],
+  attackChannel: AttackChannel,
+  safetyId: string | null,
+  risk: number,
+): string | null => {
+  if (risk < DEFENSE.overlapMinRisk) return null;
+  if (collectivePosture(state, team) !== "inPossession") return null;
+  const phase = state.tactics[team].phase;
+  if (phase !== "progression" && phase !== "finalThird" && phase !== "counterAttack") return null;
+  const corridor = channelY(attackChannel);
+  const eligible = outfield.filter((player) => player.profile.position === "fullBack"
+    && player.profile.id !== safetyId
+    && player.sprintEnergy > 0.4
+    && Math.abs(player.position.y - corridor) < FIELD.height * 0.5);
+  return [...eligible].sort((first, second) =>
+    Math.abs(first.position.y - corridor) - Math.abs(second.position.y - corridor)
+    || first.profile.id.localeCompare(second.profile.id))[0]?.profile.id ?? null;
+};
+
 const createCollectivePlan = (state: MatchState, team: Team): TeamCollectivePlan => {
   const tactical = state.tactics[team];
   const players = state.players.filter((player) => player.team === team);
@@ -197,6 +241,7 @@ const createCollectivePlan = (state: MatchState, team: Team): TeamCollectivePlan
   const urgency = clamp((state.elapsed - MATCH_DURATION * 0.65) / (MATCH_DURATION * 0.35), 0, 1);
   const personalityRisk = average(players, (player) => player.profile.mental.creativity * 0.45 + player.profile.mental.aggression * 0.35 + player.profile.mental.composure * 0.2) / 100;
   const risk = clamp(personalityRisk + (scoreDifference < 0 ? urgency * 0.3 : scoreDifference > 0 ? -urgency * 0.2 : 0), 0.2, 0.95);
+  const presserId = choosePresser(state, team, players);
   return {
     startedAt: state.elapsed,
     expiresAt: state.elapsed + TACTICS.collectivePlanSeconds * (0.82 + average(players, (player) => player.profile.mental.teamwork) / 360),
@@ -210,7 +255,9 @@ const createCollectivePlan = (state: MatchState, team: Team): TeamCollectivePlan
     primaryRunnerId: primary?.profile.id ?? null,
     secondaryRunnerId: secondary?.profile.id ?? null,
     safetyPlayerId: safety?.profile.id ?? null,
-    presserId: choosePresser(state, team, players),
+    presserId,
+    secondPresserId: chooseSecondPresser(state, team, players, presserId),
+    overlapFullBackId: chooseOverlapFullBack(state, team, outfield, attackChannel, safety?.profile.id ?? null, risk),
     pressTrigger: choosePressTrigger(state, team),
   };
 };

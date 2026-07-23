@@ -114,6 +114,8 @@ export const REASON_LABELS: Record<DecisionReason, string> = {
   holdInHands: "Segurar a bola nas mãos",
   reboundAlert: "Alerta após o rebote",
   smotherLoose: "Recolher bola solta",
+  recoverShape: "Recompor em disparada",
+  overlapRun: "Sobreposição do lateral",
 };
 
 export const escapeHtml = (value: string): string => value.replace(

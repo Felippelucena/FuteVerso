@@ -71,7 +71,9 @@ export type DecisionReason =
   | "protectGoal"
   | "holdInHands"
   | "reboundAlert"
-  | "smotherLoose";
+  | "smotherLoose"
+  | "recoverShape"
+  | "overlapRun";
 export type PlayerIntent =
   | "carrying"
   | "sprinting"
@@ -415,6 +417,10 @@ export interface TeamCollectivePlan {
   secondaryRunnerId: string | null;
   safetyPlayerId: string | null;
   presserId: string | null;
+  /** Segundo defensor que sai da linha para dividir na zona de perigo (Item 1). */
+  secondPresserId: string | null;
+  /** Lateral liberado a sobrepor como peça de triangulação no ataque (Item 4). */
+  overlapFullBackId: string | null;
   pressTrigger: PressTrigger;
 }
 

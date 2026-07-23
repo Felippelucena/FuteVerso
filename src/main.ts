@@ -41,3 +41,20 @@ matchScreen.resize();
 playersScreen.render();
 matchScreen.render();
 loop.start();
+
+// DEBUG (somente desenvolvimento): expõe o jogo no console para inspeção do estado.
+// Ex.: window.fv.session.togglePaused(), window.fv.state.ball, window.fv.state.players
+(window as unknown as { fv: unknown }).fv = {
+  application,
+  get session() {
+    return application.match;
+  },
+  get state() {
+    return application.state;
+  },
+  matchScreen,
+  playersScreen,
+  renderer,
+  loop,
+  shell,
+};
