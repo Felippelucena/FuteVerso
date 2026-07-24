@@ -132,7 +132,13 @@ export const STAMINA = {
 } as const;
 
 export const FIXED_STEP = 1 / 120;
-export const MATCH_DURATION = 10 * 60;
+
+// Regra 7: a partida é dividida em tempos iguais. Cada um começa com uma saída de bola do
+// círculo central, e a saída do segundo tempo é do time que NÃO cobrou a do primeiro.
+// O relógio não zera no intervalo: ele corre de 0 a MATCH_DURATION, como no futebol de verdade.
+export const MATCH_HALVES = 2;
+export const HALF_DURATION = 5 * 60;
+export const MATCH_DURATION = HALF_DURATION * MATCH_HALVES;
 export const DEFAULT_MATCH_SEED = 0x4a39b70d;
 
 export const TACTICS = {

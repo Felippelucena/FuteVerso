@@ -4,7 +4,8 @@ import { percentage, teamLabel, type TeamNames } from "../app/labels";
 export interface MatchHeaderViewModel {
   blueGoals: string;
   coralGoals: string;
-  status: "EM CURSO" | "ENCERRADA";
+  /** "1º TEMPO" / "2º TEMPO" enquanto a bola rola; "ENCERRADA" depois do apito final. */
+  status: string;
   possessionLabel: string;
   bluePossession: number;
   coralPossession: number;
@@ -16,7 +17,7 @@ export const createMatchHeaderViewModel = (state: MatchState, teamNames: TeamNam
   return {
     blueGoals: String(state.stats.blue.goals),
     coralGoals: String(state.stats.coral.goals),
-    status: state.finished ? "ENCERRADA" : "EM CURSO",
+    status: state.finished ? "ENCERRADA" : `${state.half}º TEMPO`,
     possessionLabel: state.ballControlTeam ? `${teamLabel(state.ballControlTeam, teamNames)} com a bola` : "Bola em disputa",
     bluePossession,
     coralPossession: 100 - bluePossession,

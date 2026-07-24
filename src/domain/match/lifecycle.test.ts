@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { referenceMatchConfig } from "./__fixtures__/reference-match";
+import { referenceMatchConfig, startOpenPlay } from "./__fixtures__/reference-match";
 import { FIELD, FIXED_STEP } from "./config";
 import { createMatchState, stepMatch } from "./index";
 
@@ -34,7 +34,7 @@ describe("ciclo de vida da partida", () => {
 
   it("expira um passe pendente após quatro segundos", () => {
     const state = createState();
-    state.kickoffTimer = 0;
+    startOpenPlay(state);
     state.elapsed = 4;
     // Longe de todo mundo: se alguém alcança a bola, o passe se resolve em vez de expirar.
     state.ball.position = { x: FIELD.width / 2, y: 10 };

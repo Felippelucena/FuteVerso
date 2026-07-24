@@ -8,7 +8,9 @@ import {
   advanceMatchClock,
   expireTemporalEffects,
   finishMatchIfNeeded,
+  startNextHalfIfNeeded,
 } from "./systems/lifecycle-system";
+import { updateKickoffRestriction } from "./runtime/kickoff";
 import { clampPlayersToField, updatePlayers } from "./systems/movement-system";
 import { expirePendingPass, updatePossession } from "./systems/possession-system";
 import { updateTacticalContext } from "./systems/tactics-system";
@@ -19,6 +21,8 @@ export function stepMatch(state: MatchState, dt: number): void {
 
   advanceMatchClock(state, dt);
   expireTemporalEffects(state);
+  // O intervalo arma a saída do tempo seguinte, então precisa vir antes do gate do kickoff.
+  startNextHalfIfNeeded(state);
   sampleSpatialAnalytics(state);
 
   if (advanceKickoff(state, dt)) {
@@ -40,5 +44,6 @@ export function stepMatch(state: MatchState, dt: number): void {
   resolveBallPlayerCollision(state);
   updateTacticalContext(state, dt);
   expirePendingPass(state);
+  updateKickoffRestriction(state);
   finishMatchIfNeeded(state);
 }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { referenceMatchConfig } from "./__fixtures__/reference-match";
+import { referenceMatchConfig, startOpenPlay } from "./__fixtures__/reference-match";
 import { FIELD, FIXED_STEP } from "./config";
 import { createMatchState, stepMatch } from "./index";
 import { cellKey } from "./runtime/formation-geometry";
@@ -13,7 +13,7 @@ const TEAMS = ["blue", "coral"] as const;
 
 const createTestMatch = (seed = 4242) => {
   const state = createMatchState(referenceMatchConfig(seed));
-  state.kickoffTimer = 0;
+  startOpenPlay(state);
   state.elapsed = 20;
   return state;
 };

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { smallSidedMatchConfig } from "./__fixtures__/reference-match";
+import { smallSidedMatchConfig, startOpenPlay } from "./__fixtures__/reference-match";
 import { FIELD, FIXED_STEP, GOALKEEPING } from "./config";
 import { stepMatch } from "./engine";
 import type { GoalkeeperAttempt, MatchState, PlayerRuntime, Vec2 } from "./model";
@@ -10,7 +10,7 @@ import { goalkeeperReachRadius, updateGoalkeeperAnticipation } from "./systems/g
 
 const createState = (seed = 55) => {
   const state = createMatchState(smallSidedMatchConfig(seed));
-  state.kickoffTimer = 0;
+  startOpenPlay(state);
   state.events = [];
   return state;
 };

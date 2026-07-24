@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { smallSidedMatchConfig } from "./__fixtures__/reference-match";
+import { smallSidedMatchConfig, startOpenPlay } from "./__fixtures__/reference-match";
 import { decideAll } from "./ai";
 import { FIELD } from "./config";
 import { createMatchState } from "./index";
@@ -32,7 +32,7 @@ describe("ataque contextual e eventos cognitivos", () => {
 
   it("acorda o receptor no passe e encerra receiving quando ele controla", () => {
     const state = createTestMatch(7402);
-    state.kickoffTimer = 0;
+    startOpenPlay(state);
     state.elapsed = 12;
     const passer = state.players.find((player) => player.team === "blue" && player.profile.position === "centerMid")!;
     const receiver = state.players.find((player) => player.team === "blue" && player.profile.position === "striker")!;
@@ -59,7 +59,7 @@ describe("ataque contextual e eventos cognitivos", () => {
 
   it("faz um interceptador alcancavel preparar a continuacao da disputa", () => {
     const state = createTestMatch(7410);
-    state.kickoffTimer = 0;
+    startOpenPlay(state);
     state.elapsed = 8;
     const receiver = state.players.find((player) => player.team === "blue" && player.profile.position === "striker")!;
     const interceptor = state.players.find((player) => player.team === "coral" && player.profile.position === "centerBack")!;
@@ -78,7 +78,7 @@ describe("ataque contextual e eventos cognitivos", () => {
 
   it("finaliza um cruzamento preparado sem criar dominio magnetico", () => {
     const state = createTestMatch(7403);
-    state.kickoffTimer = 0;
+    startOpenPlay(state);
     state.elapsed = 20;
     const passer = state.players.find((player) => player.team === "blue" && player.profile.position === "centerMid")!;
     const receiver = state.players.find((player) => player.team === "blue" && player.profile.position === "striker")!;
@@ -113,7 +113,7 @@ describe("ataque contextual e eventos cognitivos", () => {
 
   it("leva a linha de seguranca alem do meio quando bola e ameacas permitem", () => {
     const state = createTestMatch(7404);
-    state.kickoffTimer = 0;
+    startOpenPlay(state);
     state.elapsed = 30;
     const carrier = state.players.find((player) => player.team === "blue" && player.profile.position === "striker")!;
     carrier.position = { x: FIELD.width * 0.88, y: FIELD.height / 2 };
@@ -133,7 +133,7 @@ describe("ataque contextual e eventos cognitivos", () => {
 
   it("sustenta avanco agressivo em campo proprio com corredor livre", () => {
     const state = createTestMatch(7405);
-    state.kickoffTimer = 0;
+    startOpenPlay(state);
     state.elapsed = 40;
     const carrier = state.players.find((player) => player.team === "blue" && player.profile.position === "striker")!;
     carrier.position = { x: FIELD.width * 0.24, y: FIELD.height / 2 };

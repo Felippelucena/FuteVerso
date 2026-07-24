@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { smallSidedMatchConfig } from "./__fixtures__/reference-match";
+import { smallSidedMatchConfig, startOpenPlay } from "./__fixtures__/reference-match";
 import { decideAll } from "./ai";
 import { FIELD } from "./config";
 import { createMatchState } from "./index";
@@ -20,7 +20,7 @@ const parkOthers = (state: MatchState, keep: PlayerRuntime[]): void => {
 describe("segundo engajador na zona de perigo (Item 1)", () => {
   it("manda um zagueiro sair da linha quando a bola entra no terço defensivo sem pressão", () => {
     const state = createTestMatch();
-    state.kickoffTimer = 0;
+    startOpenPlay(state);
     const carrier = state.players.find((p) => p.team === "coral" && p.profile.position === "centerMid")!;
     const presser = state.players.find((p) => p.team === "blue" && p.profile.position === "striker")!;
     const stepper = state.players.find((p) => p.team === "blue" && p.profile.position === "centerBack")!;
@@ -52,7 +52,7 @@ describe("segundo engajador na zona de perigo (Item 1)", () => {
 
   it("não convoca segundo engajador com a bola no meio-campo", () => {
     const state = createTestMatch();
-    state.kickoffTimer = 0;
+    startOpenPlay(state);
     const carrier = state.players.find((p) => p.team === "coral" && p.profile.position === "centerMid")!;
     const presser = state.players.find((p) => p.team === "blue" && p.profile.position === "striker")!;
     const stepper = state.players.find((p) => p.team === "blue" && p.profile.position === "centerBack")!;

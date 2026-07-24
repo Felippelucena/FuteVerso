@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { smallSidedMatchConfig } from "./__fixtures__/reference-match";
+import { smallSidedMatchConfig, startOpenPlay } from "./__fixtures__/reference-match";
 import { decideAll } from "./ai";
 import { FIELD } from "./config";
 import { createMatchState } from "./index";
@@ -11,7 +11,7 @@ const createTestMatch = (seed = 9) => createMatchState(smallSidedMatchConfig(see
 describe("zagueiro-ofensivo moderado + recomposição (Item 4)", () => {
   it("libera o lateral a sobrepor no ataque; nenhum outro jogador recebe overlapRun", () => {
     const state = createTestMatch();
-    state.kickoffTimer = 0;
+    startOpenPlay(state);
     const fb = state.players.find((p) => p.team === "blue" && p.profile.position === "centerBack")!;
     fb.profile.position = "rightBack"; // vira lateral (mantém role "defender")
     fb.profile.skills.defending = 40; // não é o melhor candidato a segurança
@@ -47,7 +47,7 @@ describe("zagueiro-ofensivo moderado + recomposição (Item 4)", () => {
 
   it("zagueiro adiantado recompõe em disparada garantida ao perder a posse", () => {
     const state = createTestMatch();
-    state.kickoffTimer = 0;
+    startOpenPlay(state);
     state.elapsed = 20;
     const fb = state.players.find((p) => p.team === "blue" && p.profile.position === "centerBack")!;
     fb.profile.position = "rightBack";

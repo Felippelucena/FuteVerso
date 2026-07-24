@@ -1,6 +1,8 @@
-import { MATCH_DURATION } from "../config";
+import { HALF_DURATION, MATCH_DURATION } from "../config";
 import type { MatchState } from "../model";
 import { emitMatchEvent } from "../runtime/events";
+import { isFinalHalf, kickoffTeamOfHalf } from "../runtime/kickoff";
+import { setupKickoff } from "./ball-system";
 
 export const advanceMatchClock = (state: MatchState, dt: number): void => {
   const nextElapsed = state.elapsed + dt;
@@ -16,6 +18,27 @@ export const advanceKickoff = (state: MatchState, dt: number): boolean => {
   state.kickoffTimer = Math.max(0, state.kickoffTimer - dt);
   state.contestedSeconds += dt;
   return true;
+};
+
+/** Instante em que o tempo em curso termina. O relógio segue correndo através dele. */
+const halfEndsAt = (half: number): number => HALF_DURATION * half;
+
+/**
+ * Regra 7: acabado um tempo que não é o último, a partida recomeça com uma nova saída de bola —
+ * cobrada pelo time que não cobrou a anterior. O relógio não zera: ele atravessa o intervalo,
+ * como o cronômetro de uma partida de verdade.
+ *
+ * Os times ainda NÃO trocam de lado no intervalo (o azul ataca sempre para a direita); a troca
+ * de campo depende de espelhar a direção de ataque em todo o motor e fica para outra rodada.
+ */
+export const startNextHalfIfNeeded = (state: MatchState): void => {
+  if (state.finished || state.elapsed >= MATCH_DURATION || isFinalHalf(state.half)) return;
+  if (state.elapsed < halfEndsAt(state.half)) return;
+  emitMatchEvent(state, { type: "half-ended", half: state.half });
+  state.half += 1;
+  const kickoffTeam = kickoffTeamOfHalf(state.half);
+  setupKickoff(state, kickoffTeam);
+  emitMatchEvent(state, { type: "half-started", half: state.half, kickoffTeam });
 };
 
 export const finishMatchIfNeeded = (state: MatchState): void => {

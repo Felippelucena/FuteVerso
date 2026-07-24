@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { referenceMatchConfig } from "./__fixtures__/reference-match";
+import { referenceMatchConfig, startOpenPlay } from "./__fixtures__/reference-match";
 import { FIELD, FIXED_STEP, MATCH_DURATION } from "./config";
 import { createMatchState, stepMatch } from "./index";
 import { executeBallAction } from "./systems/ball-system";
@@ -21,7 +21,7 @@ describe("eventos estruturados do motor", () => {
   it("registra finalização com time e jogador", () => {
     const state = createState();
     const player = state.players.find((candidate) => candidate.profile.id === "nilo-fw")!;
-    state.kickoffTimer = 0;
+    startOpenPlay(state);
     state.ball.controllerId = player.profile.id;
     state.ball.position = { ...player.position };
 
@@ -34,7 +34,7 @@ describe("eventos estruturados do motor", () => {
     const state = createState();
     const goalkeeper = state.players.find((candidate) => candidate.profile.id === "nilo-gk")!;
     const shooter = state.players.find((candidate) => candidate.profile.id === "maya-fw")!;
-    state.kickoffTimer = 0;
+    startOpenPlay(state);
     goalkeeper.position = { x: 9, y: FIELD.height / 2 };
     shooter.position = { x: 34, y: FIELD.height / 2 };
     shooter.facing = { x: -1, y: 0 };
@@ -51,7 +51,7 @@ describe("eventos estruturados do motor", () => {
 
   it("registra gol com autor e origem", () => {
     const state = createState();
-    state.kickoffTimer = 0;
+    startOpenPlay(state);
     state.ball.controllerId = null;
     state.ball.position = { x: FIELD.width + FIELD.ballRadius + 0.1, y: FIELD.height / 2 };
     state.ball.velocity = { x: 0, y: 0 };

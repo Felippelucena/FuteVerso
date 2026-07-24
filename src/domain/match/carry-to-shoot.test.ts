@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { smallSidedMatchConfig } from "./__fixtures__/reference-match";
+import { smallSidedMatchConfig, startOpenPlay } from "./__fixtures__/reference-match";
 import { decideAll } from "./ai";
 import { FIELD } from "./config";
 import { createMatchState } from "./index";
@@ -38,7 +38,7 @@ describe("lookahead condução→finalização (Item 3)", () => {
 
   it("prefere conduzir rumo ao gol a tabelar para trás quando a condução abre um chute muito melhor", () => {
     const state = createTestMatch(11);
-    state.kickoffTimer = 0;
+    startOpenPlay(state);
     state.elapsed = 8;
     const carrier = state.players.find((p) => p.team === "coral" && p.profile.position === "centerMid")!;
     const outlet = state.players.find((p) => p.team === "coral" && p.profile.position === "striker")!;

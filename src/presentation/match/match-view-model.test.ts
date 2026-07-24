@@ -13,7 +13,7 @@ describe("match view model", () => {
     expect(createMatchHeaderViewModel(createState(), TEAM_NAMES)).toEqual({
       blueGoals: "0",
       coralGoals: "0",
-      status: "EM CURSO",
+      status: "1º TEMPO",
       possessionLabel: "Bola em disputa",
       bluePossession: 50,
       coralPossession: 50,

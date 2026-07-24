@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { smallSidedMatchConfig } from "./__fixtures__/reference-match";
+import { smallSidedMatchConfig, startOpenPlay } from "./__fixtures__/reference-match";
 import { decideAll } from "./ai";
 import { FIELD, PHYSICS } from "./config";
 import { createMatchState, stepMatch } from "./index";
@@ -27,7 +27,7 @@ describe("movimento dos jogadores", () => {
 
   it("faz o defensor sustentar a explosão numa disputa por um toque longo", () => {
     const state = createTestMatch(913);
-    state.kickoffTimer = 0;
+    startOpenPlay(state);
     const attacker = state.players.find((player) => player.team === "blue" && player.profile.position === "centerMid")!;
     const defender = state.players.find((player) => player.team === "coral" && player.profile.position === "centerBack")!;
     state.ball.position = { x: FIELD.width / 2, y: FIELD.height / 2 };
@@ -55,7 +55,7 @@ describe("movimento dos jogadores", () => {
 
   it("evita tirar o goleiro do gol para pressionar longe da area", () => {
     const state = createTestMatch();
-    state.kickoffTimer = 0;
+    startOpenPlay(state);
     state.ball.position = { x: FIELD.width / 2, y: FIELD.height / 2 };
     const goalkeeper = state.players.find((player) => player.team === "blue" && player.profile.position === "goalkeeper")!;
     const defender = state.players.find((player) => player.team === "blue" && player.profile.position === "centerBack")!;
@@ -75,7 +75,7 @@ describe("movimento dos jogadores", () => {
 
   it("faz o receptor correr mesmo perto do ponto de recepcao", () => {
     const state = createTestMatch(20260722);
-    state.kickoffTimer = 0;
+    startOpenPlay(state);
     state.elapsed = 12;
     const receiver = state.players.find((player) => player.team === "blue" && player.profile.position === "centerMid")!;
     const passer = state.players.find((player) => player.team === receiver.team && player !== receiver)!;
@@ -109,7 +109,7 @@ describe("movimento dos jogadores", () => {
 
   it("usa explosao quando o adversario chega ate 0,35 s depois do receptor", () => {
     const state = createTestMatch(2718);
-    state.kickoffTimer = 0;
+    startOpenPlay(state);
     state.elapsed = 9;
     const receiver = state.players.find((player) => player.team === "blue" && player.profile.position === "centerMid")!;
     const passer = state.players.find((player) => player.team === receiver.team && player !== receiver)!;
@@ -148,7 +148,7 @@ describe("movimento dos jogadores", () => {
 
   it("recalcula o alvo de recepcao depois de um quique ou desvio", () => {
     const state = createTestMatch(31415);
-    state.kickoffTimer = 0;
+    startOpenPlay(state);
     state.elapsed = 15;
     const receiver = state.players.find((player) => player.team === "blue" && player.profile.position === "centerMid")!;
     const passer = state.players.find((player) => player.team === receiver.team && player !== receiver)!;

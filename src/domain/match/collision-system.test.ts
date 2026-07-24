@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { smallSidedMatchConfig } from "./__fixtures__/reference-match";
+import { smallSidedMatchConfig, startOpenPlay } from "./__fixtures__/reference-match";
 import { FIELD, PHYSICS } from "./config";
 import { createMatchState, stepMatch } from "./index";
 
@@ -8,7 +8,7 @@ const createTestMatch = (seed?: number) => createMatchState(smallSidedMatchConfi
 describe("colisões", () => {
   it("reflete a bola que encontra um jogador de frente", () => {
     const state = createTestMatch(91);
-    state.kickoffTimer = 0;
+    startOpenPlay(state);
     state.ball.controllerId = null;
     const target = state.players[0];
     target.position = { x: FIELD.width / 2, y: FIELD.height / 2 };
@@ -32,7 +32,7 @@ describe("colisões", () => {
 
   it("nao usa todo o raio visual do jogador como uma parede", () => {
     const state = createTestMatch(913);
-    state.kickoffTimer = 0;
+    startOpenPlay(state);
     const target = state.players[0];
     target.position = { x: FIELD.width / 2, y: FIELD.height / 2 };
     target.velocity = { x: 0, y: 0 };

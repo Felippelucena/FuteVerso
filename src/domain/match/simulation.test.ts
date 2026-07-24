@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { referenceMatchConfig } from "./__fixtures__/reference-match";
+import { referenceMatchConfig, startOpenPlay } from "./__fixtures__/reference-match";
 import { FIELD, POSSESSION } from "./config";
 import { decideAll, planAll, resolvePlanDecision } from "./ai";
 import { createMatchState, stepMatch } from "./index";
@@ -113,7 +113,7 @@ describe("qualidade coletiva da simulacao", () => {
 
   it("muda a fase e coordena funções ofensivas conforme o contexto", () => {
     const state = createTestMatch(456);
-    state.kickoffTimer = 0;
+    startOpenPlay(state);
     const carrier = state.players.find((player) => player.team === "blue" && player.profile.role === "playmaker")!;
     carrier.position = { x: FIELD.width * 0.2, y: FIELD.height / 2 };
     state.ball.position = { ...carrier.position };
@@ -144,7 +144,7 @@ describe("qualidade coletiva da simulacao", () => {
 
   it("faz o atacante arrancar para oferecer passe depois de uma retomada defensiva", () => {
     const state = createTestMatch(654);
-    state.kickoffTimer = 0;
+    startOpenPlay(state);
     state.elapsed = 30;
     const carrier = state.players.find((player) => player.team === "blue" && player.profile.role === "defender" && player.profile.position !== "goalkeeper")!;
     const forward = state.players.find((player) => player.team === "blue" && player.profile.role === "finisher")!;
@@ -178,7 +178,7 @@ describe("qualidade coletiva da simulacao", () => {
 
   it("confirma a troca de posse somente depois de controle sustentado", () => {
     const state = createTestMatch(3210);
-    state.kickoffTimer = 0;
+    startOpenPlay(state);
     state.elapsed = 20;
     state.possessionTeam = "blue";
     state.ballControlTeam = "blue";
@@ -206,7 +206,7 @@ describe("qualidade coletiva da simulacao", () => {
 
   it("mantem a posse confirmada durante um passe em transito", () => {
     const state = createTestMatch(411);
-    state.kickoffTimer = 0;
+    startOpenPlay(state);
     state.elapsed = 12;
     state.possessionTeam = "blue";
     state.ballControlTeam = "blue";
@@ -231,7 +231,7 @@ describe("qualidade coletiva da simulacao", () => {
 
   it("mantem um plano entre ciclos e o invalida quando o controlador muda", () => {
     const state = createTestMatch(701);
-    state.kickoffTimer = 0;
+    startOpenPlay(state);
     state.elapsed = 8;
     const blue = state.players.find((player) => player.team === "blue" && player.profile.position === "centerMid")!;
     const coral = state.players.find((player) => player.team === "coral" && player.profile.position === "centerMid")!;
@@ -259,7 +259,7 @@ describe("qualidade coletiva da simulacao", () => {
 
   it("mantem o objetivo de apoio e acompanha o portador sem recriar o plano", () => {
     const state = createTestMatch(1701);
-    state.kickoffTimer = 0;
+    startOpenPlay(state);
     state.elapsed = 18;
     const controller = state.players.find((player) => player.team === "blue" && player.profile.position === "centerMid")!;
     const supporter = state.players.find((player) => player.team === "blue" && player !== controller && player.profile.position !== "goalkeeper")!;
@@ -283,7 +283,7 @@ describe("qualidade coletiva da simulacao", () => {
 
   it("acompanha um alvo marcado sem trocar o plano", () => {
     const state = createTestMatch(901);
-    state.kickoffTimer = 0;
+    startOpenPlay(state);
     state.elapsed = 15;
     const controller = state.players.find((player) => player.team === "coral" && player.profile.position === "centerMid")!;
     state.ball.controllerId = controller.profile.id;
@@ -318,7 +318,7 @@ describe("qualidade coletiva da simulacao", () => {
 
   it("usa latch e cooldown nas entradas do terco final", () => {
     const state = createTestMatch(1001);
-    state.kickoffTimer = 0;
+    startOpenPlay(state);
     state.elapsed = 10;
     state.possessionTeam = "blue";
     state.ballControlTeam = "blue";
@@ -343,7 +343,7 @@ describe("qualidade coletiva da simulacao", () => {
 
   it("aplica lateral para o adversario do ultimo toque", () => {
     const state = createTestMatch(123);
-    state.kickoffTimer = 0;
+    startOpenPlay(state);
     state.ball.controllerId = null;
     state.ball.lastTouch = "blue";
     state.ball.position = { x: FIELD.width * 0.7, y: -FIELD.ballRadius - 0.1 };
@@ -358,7 +358,7 @@ describe("qualidade coletiva da simulacao", () => {
 
   it("diferencia escanteio de tiro de meta pelo ultimo toque", () => {
     const corner = createTestMatch(321);
-    corner.kickoffTimer = 0;
+    startOpenPlay(corner);
     corner.ball.controllerId = null;
     corner.ball.lastTouch = "coral";
     corner.ball.position = { x: FIELD.width + FIELD.ballRadius + 0.1, y: FIELD.goalTop - 4 };
@@ -366,7 +366,7 @@ describe("qualidade coletiva da simulacao", () => {
     stepMatch(corner, 1 / 120);
 
     const goalKick = createTestMatch(321);
-    goalKick.kickoffTimer = 0;
+    startOpenPlay(goalKick);
     goalKick.ball.controllerId = null;
     goalKick.ball.lastTouch = "blue";
     goalKick.ball.position = { x: FIELD.width + FIELD.ballRadius + 0.1, y: FIELD.goalTop - 4 };

@@ -60,11 +60,12 @@ Cada tela consulta elementos apenas dentro do próprio container. Elementos glob
 
 ## Pipeline da partida
 
-`engine.ts` apenas coordena o tick, nesta ordem: lifecycle, analytics, kickoff, posse preliminar, tática preliminar, cognição, movimento, colisões, limites do campo, ação controlada, física da bola, posse definitiva, colisão com a bola, tática definitiva, expiração de passe e encerramento.
+`engine.ts` apenas coordena o tick, nesta ordem: lifecycle (relógio e intervalo), analytics, kickoff, posse preliminar, tática preliminar, cognição, movimento, colisões, limites do campo, ação controlada, física da bola, posse definitiva, colisão com a bola, tática definitiva, expiração de passe, restrição da saída de bola e encerramento.
 
 Os sistemas ficam em `domain/match/systems`:
 
-- lifecycle controla relógio, kickoff, efeitos temporários e encerramento;
+- lifecycle controla relógio, tempos (Regra 7: dois de `HALF_DURATION`, com nova saída de bola no intervalo), kickoff, efeitos temporários e encerramento;
+- runtime/kickoff guarda as restrições da Regra 8 — bola parada na marca central até o primeiro toque, e o cobrador impedido de tocá-la de novo antes de outro jogador, que é o que obriga o primeiro toque a ser um passe;
 - analytics acumula mapas e métricas espaciais;
 - cognition renova e resolve planos da IA;
 - movement atualiza deslocamento, energia e limites;

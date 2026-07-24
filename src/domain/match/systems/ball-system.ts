@@ -15,6 +15,7 @@ import {
   kickoffTakerPosition,
 } from "../runtime/formation-geometry";
 import { emitCognitiveEvent, relevantPlayersNear } from "../runtime/cognitive-events";
+import { registerKickoffKick } from "../runtime/kickoff";
 import { playerSkillSpeed } from "../runtime/player-metrics";
 import { signedMatchNoise } from "../runtime/random";
 import { solvePassTrajectory, targetAlongDirection } from "../runtime/pass-trajectory";
@@ -65,6 +66,9 @@ const releaseBall = (state: MatchState, player: PlayerRuntime, direction: Vec2, 
   state.ball.lastTouchPlayerId = player.profile.id;
   state.ballControlTeam = null;
   state.possessionCandidateSince = state.elapsed;
+  // Regra 8: a bola da saída entra em jogo quando é chutada e se move claramente — que é
+  // exatamente o que acontece aqui. A partir deste instante o cobrador não pode tocá-la de novo.
+  registerKickoffKick(state, player.profile.id);
 };
 
 export const executeBallAction = (state: MatchState, player: PlayerRuntime, action: BallAction): void => {
@@ -340,9 +344,16 @@ export const updateControlledBall = (state: MatchState, decisions: Map<string, A
   if (actionReady && firstTouchSettled) executeBallAction(state, controller, decision.ballAction);
 };
 
-const resetPositions = (state: MatchState, kickoffTeam: Team): void => {
+/**
+ * Arma um pontapé de saída: bola na marca central, os dois times no próprio campo, o círculo
+ * central livre para quem cobra e a restrição da Regra 8 de pé até o primeiro toque. Serve tanto
+ * ao início de cada tempo quanto à saída depois de um gol.
+ */
+export const setupKickoff = (state: MatchState, kickoffTeam: Team): void => {
+  // Ruído só nas posições de espera: a bola não sai da marca, mas o desenho de quem espera não
+  // precisa ser idêntico saída após saída.
   const restartOffset = signedMatchNoise(state) * 5;
-  const kickoffBall = kickoffBallPosition(kickoffTeam, FIELD.height / 2 + restartOffset);
+  const kickoffBall = kickoffBallPosition();
   const taker = kickoffTaker(state.players, kickoffTeam);
   for (const player of state.players) {
     // Saída de bola: cada um no seu campo, com o círculo central livre para quem cobra.
@@ -389,6 +400,7 @@ const resetPositions = (state: MatchState, kickoffTeam: Team): void => {
   clearGoalkeeperAttempts(state);
   state.feintEvasion = null;
   state.kickoffTimer = 1.15;
+  state.kickoff = taker ? { team: kickoffTeam, takerId: taker.profile.id, ballInPlay: false } : null;
   state.nextCognitionAt = state.elapsed;
 };
 
@@ -446,6 +458,8 @@ const restartPlay = (
   clearGoalkeeperAttempts(state);
   state.feintEvasion = null;
   state.kickoffTimer = 0.72;
+  // A bola saiu de campo: qualquer saída de bola pendente morre aqui.
+  state.kickoff = null;
   emitMatchEvent(state, { type: "restart-awarded", team, restartKind: kind });
 };
 
@@ -471,7 +485,7 @@ const registerGoal = (state: MatchState, scorerTeam: Team): void => {
   if (assist && assist.profile.id !== scorer?.profile.id) assist.memory.stats.assists += 1;
   emitMatchEvent(state, { type: "goal-scored", team: scorerTeam, playerId: scorer?.profile.id ?? null, origin });
   state.lastAssist = null;
-  resetPositions(state, conceding);
+  setupKickoff(state, conceding);
 };
 
 export const updateBall = (state: MatchState, dt: number): void => {

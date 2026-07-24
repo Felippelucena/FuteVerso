@@ -6,7 +6,7 @@ import { positionFit } from "../../tactics/position-fit";
 import { findSlot, type TacticalSlotId } from "../../tactics/slots";
 import type { Team } from "../../shared/model";
 import { DEFAULT_MATCH_SEED } from "../config";
-import type { MatchConfig, MatchParticipant } from "../model";
+import type { MatchConfig, MatchParticipant, MatchState } from "../model";
 
 /**
  * Elencos fixos usados pelos testes do motor. Existem para desacoplar a simulação do catálogo
@@ -135,3 +135,14 @@ export const smallSidedMatchConfig = (seed: number = DEFAULT_MATCH_SEED): MatchC
   learningEnabled: true,
   participants: buildParticipants(FIVE),
 });
+
+/**
+ * Coloca o cenário em jogo corrido: sem contagem regressiva de saída e sem a restrição da
+ * Regra 8 sobre quem pode tocar a bola. É o que um teste que monta uma jogada no meio da
+ * partida pressupõe — zerar só o `kickoffTimer` deixaria a saída de bola pendente, e com ela
+ * a regra de que ninguém além do cobrador encosta na bola.
+ */
+export const startOpenPlay = (state: MatchState): void => {
+  state.kickoffTimer = 0;
+  state.kickoff = null;
+};

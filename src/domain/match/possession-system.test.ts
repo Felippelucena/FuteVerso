@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { smallSidedMatchConfig } from "./__fixtures__/reference-match";
+import { smallSidedMatchConfig, startOpenPlay } from "./__fixtures__/reference-match";
 import { decideAll } from "./ai";
 import { DUEL, FIELD, PHYSICS } from "./config";
 import { createMatchState, stepMatch } from "./index";
@@ -9,12 +9,15 @@ const createTestMatch = (seed?: number) => createMatchState(smallSidedMatchConfi
 describe("posse e domínio", () => {
   it("usa defesa e controle para decidir uma bola dividida", () => {
     const state = createTestMatch();
-    state.kickoffTimer = 0;
+    startOpenPlay(state);
     state.ball.position = { x: FIELD.width / 2, y: FIELD.height / 2 };
     state.ball.velocity = { x: 0, y: 0 };
     state.ball.controllerId = null;
     const blue = state.players.find((player) => player.team === "blue" && player.profile.position === "centerBack")!;
     const coral = state.players.find((player) => player.team === "coral" && player.profile.position === "centerBack")!;
+    // A dividida é entre estes dois: todo o resto sai da vizinhança da bola, senão quem cobraria
+    // a saída (parado na marca central) chega antes dos dois e o cenário deixa de ser um duelo.
+    state.players.forEach((player, index) => { player.position = { x: 8 + index * 8, y: 9 }; });
     blue.position = { x: state.ball.position.x - 3.1, y: state.ball.position.y };
     coral.position = { x: state.ball.position.x + 3.1, y: state.ball.position.y };
     blue.profile.skills.defending = 25;
@@ -27,7 +30,7 @@ describe("posse e domínio", () => {
 
   it("encerra contato prolongado com uma tentativa real de desarme", () => {
     const state = createTestMatch(42);
-    state.kickoffTimer = 0;
+    startOpenPlay(state);
     const holder = state.players.find((player) => player.team === "blue" && player.profile.position === "centerMid")!;
     const challenger = state.players.find((player) => player.team === "coral" && player.profile.position === "centerBack")!;
     holder.position = { x: FIELD.width / 2, y: FIELD.height / 2 };
@@ -51,7 +54,7 @@ describe("posse e domínio", () => {
 
   it("deixa uma bola forte escapar de um jogador sem controle para domina-la", () => {
     const state = createTestMatch(812);
-    state.kickoffTimer = 0;
+    startOpenPlay(state);
     const receiver = state.players.find((player) => player.team === "blue" && player.profile.position === "centerMid")!;
     receiver.position = { x: FIELD.width / 2, y: FIELD.height / 2 };
     receiver.velocity = { x: 0, y: 0 };
@@ -75,7 +78,7 @@ describe("posse e domínio", () => {
 
   it("transforma um passe dificil em toque pesado em vez de controle magnetico", () => {
     const state = createTestMatch(42);
-    state.kickoffTimer = 0;
+    startOpenPlay(state);
     const receiver = state.players.find((player) => player.team === "blue" && player.profile.position === "centerMid")!;
     const passer = state.players.find((player) => player.team === "blue" && player !== receiver)!;
     receiver.position = { x: FIELD.width / 2, y: FIELD.height / 2 };
@@ -118,7 +121,7 @@ describe("posse e domínio", () => {
 
   it("antecipa o corte quando um defensor se aproxima em velocidade", () => {
     const state = createTestMatch(78);
-    state.kickoffTimer = 0;
+    startOpenPlay(state);
     state.elapsed = 12;
     const attacker = state.players.find((player) => player.team === "blue" && player.profile.position === "centerMid")!;
     const defender = state.players.find((player) => player.team === "coral" && player.profile.position === "centerBack")!;
@@ -149,7 +152,7 @@ describe("posse e domínio", () => {
 
   it("resolve a chegada simultanea na bola antes de liberar qualquer finta", () => {
     const state = createTestMatch(144);
-    state.kickoffTimer = 0;
+    startOpenPlay(state);
     state.elapsed = 10;
     const blue = state.players.find((player) => player.team === "blue" && player.profile.position === "centerMid")!;
     const coral = state.players.find((player) => player.team === "coral" && player.profile.position === "centerMid")!;

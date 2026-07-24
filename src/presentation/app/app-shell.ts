@@ -67,7 +67,7 @@ export class AppShell {
     this.find("#score-blue").textContent = String(state.stats.blue.goals);
     this.find("#score-coral").textContent = String(state.stats.coral.goals);
     this.find("#match-time").textContent = formatClock(state.elapsed);
-    this.find("#match-state").textContent = state.finished ? "ENCERRADA" : "EM CURSO";
+    this.find("#match-state").textContent = state.finished ? "ENCERRADA" : `${state.half}º TEMPO`;
     this.find(".simulation-status span:last-child").textContent = paused ? "SIMULAÇÃO PAUSADA" : "SIMULAÇÃO ATIVA";
     this.find(".live-dot").classList.toggle("is-paused", paused);
   }

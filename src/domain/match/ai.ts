@@ -2,6 +2,7 @@ import { COGNITION, CONDUCT, DEFENSE, DUEL, FIELD, PHYSICS, TACTICS } from "./co
 import { add, clamp, distance, dot, normalize, scale, subtract } from "../shared/math";
 import type { AgentDecision, AssignmentDuty, BallAction, DecisionReason, DribbleStyle, MatchState, PlanTarget, PlayerAssignment, PlayerPlan, PlayerRuntime, Team, Vec2 } from "./model";
 import { activeBallPlayerId } from "./runtime/control";
+import { isKickoffTaker } from "./runtime/kickoff";
 import {
   interceptionThreat,
   predictBallPosition,
@@ -282,6 +283,22 @@ const carrierDecision = (
       movementTarget: { ...player.position }, burst: false, posture: "inPossession",
       intent: "holdingBall", reason: "holdInHands", ballAction: { kind: "none" },
     };
+  }
+  if (isKickoffTaker(state, player.profile.id)) {
+    // Regra 8: quem cobra a saída não pode tocar a bola duas vezes, então o primeiro toque é
+    // obrigatoriamente um passe — não existe sair conduzindo a própria saída. Chute a gol é
+    // legal de saída, mas do meio de campo nunca é a jogada: nem entra na comparação.
+    const kick = choosePass(player, teammates, opponents, state);
+    if (kick) {
+      return {
+        movementTarget: { ...player.position },
+        burst: false,
+        posture: "inPossession",
+        intent: "passing",
+        reason: kick.reason,
+        ballAction: kick.action,
+      };
+    }
   }
   const duelOpponent = nearestPlayer(player.position, opponents);
   const closestOpponent = duelOpponent ? distance(player.position, duelOpponent.position) : FIELD.width;

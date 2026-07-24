@@ -2,7 +2,9 @@
   "permissions": {
     "allow": [
       "mcp__chrome-devtools__performance_start_trace",
-      "mcp__chrome-devtools__list_network_requests"
+      "mcp__chrome-devtools__list_network_requests",
+      "Bash(npx tsc *)",
+      "Bash(npx vitest *)"
     ]
   }
 }

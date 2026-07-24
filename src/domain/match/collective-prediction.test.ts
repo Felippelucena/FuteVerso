@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { smallSidedMatchConfig } from "./__fixtures__/reference-match";
+import { smallSidedMatchConfig, startOpenPlay } from "./__fixtures__/reference-match";
 import { FIELD } from "./config";
 import { createMatchState } from "./index";
 import { predictBallPosition, predictPlayerPosition } from "./runtime/prediction";
@@ -11,7 +11,7 @@ const createTestMatch = (seed = 2026) => createMatchState(smallSidedMatchConfig(
 describe("cerebro coletivo e previsao curta", () => {
   it("define papeis coletivos distintos e sustenta o plano entre atualizacoes", () => {
     const state = createTestMatch();
-    state.kickoffTimer = 0;
+    startOpenPlay(state);
     state.elapsed = 20;
     const controller = state.players.find((player) => player.team === "blue" && player.profile.position === "centerMid")!;
     state.ball.controllerId = controller.profile.id;
@@ -38,7 +38,7 @@ describe("cerebro coletivo e previsao curta", () => {
 
   it("projeta deslocamentos de jogador e bola sem alterar o estado", () => {
     const state = createTestMatch(903);
-    state.kickoffTimer = 0;
+    startOpenPlay(state);
     const runner = state.players.find((player) => player.team === "blue" && player.profile.position === "striker")!;
     runner.position = { x: FIELD.width * 0.4, y: FIELD.height / 2 };
     runner.velocity = { x: 12, y: -3 };

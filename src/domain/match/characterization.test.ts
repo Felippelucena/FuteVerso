@@ -64,12 +64,11 @@ describe("caracterizacao deterministica", () => {
       short: hashFingerprint(actual.short),
       long: hashFingerprint(actual.long),
     };
-    // Re-baseline: o gramado passou a ter as medidas oficiais convertidas por um fator único
-    // (campo, gol, áreas, marca do pênalti e círculo central), corpo e bola encolheram para a
-    // mesma escala métrica, e a saída de bola deixou de nascer com os atacantes na metade
-    // adversária — agora o time é comprimido para o próprio campo e um jogador cobra a saída.
-    // Muda geometria, colisão e a primeira jogada: é outra partida por inteiro, de propósito.
-    expect(hashes).toEqual({ short: "47cb83f6", long: "81ad5355" });
+    // Re-baseline: a Regra 8 entrou em campo. A bola da saída agora descansa na marca central
+    // (antes nascia um passo dentro do campo de quem cobra, com desvio lateral aleatório) e o
+    // primeiro toque é obrigatoriamente um passe — ninguém sai conduzindo a própria saída.
+    // A primeira jogada muda, e com ela a partida inteira, de propósito.
+    expect(hashes).toEqual({ short: "9f6b8845", long: "f988f06c" });
     // Timeout explícito: com 22 jogadores em campo a simulação custa ~2,4× o que custava no
     // 5x5, e o padrão de 5s estourava quando a suíte roda em paralelo.
   }, 60_000);

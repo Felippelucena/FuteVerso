@@ -536,6 +536,17 @@ export interface MatchStartedEvent extends MatchEventBase {
   type: "match-started";
 }
 
+export interface HalfStartedEvent extends MatchEventBase {
+  type: "half-started";
+  half: number;
+  kickoffTeam: Team;
+}
+
+export interface HalfEndedEvent extends MatchEventBase {
+  type: "half-ended";
+  half: number;
+}
+
 export interface SaveMadeEvent extends MatchEventBase {
   type: "save-made";
   team: Team;
@@ -570,6 +581,8 @@ export interface MatchFinishedEvent extends MatchEventBase {
 
 export type MatchEvent =
   | MatchStartedEvent
+  | HalfStartedEvent
+  | HalfEndedEvent
   | SaveMadeEvent
   | ShotTakenEvent
   | RestartAwardedEvent
@@ -579,6 +592,23 @@ export type MatchEvent =
 type WithoutEventMetadata<T> = T extends MatchEvent ? Omit<T, "id" | "time"> : never;
 export type MatchEventData = WithoutEventMetadata<MatchEvent>;
 
+/**
+ * Regra 8 — pontapé de saída. Enquanto existe, a saída ainda não se resolveu e duas restrições
+ * do regulamento estão de pé:
+ *
+ * - antes de a bola entrar em jogo (`ballInPlay` falso), só quem cobra pode tocá-la;
+ * - depois de cobrada, quem cobrou não pode tocá-la de novo até outro jogador tocar.
+ *
+ * A segunda é o que obriga o primeiro toque a ser um passe: o cobrador não pode sair driblando
+ * a própria bola. O estado morre no instante em que qualquer outro jogador toca a bola.
+ */
+export interface KickoffState {
+  team: Team;
+  takerId: string;
+  /** Falso até o cobrador chutar: a bola está parada na marca central e ninguém mais a disputa. */
+  ballInPlay: boolean;
+}
+
 export interface MatchState {
   players: PlayerRuntime[];
   ball: Ball;
@@ -586,7 +616,11 @@ export interface MatchState {
   events: MatchEvent[];
   cognitiveEvents: CognitiveEvent[];
   elapsed: number;
+  /** Tempo em curso, de 1 a `MATCH_HALVES`. O relógio (`elapsed`) não zera entre eles. */
+  half: number;
   kickoffTimer: number;
+  /** Saída de bola pendente, ou nula quando a bola já rola sem restrição da Regra 8. */
+  kickoff: KickoffState | null;
   ballControlTeam: Team | null;
   possessionTeam: Team | null;
   possessionCandidateTeam: Team | null;

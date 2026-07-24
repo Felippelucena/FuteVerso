@@ -5,6 +5,7 @@ import {
   kickoffTaker,
   kickoffTakerPosition,
 } from "./runtime/formation-geometry";
+import { kickoffTeamOfHalf } from "./runtime/kickoff";
 import { ANALYTICS_GRID, DEFAULT_MATCH_SEED, FIELD } from "./config";
 import type { MatchConfig, MatchParticipant, MatchState, PlayerRuntime } from "./model";
 import { createPhaseSeconds, createTacticalState } from "./systems/tactics-system";
@@ -75,19 +76,19 @@ const makePlayer = (participant: MatchParticipant): PlayerRuntime => {
   return player;
 };
 
-/** Quem cobra a saída no apito inicial. Depois de cada gol a bola sai com quem levou. */
-const OPENING_KICKOFF_TEAM = "blue";
-
 export function createMatchState(config: MatchConfig): MatchState {
+  // Quem cobra a saída no apito inicial. Depois de cada gol a bola sai com quem levou, e a cada
+  // tempo novo ela alterna (Regra 8).
+  const openingTeam = kickoffTeamOfHalf(1);
   const players = config.participants.map(makePlayer);
   for (const player of players) {
     player.homeAnchor = formationAnchor(player);
     // A âncora da formação é a referência de recomposição, não a posição de saída: na saída
     // ninguém pode estar no campo adversário.
-    player.position = kickoffPosition(player, OPENING_KICKOFF_TEAM);
+    player.position = kickoffPosition(player, openingTeam);
   }
-  const kickoffBall = kickoffBallPosition(OPENING_KICKOFF_TEAM);
-  const taker = kickoffTaker(players, OPENING_KICKOFF_TEAM);
+  const kickoffBall = kickoffBallPosition();
+  const taker = kickoffTaker(players, openingTeam);
   if (taker) taker.position = kickoffTakerPosition(taker, kickoffBall);
   return {
     players,
@@ -99,10 +100,13 @@ export function createMatchState(config: MatchConfig): MatchState {
       dribbleStartedAt: 0, controlStartedAt: 0,
     },
     stats: { blue: teamStats(), coral: teamStats() },
+    // O 1º tempo não ganha um `half-started` próprio: "Partida iniciada" já é o apito dele.
     events: [{ id: 1, time: 0, type: "match-started" }],
     cognitiveEvents: [],
     elapsed: 0,
+    half: 1,
     kickoffTimer: 1.1,
+    kickoff: taker ? { team: openingTeam, takerId: taker.profile.id, ballInPlay: false } : null,
     ballControlTeam: null,
     possessionTeam: null,
     possessionCandidateTeam: null,

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { smallSidedMatchConfig } from "./__fixtures__/reference-match";
+import { smallSidedMatchConfig, startOpenPlay } from "./__fixtures__/reference-match";
 import { createMatchState } from "./index";
 import { chooseDribbleTouch, evaluateForwardRunway } from "./runtime/dribble-runway";
 import { executeBallAction } from "./systems/ball-system";
@@ -11,7 +11,7 @@ const createTestMatch = (seed = 5150) => createMatchState(smallSidedMatchConfig(
 
 const arrangeCarrier = () => {
   const state = createTestMatch();
-  state.kickoffTimer = 0;
+  startOpenPlay(state);
   const carrier = state.players.find((player) => player.team === "blue" && player.profile.position === "centerMid")!;
   carrier.position = { x: 55, y: FIELD.height / 2 };
   carrier.velocity = { x: 0, y: 0 };

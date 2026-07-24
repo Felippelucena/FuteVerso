@@ -205,11 +205,8 @@ export const kickoffPosition = (player: PlayerRuntime, kickoffTeam: Team): Vec2 
   return { x: direction > 0 ? finalDepth : FIELD.width - finalDepth, y: anchor.y };
 };
 
-/** A bola da saída descansa um passo dentro do campo de quem cobra. */
-export const kickoffBallPosition = (kickoffTeam: Team, lane: number = FIELD.height / 2): Vec2 => ({
-  x: FIELD.width / 2 - attackDirection(kickoffTeam) * 1.5,
-  y: lane,
-});
+/** Regra 8: a bola fica parada na marca central. Mesma marca em toda saída, de todo tempo. */
+export const kickoffBallPosition = (): Vec2 => ({ x: FIELD.width / 2, y: FIELD.height / 2 });
 
 /** Quem cobra fica atrás da bola, do lado do próprio campo, pronto para o primeiro toque. */
 export const kickoffTakerPosition = (taker: PlayerRuntime, ball: Vec2): Vec2 => ({

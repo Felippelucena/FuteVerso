@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { smallSidedMatchConfig } from "./__fixtures__/reference-match";
+import { smallSidedMatchConfig, startOpenPlay } from "./__fixtures__/reference-match";
 import { decideAll } from "./ai";
 import { FIELD } from "./config";
 import { createMatchState } from "./index";
@@ -10,7 +10,7 @@ const createTestMatch = (seed = 1) => createMatchState(smallSidedMatchConfig(see
 describe("finta — raio de colisão e posse", () => {
   it("finta que falha NÃO faz o portador perder a posse", () => {
     const state = createTestMatch(1);
-    state.kickoffTimer = 0;
+    startOpenPlay(state);
     const player = state.players.find((p) => p.team === "blue" && p.profile.position === "centerMid")!;
     const defender = state.players.find((p) => p.team === "coral" && p.profile.position === "centerBack")!;
     player.position = { x: FIELD.width / 2, y: FIELD.height / 2 };
@@ -34,7 +34,7 @@ describe("finta — raio de colisão e posse", () => {
 
   it("não tenta finta contra um marcador em espaço vazio (fora do raio de colisão)", () => {
     const state = createTestMatch(2);
-    state.kickoffTimer = 0;
+    startOpenPlay(state);
     state.elapsed = 10;
     const carrier = state.players.find((p) => p.team === "blue" && p.profile.position === "centerMid")!;
     const defender = state.players.find((p) => p.team === "coral" && p.profile.position === "centerBack")!;

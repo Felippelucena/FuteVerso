@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { REFERENCE_PLAYERS, smallSidedMatchConfig } from "../match/__fixtures__/reference-match";
+import { REFERENCE_PLAYERS, smallSidedMatchConfig, startOpenPlay } from "../match/__fixtures__/reference-match";
 import { decideAll, thinkingInterval } from "../match/ai";
 import { FIELD } from "../match/config";
 import { createMatchState } from "../match";
@@ -30,7 +30,7 @@ describe("personalidade dos jogadores", () => {
 
   it("prioriza o jogador intenso quando dois defensores podem pressionar", () => {
     const state = createTestMatch(11);
-    state.kickoffTimer = 0;
+    startOpenPlay(state);
     const candidates = state.players.filter((player) => player.team === "blue" && player.profile.position !== "goalkeeper").slice(0, 2);
     candidates[0].position = { x: FIELD.width * 0.42, y: FIELD.height * 0.45 };
     candidates[1].position = { ...candidates[0].position };

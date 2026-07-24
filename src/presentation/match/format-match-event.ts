@@ -10,6 +10,8 @@ export const formatMatchEvent = (
   const label = (team: keyof TeamNames): string => teamNames[team];
   if (event.type === "match-started") return "Partida iniciada";
   if (event.type === "match-finished") return "Fim de partida";
+  if (event.type === "half-ended") return `Fim do ${event.half}º tempo`;
+  if (event.type === "half-started") return `Início do ${event.half}º tempo — saída de ${label(event.kickoffTeam)}`;
   if (event.type === "restart-awarded") {
     const restart = event.restartKind === "throwIn" ? "Lateral" : event.restartKind === "corner" ? "Escanteio" : "Tiro de meta";
     return `${restart} para ${label(event.team)}`;
