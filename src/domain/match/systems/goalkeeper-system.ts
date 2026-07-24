@@ -434,6 +434,8 @@ const resolveCatch = (state: MatchState, goalkeeper: PlayerRuntime, attempt: Goa
   state.ball.lastAction = null;
   state.ball.lastShotOnTarget = false;
   clearDribbleOwner(state);
+  // O goleiro adversário recolheu: a vigilância de impedimento (se havia) se dissolve.
+  if (state.offsideWatch && state.offsideWatch.team !== goalkeeper.team) state.offsideWatch = null;
   registerControlledTeam(state, goalkeeper.team, true);
   state.stats[goalkeeper.team].catches += 1;
   if (attempt.source === "cross") state.stats[goalkeeper.team].highBallClaims += 1;

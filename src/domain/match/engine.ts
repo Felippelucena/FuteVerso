@@ -6,6 +6,7 @@ import { updateCognition } from "./systems/cognition-system";
 import {
   advanceKickoff,
   advanceMatchClock,
+  advanceOffside,
   expireTemporalEffects,
   finishMatchIfNeeded,
   startNextHalfIfNeeded,
@@ -21,9 +22,17 @@ export function stepMatch(state: MatchState, dt: number): void {
 
   advanceMatchClock(state, dt);
   expireTemporalEffects(state);
-  // O intervalo arma a saída do tempo seguinte, então precisa vir antes do gate do kickoff.
+  // O intervalo arma a saída do tempo seguinte, então precisa vir antes dos gates de parada.
   startNextHalfIfNeeded(state);
   sampleSpatialAnalytics(state);
+
+  // Impedimento apitado congela a jogada e desenha a linha antes do tiro livre. Como o pontapé de
+  // saída, é uma parada: física e cognição suspensas, mas o relógio e o tempo tático correm.
+  if (advanceOffside(state, dt)) {
+    updateTacticalContext(state, dt);
+    finishMatchIfNeeded(state);
+    return;
+  }
 
   if (advanceKickoff(state, dt)) {
     updateTacticalContext(state, dt);

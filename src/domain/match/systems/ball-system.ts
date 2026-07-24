@@ -16,6 +16,7 @@ import {
 } from "../runtime/formation-geometry";
 import { emitCognitiveEvent, relevantPlayersNear } from "../runtime/cognitive-events";
 import { registerKickoffKick } from "../runtime/kickoff";
+import { offsideOffendersAtPass } from "../runtime/offside";
 import { playerSkillSpeed } from "../runtime/player-metrics";
 import { signedMatchNoise } from "../runtime/random";
 import { solvePassTrajectory, targetAlongDirection } from "../runtime/pass-trajectory";
@@ -294,7 +295,26 @@ export const executeBallAction = (state: MatchState, player: PlayerRuntime, acti
   if (purpose === "cross") state.stats[player.team].crosses += 1;
   else if (purpose === "cutback") state.stats[player.team].cutbacks += 1;
   else if (purpose === "throughBall") state.stats[player.team].throughBalls += 1;
+  armOffsideWatch(state, player, passId);
   emitCognitiveEvent(state, "passCommitted", [action.receiverId, ...relevantPlayersNear(state, solution.landingPoint)], { passId });
+};
+
+/**
+ * Lei 11 — julgamento no instante do passe. Congela quem está em posição de impedimento agora;
+ * a punição só virá se um deles se envolver na jogada (ver possession-system). O primeiro passe
+ * de um lateral/escanteio/tiro de meta é a própria cobrança e não se julga: consome a isenção e
+ * arma normalmente a partir do toque seguinte.
+ */
+const armOffsideWatch = (state: MatchState, passer: PlayerRuntime, passId: number): void => {
+  if (state.offsideExemptRestart) {
+    state.offsideExemptRestart = false;
+    state.offsideWatch = null;
+    return;
+  }
+  const { offenders, lineProgress } = offsideOffendersAtPass(state, passer.team, passer.profile.id);
+  state.offsideWatch = offenders.length > 0
+    ? { team: passer.team, passId, offenders, lineProgress }
+    : null;
 };
 
 const attachControlledBall = (state: MatchState, player: PlayerRuntime, dt: number): void => {
@@ -401,16 +421,22 @@ export const setupKickoff = (state: MatchState, kickoffTeam: Team): void => {
   state.feintEvasion = null;
   state.kickoffTimer = 1.15;
   state.kickoff = taker ? { team: kickoffTeam, takerId: taker.profile.id, ballInPlay: false } : null;
+  // Saída de bola arma impedimento normalmente (a Lei 11 vale desde o pontapé inicial), mas na
+  // prática ninguém está impedido: todos no próprio campo, ninguém à frente da última linha.
+  state.offsideWatch = null;
+  state.offsideExemptRestart = false;
   state.nextCognitionAt = state.elapsed;
 };
 
 const otherTeam = (team: Team): Team => team === "blue" ? "coral" : "blue";
 const fieldRestartMargin = (): number => Math.max(8, FIELD.goalAreaDepth * 0.55);
 
+type RestartKind = "throwIn" | "corner" | "goalKick" | "freeKick";
+
 const restartPlay = (
   state: MatchState,
   team: Team,
-  kind: "throwIn" | "corner" | "goalKick",
+  kind: RestartKind,
   exitPosition: Vec2,
 ): void => {
   const eligible = state.players.filter((player) => player.team === team && (kind === "goalKick"
@@ -430,6 +456,14 @@ const restartPlay = (
     const top = exitPosition.y < FIELD.height / 2;
     restartPosition = { x: fromLeft ? 5 : FIELD.width - 5, y: top ? 5 : FIELD.height - 5 };
     facing = normalize({ x: fromLeft ? 1 : -1, y: top ? 1 : -1 });
+  } else if (kind === "freeKick") {
+    // Tiro livre indireto do impedimento: no ponto da infração, virado para o ataque do time.
+    const margin = fieldRestartMargin();
+    restartPosition = {
+      x: clamp(exitPosition.x, margin, FIELD.width - margin),
+      y: clamp(exitPosition.y, 5, FIELD.height - 5),
+    };
+    facing = { x: attacksRight ? 1 : -1, y: 0 };
   } else {
     const ownLeft = team === "blue";
     restartPosition = { x: ownLeft ? FIELD.goalAreaDepth * 0.72 : FIELD.width - FIELD.goalAreaDepth * 0.72, y: FIELD.height / 2 };
@@ -460,7 +494,15 @@ const restartPlay = (
   state.kickoffTimer = 0.72;
   // A bola saiu de campo: qualquer saída de bola pendente morre aqui.
   state.kickoff = null;
+  state.offsideWatch = null;
+  // Lateral, escanteio e tiro de meta não têm impedimento na cobrança; o tiro livre, sim.
+  state.offsideExemptRestart = kind === "throwIn" || kind === "corner" || kind === "goalKick";
   emitMatchEvent(state, { type: "restart-awarded", team, restartKind: kind });
+};
+
+/** Reinício do impedimento: tiro livre indireto para o time que defende, no ponto da infração. */
+export const restartFreeKick = (state: MatchState, defendingTeam: Team, spot: Vec2): void => {
+  restartPlay(state, defendingTeam, "freeKick", spot);
 };
 
 const registerGoal = (state: MatchState, scorerTeam: Team): void => {

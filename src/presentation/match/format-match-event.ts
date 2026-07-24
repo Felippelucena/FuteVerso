@@ -13,10 +13,16 @@ export const formatMatchEvent = (
   if (event.type === "half-ended") return `Fim do ${event.half}º tempo`;
   if (event.type === "half-started") return `Início do ${event.half}º tempo — saída de ${label(event.kickoffTeam)}`;
   if (event.type === "restart-awarded") {
-    const restart = event.restartKind === "throwIn" ? "Lateral" : event.restartKind === "corner" ? "Escanteio" : "Tiro de meta";
+    const restart = event.restartKind === "throwIn" ? "Lateral"
+      : event.restartKind === "corner" ? "Escanteio"
+        : event.restartKind === "freeKick" ? "Tiro livre"
+          : "Tiro de meta";
     return `${restart} para ${label(event.team)}`;
   }
   const player = roster.find((candidate) => candidate.id === event.playerId);
+  if (event.type === "offside-called") {
+    return `Impedimento de ${player?.name ?? label(event.team)}`;
+  }
   if (event.type === "save-made") {
     const action = event.outcome === "catch" ? "encaixou" : event.outcome === "parry" ? "rebateu" : "defendeu";
     return `${player?.name ?? label(event.team)} ${action}`;

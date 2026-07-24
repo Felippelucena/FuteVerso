@@ -1,8 +1,9 @@
-import { COGNITION, CONDUCT, DEFENSE, DUEL, FIELD, PHYSICS, TACTICS } from "./config";
+import { COGNITION, CONDUCT, DEFENSE, DUEL, FIELD, OFFSIDE, PHYSICS, TACTICS } from "./config";
 import { add, clamp, distance, dot, normalize, scale, subtract } from "../shared/math";
 import type { AgentDecision, AssignmentDuty, BallAction, DecisionReason, DribbleStyle, MatchState, PlanTarget, PlayerAssignment, PlayerPlan, PlayerRuntime, Team, Vec2 } from "./model";
 import { activeBallPlayerId } from "./runtime/control";
 import { isKickoffTaker } from "./runtime/kickoff";
+import { attackingProgress, offsideLineProgress } from "./runtime/offside";
 import {
   interceptionThreat,
   predictBallPosition,
@@ -133,6 +134,18 @@ export const choosePass = (player: PlayerRuntime, teammates: PlayerRuntime[], op
   const carrierEdgeRisk = edgeRisk(player.position);
   const collective = state.tactics[player.team].collectivePlan;
   const phase = state.tactics[player.team].phase;
+  // Consciência de impedimento: um bom passador não entrega a bola a quem já está impedido. A
+  // linha é a mesma que o motor apita (penúltimo adversário); comparar a posição ATUAL do
+  // companheiro, não o alvo, preserva a bola em profundidade — quem está no nível da linha e
+  // corre para o passe está onside quando ele sai.
+  const offsideLine = offsideLineProgress(state, player.team);
+  const ballProgress = attackingProgress(player.team, state.ball.position.x);
+  const isOffsideNow = (teammate: PlayerRuntime): boolean => {
+    const progress = attackingProgress(player.team, teammate.position.x);
+    return progress > 0.5 + OFFSIDE.toleranceProgress
+      && progress > ballProgress + OFFSIDE.toleranceProgress
+      && progress > offsideLine + OFFSIDE.toleranceProgress;
+  };
   const candidates = teammates
     .filter((teammate) => teammate.profile.id !== player.profile.id)
     .flatMap((teammate) => PASS_VARIANTS.map((variant) => {
@@ -199,6 +212,9 @@ export const choosePass = (player: PlayerRuntime, teammates: PlayerRuntime[], op
           : purpose === "throughBall" ? 0.28
             : purpose === "layoff" && wallPass ? 0.22
               : 0;
+      // Passar para um companheiro já impedido é jogar fora a posse: penalidade dura, que só o
+      // deixa competitivo se todas as outras saídas forem piores ainda (um raro chutão de aposta).
+      const offsidePenalty = isOffsideNow(teammate) ? 5 : 0;
       const score = clamp(progress / fieldX(24), -0.8, 1.45)
         + clamp(openness / fieldX(14), 0, 1.18) + centrality(target) * 0.18 + roleBonus
         + switchValue + wallPassBonus + backwardsSafety + collectiveBonus + aerialValue + purposeBonus
@@ -206,7 +222,7 @@ export const choosePass = (player: PlayerRuntime, teammates: PlayerRuntime[], op
         + (player.profile.mental.teamwork - 50) / 100 * 0.22
         + (player.profile.mental.decisionMaking - 50) / 100 * 0.16
         + (player.profile.mental.creativity - 50) / 100 * (blocked ? 0.2 : 0.06)
-        - passDistance / fieldX(72) - rangePenalty
+        - passDistance / fieldX(72) - rangePenalty - offsidePenalty
         - effectivePressure * (passDistance > fieldX(18) ? 0.58 : 0.86) * (1.08 - player.profile.mental.creativity / 500);
       const receiverEta = distance(teammate.position, target) / Math.max(1, playerSkillSpeed(teammate) * PHYSICS.runSpeedFactor);
       const opponentEta = Math.min(...opponents.map((opponent) => distance(opponent.position, target)

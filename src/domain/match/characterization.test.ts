@@ -64,11 +64,11 @@ describe("caracterizacao deterministica", () => {
       short: hashFingerprint(actual.short),
       long: hashFingerprint(actual.long),
     };
-    // Re-baseline: a Regra 8 entrou em campo. A bola da saída agora descansa na marca central
-    // (antes nascia um passo dentro do campo de quem cobra, com desvio lateral aleatório) e o
-    // primeiro toque é obrigatoriamente um passe — ninguém sai conduzindo a própria saída.
-    // A primeira jogada muda, e com ela a partida inteira, de propósito.
-    expect(hashes).toEqual({ short: "9f6b8845", long: "f988f06c" });
+    // Re-baseline: a Lei 11 (impedimento) entrou em campo. O teto de avanço da forma afrouxou
+    // (OFFSIDE.runMarginProgress) para os corredores atacarem as costas da linha; o passador
+    // passou a evitar receptores impedidos (choosePass) e o motor apita impedimento de verdade,
+    // congelando a jogada e reiniciando com tiro livre. Muda geometria, decisão e desfecho.
+    expect(hashes).toEqual({ short: "4b5a220f", long: "e390e639" });
     // Timeout explícito: com 22 jogadores em campo a simulação custa ~2,4× o que custava no
     // 5x5, e o padrão de 5s estourava quando a suíte roda em paralelo.
   }, 60_000);

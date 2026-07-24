@@ -565,7 +565,14 @@ export interface ShotTakenEvent extends MatchEventBase {
 export interface RestartAwardedEvent extends MatchEventBase {
   type: "restart-awarded";
   team: Team;
-  restartKind: "throwIn" | "corner" | "goalKick";
+  restartKind: "throwIn" | "corner" | "goalKick" | "freeKick";
+}
+
+export interface OffsideCalledEvent extends MatchEventBase {
+  type: "offside-called";
+  /** Time que cometeu o impedimento. O tiro livre indireto sai para o adversário. */
+  team: Team;
+  playerId: string;
 }
 
 export interface GoalScoredEvent extends MatchEventBase {
@@ -586,6 +593,7 @@ export type MatchEvent =
   | SaveMadeEvent
   | ShotTakenEvent
   | RestartAwardedEvent
+  | OffsideCalledEvent
   | GoalScoredEvent
   | MatchFinishedEvent;
 
@@ -607,6 +615,34 @@ export interface KickoffState {
   takerId: string;
   /** Falso até o cobrador chutar: a bola está parada na marca central e ninguém mais a disputa. */
   ballInPlay: boolean;
+}
+
+/**
+ * Vigilância de impedimento (Lei 11) armada por um passe: quem estava em posição de impedimento
+ * no instante do toque, e onde estava a linha. Vive enquanto o passe está no ar; morre quando
+ * alguém encosta na bola — apitando a infração se for um dos vigiados, ou se dissolvendo se for
+ * qualquer outro. Ver `runtime/offside`.
+ */
+export interface OffsideWatch {
+  team: Team;
+  passId: number;
+  offenders: string[];
+  lineProgress: number;
+}
+
+/**
+ * Impedimento apitado e ainda não reiniciado. Enquanto existe, a jogada fica congelada e a linha
+ * é desenhada sobre o gramado (a "bandeira") até `resolveAt`, quando sai o tiro livre indireto.
+ */
+export interface OffsideCall {
+  /** Time que cometeu a infração (o que atacava). O tiro livre é do adversário. */
+  team: Team;
+  offenderId: string;
+  lineProgress: number;
+  /** Ponto da infração: onde o impedido se envolveu na jogada. É de onde sai o reinício. */
+  spot: Vec2;
+  calledAt: number;
+  resolveAt: number;
 }
 
 export interface MatchState {
@@ -634,6 +670,16 @@ export interface MatchState {
   learningEnabled: boolean;
   pendingPass: PendingPass | null;
   activeShot: ActiveShot | null;
+  /** Passe sob vigilância de impedimento, ou nulo quando não há ninguém em posição ilegal. */
+  offsideWatch: OffsideWatch | null;
+  /** Impedimento apitado, congelando a jogada até o tiro livre; nulo em jogo normal. */
+  offsideCall: OffsideCall | null;
+  /**
+   * Verdadeiro logo após um lateral, escanteio ou tiro de meta: o primeiro passe (a cobrança em
+   * si) não é julgado por impedimento — não há impedimento direto desses reinícios. Cai no toque
+   * seguinte, quando o jogo volta a ser corrido.
+   */
+  offsideExemptRestart: boolean;
   feintEvasion: FeintEvasion | null;
   lastAssist: { playerId: string; team: Team; time: number } | null;
   previousControlledTeam: Team | null;

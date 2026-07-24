@@ -1,6 +1,6 @@
 import { clamp, distance } from "../../shared/math";
 import { TACTICAL_GRID } from "../../tactics/slots";
-import { DEFENSE, FIELD } from "../config";
+import { DEFENSE, FIELD, OFFSIDE } from "../config";
 import type {
   AssignmentDuty,
   AssignmentZone,
@@ -452,7 +452,10 @@ const forwardLimitFor = (state: MatchState, team: Team, context: AssignmentConte
   const offsideLine = opponents[1] ?? 94;
   // Nunca atrás da bola: quem está à frente dela com a bola no pé não está impedido.
   const ballDepth = attackingProgress(team, state.ball.position.x) * 100;
-  return clamp(Math.max(offsideLine, ballDepth) + 2, 32, 94);
+  // "Equilibrado": os corredores podem espiar além da última linha por esta margem, apostando na
+  // diagonal nas costas da defesa. Agora quem apita o impedimento é a Lei 11 de verdade
+  // (runtime/offside), no instante do passe — o teto só deixa de proibir a posição ilegal.
+  return clamp(Math.max(offsideLine, ballDepth) + OFFSIDE.runMarginProgress * 100, 32, 94);
 };
 
 const teamWidthFor = (context: AssignmentContext): number => context.posture === "inPossession"

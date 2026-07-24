@@ -1,7 +1,8 @@
 import { FIELD, PHYSICS } from "../../domain/match/config";
 import { clamp, distance, length } from "../../domain/shared/math";
 import { goalkeeperJumpHeight } from "../../domain/match/systems/goalkeeper-system";
-import type { MatchState, PlayerRuntime, Team, Vec2 } from "../../domain/match/model";
+import { progressToX } from "../../domain/match/runtime/offside";
+import type { MatchState, OffsideCall, PlayerRuntime, Team, Vec2 } from "../../domain/match/model";
 
 const COLORS: Record<Team, { fill: string; dark: string; light: string }> = {
   blue: { fill: "#3b82f6", dark: "#172b4d", light: "#dbeafe" },
@@ -69,7 +70,8 @@ export class GameRenderer {
       this.drawPlayer(player, hasPossession, isBallTarget);
     }
     this.drawBall(state);
-    if (state.kickoffTimer > 0) this.drawKickoff(state.kickoffTimer);
+    if (state.offsideCall) this.drawOffside(state, state.offsideCall);
+    else if (state.kickoffTimer > 0) this.drawKickoff(state.kickoffTimer);
   }
 
   private updateBallTrail(state: MatchState): void {
@@ -353,6 +355,54 @@ export class GameRenderer {
     ctx.beginPath();
     ctx.arc(x, y, radius * 0.3, 0, Math.PI * 2);
     ctx.fill();
+  }
+
+  /**
+   * A "bandeira": a linha do impedimento cresce do centro para as pontas enquanto a jogada fica
+   * congelada, com o infrator destacado e o rótulo do lance. É elemento de transmissão, não
+   * overlay de diagnóstico — vive só na janela do apito e some quando sai o tiro livre.
+   */
+  private drawOffside(state: MatchState, call: OffsideCall): void {
+    const ctx = this.context;
+    const span = Math.max(0.001, call.resolveAt - call.calledAt);
+    const progress = clamp((state.elapsed - call.calledAt) / span, 0, 1);
+    // Escurece o gramado como no pontapé de saída, mas de leve: a leitura é a linha, não o texto.
+    ctx.fillStyle = `rgba(9, 13, 11, ${0.32})`;
+    ctx.fillRect(this.x(0), this.y(0), FIELD.width * this.scale, FIELD.height * this.scale);
+
+    const lineX = this.x(progressToX(call.team, call.lineProgress));
+    const midY = this.y(FIELD.height / 2);
+    const half = (FIELD.height / 2) * this.scale * progress;
+    ctx.save();
+    ctx.strokeStyle = "rgba(255, 209, 71, 0.95)";
+    ctx.lineWidth = Math.max(2, this.scale * 0.4);
+    ctx.setLineDash([this.scale * 1.4, this.scale * 0.9]);
+    ctx.beginPath();
+    ctx.moveTo(lineX, midY - half);
+    ctx.lineTo(lineX, midY + half);
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    // Anel no jogador impedido, pulsando com o avanço da animação.
+    const offender = state.players.find((player) => player.profile.id === call.offenderId);
+    if (offender) {
+      const ox = this.x(offender.position.x);
+      const oy = this.y(offender.position.y);
+      ctx.strokeStyle = "rgba(255, 209, 71, 0.95)";
+      ctx.lineWidth = Math.max(1.5, this.scale * 0.28);
+      ctx.beginPath();
+      ctx.arc(ox, oy, (offender.radius + 1.2) * this.scale * (0.9 + progress * 0.2), 0, Math.PI * 2);
+      ctx.stroke();
+    }
+
+    if (progress > 0.25) {
+      ctx.fillStyle = `rgba(255, 209, 71, ${clamp((progress - 0.25) / 0.35, 0, 1)})`;
+      ctx.font = `700 ${Math.max(14, this.scale * 2.2)}px ui-sans-serif, system-ui`;
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillText("IMPEDIMENTO", this.x(FIELD.width / 2), this.y(FIELD.height * 0.16));
+    }
+    ctx.restore();
   }
 
   private drawKickoff(timer: number): void {

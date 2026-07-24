@@ -24,9 +24,15 @@ describe("formatMatchEvent", () => {
     expect(format({ id: 5, time: 4, type: "shot-taken", team: "coral", playerId: "desconhecido" })).toBe("MAY finalizou");
   });
 
-  it("formata os três reinícios com o clube de cada lado", () => {
+  it("formata os quatro reinícios com o clube de cada lado", () => {
     expect(format({ id: 2, time: 1, type: "restart-awarded", team: "blue", restartKind: "throwIn" })).toBe("Lateral para NIL");
     expect(format({ id: 3, time: 2, type: "restart-awarded", team: "coral", restartKind: "corner" })).toBe("Escanteio para MAY");
     expect(format({ id: 4, time: 3, type: "restart-awarded", team: "blue", restartKind: "goalKick" })).toBe("Tiro de meta para NIL");
+    expect(format({ id: 5, time: 4, type: "restart-awarded", team: "coral", restartKind: "freeKick" })).toBe("Tiro livre para MAY");
+  });
+
+  it("formata o impedimento com o nome do infrator", () => {
+    expect(format({ id: 6, time: 5, type: "offside-called", team: "blue", playerId: "nilo-fw" })).toBe("Impedimento de Nilo");
+    expect(format({ id: 7, time: 6, type: "offside-called", team: "coral", playerId: "desconhecido" })).toBe("Impedimento de MAY");
   });
 });

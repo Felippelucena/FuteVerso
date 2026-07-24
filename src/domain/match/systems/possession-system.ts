@@ -1,6 +1,7 @@
-import { FIELD, PHYSICS } from "../config";
+import { FIELD, OFFSIDE, PHYSICS } from "../config";
 import { add, clamp, distance, dot, length, normalize, scale, subtract } from "../../shared/math";
 import type { MatchState, PlayerRuntime } from "../model";
+import { emitMatchEvent } from "../runtime/events";
 import {
   adaptPlayerPolicy,
   clearDribbleOwner,
@@ -235,6 +236,10 @@ export const updatePossession = (state: MatchState, dt: number): void => {
     return;
   }
   const controller = claim.player;
+  // Lei 11 — punição. Antes de qualquer domínio: se quem vai encostar na bola estava impedido no
+  // instante do passe, apita aqui. Se for qualquer outro (companheiro em posição legal ou um
+  // adversário), a jogada segue e a vigilância se dissolve.
+  if (resolveOffsideOnTouch(state, controller)) return;
   const continuesOwnDribble = dribbleOwner?.profile.id === controller.profile.id;
   if (!continuesOwnDribble && tryPreparedContact(state, controller)) return;
   const touchOutcome = firstTouchOutcome(state, controller, claim.quality, claim.ownBox, continuesOwnDribble);
@@ -272,6 +277,45 @@ export const updatePossession = (state: MatchState, dt: number): void => {
   state.ball.lastShotOnTarget = false;
 };
 
+/**
+ * Lei 11 aplicada no toque. Devolve `true` — interrompendo o domínio — quando o impedimento é
+ * apitado; nesse caso congela a bola no ponto da infração e abre a janela da bandeira, que o
+ * ciclo de vida conta antes de sair o tiro livre. Em qualquer outro toque, só dissolve a
+ * vigilância e deixa a jogada seguir.
+ */
+const resolveOffsideOnTouch = (state: MatchState, toucher: PlayerRuntime): boolean => {
+  const watch = state.offsideWatch;
+  if (!watch) return false;
+  if (toucher.team !== watch.team || !watch.offenders.includes(toucher.profile.id)) {
+    // Bola alcançada por um jogador legal (ou pelo adversário): não houve infração.
+    state.offsideWatch = null;
+    return false;
+  }
+  state.offsideWatch = null;
+  state.offsideCall = {
+    team: watch.team,
+    offenderId: toucher.profile.id,
+    lineProgress: watch.lineProgress,
+    spot: {
+      x: clamp(toucher.position.x, 4, FIELD.width - 4),
+      y: clamp(toucher.position.y, 4, FIELD.height - 4),
+    },
+    calledAt: state.elapsed,
+    resolveAt: state.elapsed + OFFSIDE.freezeSeconds,
+  };
+  // Congela a jogada: bola parada no ponto, sem dono nem passe/chute pendente.
+  state.ball.velocity = { x: 0, y: 0 };
+  state.ball.verticalVelocity = 0;
+  state.ball.height = 0;
+  state.ball.controllerId = null;
+  clearDribbleOwner(state);
+  if (state.pendingPass) emitCognitiveEvent(state, "passResolved", null, { passId: state.pendingPass.id, outcome: "out" });
+  state.pendingPass = null;
+  state.activeShot = null;
+  emitMatchEvent(state, { type: "offside-called", team: watch.team, playerId: toucher.profile.id });
+  return true;
+};
+
 export const expirePendingPass = (state: MatchState): void => {
   if (!state.pendingPass) return;
   const controlWindow = state.pendingPass.trajectory === "air"
@@ -284,5 +328,7 @@ export const expirePendingPass = (state: MatchState): void => {
     outcome: "loose",
   });
   if (passer) passer.memory.stats.failedPasses += 1;
+  // O passe morreu no ar sem chegar ao impedido: não há mais o que vigiar.
+  if (state.offsideWatch && state.offsideWatch.passId === state.pendingPass.id) state.offsideWatch = null;
   state.pendingPass = null;
 };

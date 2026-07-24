@@ -1,8 +1,8 @@
 import { HALF_DURATION, MATCH_DURATION } from "../config";
-import type { MatchState } from "../model";
+import type { MatchState, Team } from "../model";
 import { emitMatchEvent } from "../runtime/events";
 import { isFinalHalf, kickoffTeamOfHalf } from "../runtime/kickoff";
-import { setupKickoff } from "./ball-system";
+import { restartFreeKick, setupKickoff } from "./ball-system";
 
 export const advanceMatchClock = (state: MatchState, dt: number): void => {
   const nextElapsed = state.elapsed + dt;
@@ -17,6 +17,22 @@ export const advanceKickoff = (state: MatchState, dt: number): boolean => {
   if (state.kickoffTimer <= 0) return false;
   state.kickoffTimer = Math.max(0, state.kickoffTimer - dt);
   state.contestedSeconds += dt;
+  return true;
+};
+
+/**
+ * Impedimento apitado: congela a jogada e mostra a linha (a "bandeira") até `resolveAt`, quando
+ * sai o tiro livre indireto do time que defende. Devolve `true` enquanto o jogo está parado, para
+ * o motor pular o resto do tick — física e cognição ficam suspensas, como no pontapé de saída.
+ */
+export const advanceOffside = (state: MatchState, dt: number): boolean => {
+  const call = state.offsideCall;
+  if (!call) return false;
+  state.contestedSeconds += dt;
+  if (state.elapsed < call.resolveAt) return true;
+  const defending: Team = call.team === "blue" ? "coral" : "blue";
+  restartFreeKick(state, defending, call.spot);
+  state.offsideCall = null;
   return true;
 };
 

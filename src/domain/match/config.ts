@@ -309,6 +309,20 @@ export const CONDUCT = {
   carryShotMaxDistance: 20, // o chute futuro precisa ser de dentro de fieldX(20) para valer
 } as const;
 
+// Lei 11 — impedimento. `runMarginProgress` é o afrouxamento "equilibrado": o teto de avanço da
+// forma (forwardLimitFor) fica esta fração da largura à frente da penúltima linha, para os
+// corredores fazerem a diagonal nas costas da defesa e, de vez em quando, serem pegos. Zerá-lo
+// devolve a disciplina antiga (impedimento vira lei que quase nunca é apitada).
+export const OFFSIDE = {
+  runMarginProgress: 0.06,
+  // Margem para "estar à frente da linha" — empatar com o penúltimo adversário é legal, então
+  // exige-se ultrapassá-lo por esta fração da largura, não por um resíduo de arredondamento.
+  toleranceProgress: 0.004,
+  // A jogada congela e a linha é desenhada por este tempo antes do tiro livre sair. É a
+  // "animação da bandeira" pedida: tempo de leitura, não física.
+  freezeSeconds: 1.3,
+} as const;
+
 export const ANALYTICS_GRID = {
   columns: 12,
   rows: 8,
