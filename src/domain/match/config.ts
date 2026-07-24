@@ -42,6 +42,9 @@ export const FIELD = {
   /** Mesmo raio do círculo central e da meia-lua da grande área. */
   centerCircleRadius: meters(9.15),
   cornerArcRadius: meters(1),
+  // Faixa de segurança fora das linhas (~5% da largura do campo): é onde o cobrador do lateral e
+  // do escanteio fica, do lado de fora, como no futebol de verdade. Jogadores podem pisá-la.
+  runOff: fieldHeight * 0.05,
   // Corpo e bola ficam ~2× maiores que na vida real (1,25 m de largura, bola de 42 cm) para
   // seguirem legíveis no zoom em que o campo inteiro cabe na tela. Os dois crescem junto, então
   // a bola continua um terço do jogador, como no futebol de verdade.
@@ -147,17 +150,18 @@ export const DEFAULT_MATCH_SEED = 0x4a39b70d;
 export const RESTART = {
   // Piso do preparo: mesmo com o cobrador já no ponto, a cobrança espera este tempo (ritmo curto).
   minSetupSeconds: 2,
-  // Teto absoluto: se o cobrador não chegou (cercado), força a colocação e cobra. É uma trava
-  // anti-deadlock, generosa o bastante para o cobrador trotar de longe sem saltar no caso comum.
-  maxSetupSeconds: 5,
+  // Teto absoluto: se o reposicionamento não concluiu (ou o cobrador está cercado), cobra assim
+  // mesmo. Generoso o bastante para os dois times voltarem à formação na saída de bola.
+  maxSetupSeconds: 7,
   arrivalRadius: FIELD.playerRadius + FIELD.ballRadius + 0.6,
   // Distância a que o cobrador para atrás da bola (a bola fica no ponto; ele, um passo atrás).
   takerStandOffset: FIELD.playerRadius + FIELD.ballRadius + 0.15,
-  // Recuo mínimo do ponto de lateral/escanteio em relação à linha; e da meta no tiro de meta.
-  sidelineInset: 5,
+  // Recuo do cobrador para FORA da linha no lateral/escanteio: o corpo inteiro fica além da linha.
+  takerOutsideMargin: FIELD.playerRadius + 1,
+  // A bola do escanteio entra uns passos para dentro da quina, senão sairia direto pela lateral.
+  cornerBallInset: FIELD.cornerArcRadius + FIELD.ballRadius + 1.5,
   fieldMarginFactor: 0.55,
   fieldMarginFloor: 8,
-  goalKickSpotFactor: 0.72,
   // Colocação (TeamShapePlacement) que espalha os dois times para o meio no tiro de meta.
   goalKickLineHeight: 40,
   goalKickWidth: 0.7,

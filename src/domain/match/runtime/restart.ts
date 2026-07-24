@@ -1,10 +1,11 @@
 import { FIELD, RESTART, STAMINA } from "../config";
-import { add, clamp, distance, normalize, scale, subtract } from "../../shared/math";
+import { clamp, distance, normalize, scale, subtract } from "../../shared/math";
 import type { MatchState, PlayerRuntime, RestartKind, RestartState, Team, TeamShapePlacement, Vec2 } from "../model";
 import { clearDribbleOwner, clearGoalkeeperAttempts, registerControlledTeam } from "./control";
 import { emitCognitiveEvent } from "./cognitive-events";
 import { emitMatchEvent } from "./events";
-import { attackDirection, baseCell, cellAnchor, formationAnchor, kickoffBallPosition, kickoffPosition, kickoffTaker } from "./formation-geometry";
+import { attackDirection, baseCell, cellAnchor, formationAnchor, kickoffBallPosition, kickoffPosition, kickoffTaker, NEUTRAL_LINE_HEIGHT } from "./formation-geometry";
+import { attackingProgress } from "./offside";
 
 /**
  * Bola parada com CAMINHADA, não teleporte. A jogada morre, a bola é posta no ponto, o cobrador
@@ -41,42 +42,53 @@ const chooseTaker = (state: MatchState, team: Team, kind: RestartKind, exitPosit
 
 /**
  * Geometria do reinício: onde a bola descansa (`spot`) e para onde o cobrador olha (`facing`). O
- * cobrador para um passo atrás da bola (`takerStandFor`), então `spot` é a marca à frente dele.
+ * cobrador para em `takerStand` (no lateral/escanteio, do lado de fora do campo).
  */
-const restartGeometry = (kind: RestartKind, exitPosition: Vec2, team: Team): { spot: Vec2; facing: Vec2 } => {
-  const attacksRight = attackDirection(team) > 0;
-  if (kind === "kickoff") {
-    return { spot: kickoffBallPosition(), facing: { x: attacksRight ? 1 : -1, y: 0 } };
-  }
-  const inset = RESTART.sidelineInset;
+const restartGeometry = (kind: RestartKind, exitPosition: Vec2, team: Team): { spot: Vec2; facing: Vec2; takerStand: Vec2 } => {
+  const dir = attackDirection(team);
   const margin = fieldRestartMargin();
-  const withStand = (stand: Vec2, facing: Vec2): { spot: Vec2; facing: Vec2 } =>
-    ({ spot: add(stand, scale(facing, RESTART.takerStandOffset)), facing });
+  const out = RESTART.takerOutsideMargin;
+  // Cobrador um passo atrás da bola, na direção contrária à cobrança (dentro do campo).
+  const behind = (spot: Vec2, facing: Vec2): Vec2 => subtract(spot, scale(facing, RESTART.takerStandOffset));
+  if (kind === "kickoff") {
+    const spot = kickoffBallPosition();
+    const facing = { x: dir, y: 0 };
+    return { spot, facing, takerStand: behind(spot, facing) };
+  }
+  if (kind === "goalKick") {
+    // Na marca do pênalti (o círculo desenhado do campo), com o goleiro atrás dela.
+    const spotX = dir > 0 ? FIELD.penaltySpotDistance : FIELD.width - FIELD.penaltySpotDistance;
+    const spot = { x: spotX, y: FIELD.height / 2 };
+    const facing = { x: dir, y: 0 };
+    return { spot, facing, takerStand: behind(spot, facing) };
+  }
   if (kind === "throwIn") {
+    // Bola na linha lateral; o cobrador fica do lado de FORA do campo, atrás dela (mesmo x).
     const top = exitPosition.y < FIELD.height / 2;
-    const stand = { x: clamp(exitPosition.x, margin, FIELD.width - margin), y: top ? inset : FIELD.height - inset };
-    return withStand(stand, normalize({ x: attacksRight ? 0.35 : -0.35, y: top ? 1 : -1 }));
+    const x = clamp(exitPosition.x, margin, FIELD.width - margin);
+    return {
+      spot: { x, y: top ? 0 : FIELD.height },
+      facing: normalize({ x: dir * 0.35, y: top ? 1 : -1 }),
+      takerStand: { x, y: top ? -out : FIELD.height + out },
+    };
   }
   if (kind === "corner") {
+    // Bola uns passos para dentro da quina (senão sai direto pela lateral); o cobrador na quina,
+    // do lado de fora das duas linhas, virado para dentro na diagonal.
     const fromLeft = exitPosition.x < FIELD.width / 2;
     const top = exitPosition.y < FIELD.height / 2;
-    const stand = { x: fromLeft ? inset : FIELD.width - inset, y: top ? inset : FIELD.height - inset };
-    return withStand(stand, normalize({ x: fromLeft ? 1 : -1, y: top ? 1 : -1 }));
+    const inset = RESTART.cornerBallInset;
+    return {
+      spot: { x: fromLeft ? inset : FIELD.width - inset, y: top ? inset : FIELD.height - inset },
+      facing: normalize({ x: fromLeft ? 1 : -1, y: top ? 1 : -1 }),
+      takerStand: { x: fromLeft ? -out : FIELD.width + out, y: top ? -out : FIELD.height + out },
+    };
   }
-  if (kind === "freeKick") {
-    const stand = { x: clamp(exitPosition.x, margin, FIELD.width - margin), y: clamp(exitPosition.y, inset, FIELD.height - inset) };
-    return withStand(stand, { x: attacksRight ? 1 : -1, y: 0 });
-  }
-  // goalKick: goleiro no ponto da pequena área, virado para o campo.
-  const ownLeft = attacksRight;
-  const depth = FIELD.goalAreaDepth * RESTART.goalKickSpotFactor;
-  const stand = { x: ownLeft ? depth : FIELD.width - depth, y: FIELD.height / 2 };
-  return withStand(stand, { x: ownLeft ? 1 : -1, y: 0 });
+  // freeKick: no ponto da infração, virado para o ataque do time.
+  const spot = { x: clamp(exitPosition.x, margin, FIELD.width - margin), y: clamp(exitPosition.y, margin, FIELD.height - margin) };
+  const facing = { x: dir, y: 0 };
+  return { spot, facing, takerStand: behind(spot, facing) };
 };
-
-/** Onde o cobrador para: um passo atrás da bola, na direção contrária à cobrança. */
-const takerStandFor = (restart: RestartState): Vec2 =>
-  subtract(restart.spot, scale(restart.facing, RESTART.takerStandOffset));
 
 /**
  * Inicia uma bola parada: põe a bola no ponto (parada), escolhe o cobrador e arma o estado. NÃO
@@ -85,7 +97,7 @@ const takerStandFor = (restart: RestartState): Vec2 =>
  */
 export const beginRestart = (state: MatchState, kind: RestartKind, team: Team, exitPosition: Vec2): void => {
   const taker = chooseTaker(state, team, kind, exitPosition);
-  const { spot, facing } = restartGeometry(kind, exitPosition, team);
+  const { spot, facing, takerStand } = restartGeometry(kind, exitPosition, team);
   const ball = state.ball;
   ball.position = { ...spot };
   ball.velocity = { x: 0, y: 0 };
@@ -115,7 +127,7 @@ export const beginRestart = (state: MatchState, kind: RestartKind, team: Team, e
     }
   }
   state.restart = taker
-    ? { kind, team, takerId: taker.profile.id, spot, facing, startedAt: state.elapsed, ballInPlay: false }
+    ? { kind, team, takerId: taker.profile.id, spot, takerStand, facing, startedAt: state.elapsed, ballInPlay: false }
     : null;
   state.offsideWatch = null;
   // Lateral, escanteio e tiro de meta não têm impedimento na cobrança; o tiro livre e a saída, sim.
@@ -146,7 +158,8 @@ const promoteRestartToLive = (state: MatchState): void => {
   taker.facing = { ...restart.facing };
   taker.kickCooldown = 0;
   const ball = state.ball;
-  ball.position = add(taker.position, scale(restart.facing, RESTART.takerStandOffset));
+  // A bola fica no ponto (não no pé): o cobrador pode estar fora do campo, e a golpeia dali.
+  ball.position = { ...restart.spot };
   ball.velocity = { x: 0, y: 0 };
   ball.height = 0;
   ball.verticalVelocity = 0;
@@ -165,6 +178,14 @@ const promoteRestartToLive = (state: MatchState): void => {
  * ponto E o preparo mínimo passou; se demorar demais (cobrador cercado), força a colocação e
  * cobra assim mesmo — a trava que garante que a jogada nunca trava.
  */
+/** Saída de bola: os dois times já ocupam cada um o seu campo? ("um time para cada lado".) */
+const teamsInOwnHalves = (state: MatchState): boolean => state.players.every((player) => {
+  if (player.profile.position === "goalkeeper") return true;
+  return attackDirection(player.team) > 0
+    ? player.position.x <= FIELD.width / 2 + player.radius
+    : player.position.x >= FIELD.width / 2 - player.radius;
+});
+
 export const advanceRestart = (state: MatchState, dt: number): void => {
   const restart = state.restart;
   if (!restart || restart.ballInPlay) return;
@@ -176,15 +197,18 @@ export const advanceRestart = (state: MatchState, dt: number): void => {
     promoteRestartToLive(state);
     return;
   }
-  const stand = takerStandFor(restart);
+  const stand = restart.takerStand;
   const arrived = distance(taker.position, stand) <= RESTART.arrivalRadius;
   const minElapsed = state.elapsed >= restart.startedAt + RESTART.minSetupSeconds;
   const timedOut = state.elapsed >= restart.startedAt + RESTART.maxSetupSeconds;
+  // A saída de bola só sai quando os dois times estão cada um no seu campo — o reposicionamento
+  // após o gol/intervalo tem que concluir. Os demais reinícios não esperam o campo todo.
+  const positioned = restart.kind !== "kickoff" || teamsInOwnHalves(state);
   if (timedOut) {
     taker.position = { ...stand };
     taker.velocity = { x: 0, y: 0 };
   }
-  if ((arrived && minElapsed) || timedOut) promoteRestartToLive(state);
+  if ((arrived && minElapsed && positioned) || timedOut) promoteRestartToLive(state);
 };
 
 /**
@@ -193,7 +217,7 @@ export const advanceRestart = (state: MatchState, dt: number): void => {
  */
 export const restartLayoutTarget = (player: PlayerRuntime, state: MatchState): Vec2 => {
   const restart = state.restart!;
-  if (player.profile.id === restart.takerId) return takerStandFor(restart);
+  if (player.profile.id === restart.takerId) return restart.takerStand;
   switch (restart.kind) {
     case "kickoff":
       return kickoffPosition(player, restart.team);
@@ -219,19 +243,33 @@ const goalKickTarget = (player: PlayerRuntime): Vec2 => {
   return cellAnchor(baseCell(player), player.team, placement);
 };
 
-/** Escanteio: o time que cobra ocupa a área; o que defende comprime junto do próprio gol. */
+/**
+ * Escanteio: o bloco dos DOIS times se concentra na área ofensiva (junto do gol atacado). O time
+ * que cobra sobe para a área (linha alta); o que defende comprime no próprio gol — ambos estreitos
+ * para adensar o miolo da área, em vez de esparramar pela largura.
+ */
 const cornerTarget = (player: PlayerRuntime, restartTeam: Team): Vec2 => {
   const attacking = player.team === restartTeam;
   const placement: TeamShapePlacement = attacking
-    ? { lineHeight: 50, width: 0.7, depth: 1, forwardLimit: RESTART.cornerAttackForwardLimit }
-    : { lineHeight: RESTART.cornerDefendLineHeight, width: 0.6, depth: 1, forwardLimit: 94 };
+    ? { lineHeight: 58, width: 0.5, depth: 1, forwardLimit: RESTART.cornerAttackForwardLimit }
+    : { lineHeight: RESTART.cornerDefendLineHeight, width: 0.5, depth: 1, forwardLimit: 94 };
   return cellAnchor(baseCell(player), player.team, placement);
 };
 
-/** Lateral: cada um na sua âncora, levemente puxado para a faixa lateral da cobrança. */
+/**
+ * Lateral com contexto: quanto mais avançada a cobrança (perto do gol adversário do time que
+ * cobra), mais **ofensivo** — o time que cobra sobe para a área; **construtivo** no próprio campo,
+ * mantém a forma mais atrás. Cada um ainda é puxado de leve para a faixa lateral da bola.
+ */
 const throwInTarget = (player: PlayerRuntime, restart: RestartState): Vec2 => {
-  const anchor = formationAnchor(player);
-  return { x: anchor.x, y: anchor.y + (restart.spot.y - anchor.y) * 0.35 };
+  const progress = attackingProgress(restart.team, restart.spot.x);
+  const attacking = player.team === restart.team;
+  const lineHeight = attacking
+    ? NEUTRAL_LINE_HEIGHT + progress * 22
+    : NEUTRAL_LINE_HEIGHT - (1 - progress) * 6;
+  const placement: TeamShapePlacement = { lineHeight, width: 0.72, depth: 1, forwardLimit: 94 };
+  const anchor = cellAnchor(baseCell(player), player.team, placement);
+  return { x: anchor.x, y: anchor.y + (restart.spot.y - anchor.y) * 0.25 };
 };
 
 // --- Regra 8 generalizada: as restrições do primeiro toque, agora sobre `state.restart`. ---

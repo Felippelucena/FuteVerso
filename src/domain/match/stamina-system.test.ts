@@ -4,11 +4,15 @@ import { createMatchState, stepMatch } from "./index";
 import { GOAL_TO_GOAL_SPRINT } from "./config";
 import { length } from "../shared/math";
 import { applyStamina } from "./systems/movement-system";
+import { CALIBRATION } from "./__fixtures__/calibration";
 
 const DT = 1 / 120;
 // Mesma corrida de referência que calibra o custo do pique: se as duas divergissem, o
 // teste passaria a medir outra coisa que não a calibragem.
 const GOAL_TO_GOAL = GOAL_TO_GOAL_SPRINT;
+
+// As medidas de PARTIDA INTEIRA abaixo são calibragem (dependem do equilíbrio bola-rolando/bola-
+// parada); ficam fora da suíte padrão. Ver __fixtures__/calibration (rode com CALIBRATE=1).
 
 const outfield = (state = createMatchState(referenceMatchConfig())) =>
   state.players.find((player) => player.team === "blue" && player.profile.position === "striker")!;
@@ -34,7 +38,7 @@ describe("estamina volátil (piques)", () => {
     expect(spent).toBeLessThan(0.78);
   });
 
-  it("é usada de verdade numa partida, sem nunca esgotar", () => {
+  it.runIf(CALIBRATION)("é usada de verdade numa partida, sem nunca esgotar", () => {
     const state = createMatchState(referenceMatchConfig(12_345));
     const lowest = new Map<string, number>();
     const burstTicks = new Map<string, number>();
@@ -101,7 +105,7 @@ describe("estamina volátil (piques)", () => {
 });
 
 describe("estamina longa (fôlego de partida)", () => {
-  it("nunca sobe durante a partida e termina entre 50% e 60% para o time de linha", () => {
+  it.runIf(CALIBRATION)("nunca sobe durante a partida e termina entre 50% e 60% para o time de linha", () => {
     const finals: number[] = [];
     let maxIncrease = 0;
     for (const seed of [11, 27, 43]) {

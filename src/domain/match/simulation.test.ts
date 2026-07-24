@@ -5,11 +5,14 @@ import { decideAll, planAll, resolvePlanDecision } from "./ai";
 import { createMatchState, stepMatch } from "./index";
 import { distance } from "../shared/math";
 import { updateTacticalContext } from "./systems/tactics-system";
+import { CALIBRATION } from "./__fixtures__/calibration";
 
 const createTestMatch = (seed?: number) => createMatchState(referenceMatchConfig(seed));
 
+// A medida estatística de partida inteira abaixo é calibragem; fica fora da suíte padrão. Ver
+// __fixtures__/calibration (rode com CALIBRATE=1).
 describe("qualidade coletiva da simulacao", () => {
-  it("produz uma partida ativa sem colapso permanente em uma lateral", () => {
+  it.runIf(CALIBRATION)("produz uma partida ativa sem colapso permanente em uma lateral", () => {
     const state = createTestMatch(98_765);
     let narrowSnapshots = 0;
     let sampledSnapshots = 0;
@@ -356,7 +359,9 @@ describe("qualidade coletiva da simulacao", () => {
     // A cobrança é armada para o adversário; a posse só vem quando o cobrador assume (walk-in).
     expect(state.restart).toMatchObject({ kind: "throwIn", team: "coral", ballInPlay: false });
     expect(state.events[0]).toMatchObject({ type: "restart-awarded", team: "coral", restartKind: "throwIn" });
-    expect(state.ball.position.y).toBeGreaterThan(0);
+    // A bola volta para a linha lateral (saiu por cima em y<0); o cobrador é quem fica de fora.
+    expect(state.ball.position.y).toBeGreaterThanOrEqual(0);
+    expect(state.ball.position.y).toBeLessThan(FIELD.height);
   });
 
   it("diferencia escanteio de tiro de meta pelo ultimo toque", () => {

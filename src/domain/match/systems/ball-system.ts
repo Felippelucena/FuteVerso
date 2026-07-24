@@ -353,7 +353,17 @@ export const updateControlledBall = (state: MatchState, decisions: Map<string, A
   if (!controller) return;
   const decision = decisions.get(controller.profile.id)!;
   const actionReady = prepareControlledBall(controller, decision, dt);
-  attachControlledBall(state, controller, dt);
+  const restart = state.restart;
+  if (restart && !restart.ballInPlay && restart.takerId === controller.profile.id) {
+    // Cobrança de bola parada: a bola fica no ponto (o cobrador pode estar fora do campo, no
+    // lateral/escanteio) e é golpeada dali, não conduzida no pé.
+    state.ball.position = { ...restart.spot };
+    state.ball.velocity = { x: 0, y: 0 };
+    state.ball.height = 0;
+    state.ball.verticalVelocity = 0;
+  } else {
+    attachControlledBall(state, controller, dt);
+  }
   const firstTouchSettled = state.elapsed - state.ball.controlStartedAt >= PHYSICS.firstTouchSettleTime;
   if (actionReady && firstTouchSettled) executeBallAction(state, controller, decision.ballAction);
 };

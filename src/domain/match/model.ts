@@ -639,6 +639,8 @@ export interface RestartState {
   takerId: string;
   /** Onde a bola é posta e fica parada até a cobrança. */
   spot: Vec2;
+  /** Onde o cobrador para (no lateral/escanteio, do lado de fora do campo). */
+  takerStand: Vec2;
   /** Direção para onde o cobrador olha; orienta a bola no pé quando a posse é entregue. */
   facing: Vec2;
   /** `state.elapsed` no início da sequência: base do tempo mínimo de preparo e da trava anti-deadlock. */

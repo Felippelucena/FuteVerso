@@ -122,8 +122,11 @@ export const updatePlayers = (state: MatchState, decisions: Map<string, AgentDec
 };
 
 export const clampPlayersToField = (state: MatchState): void => {
+  // A faixa de segurança (runOff) além das linhas é jogável: o cobrador do lateral e do escanteio
+  // fica do lado de fora. Em jogo corrido ninguém a alcança — os alvos vivem dentro do campo.
   for (const player of state.players) {
-    player.position.x = clamp(player.position.x, player.radius, FIELD.width - player.radius);
-    player.position.y = clamp(player.position.y, player.radius, FIELD.height - player.radius);
+    const low = -FIELD.runOff + player.radius;
+    player.position.x = clamp(player.position.x, low, FIELD.width + FIELD.runOff - player.radius);
+    player.position.y = clamp(player.position.y, low, FIELD.height + FIELD.runOff - player.radius);
   }
 };

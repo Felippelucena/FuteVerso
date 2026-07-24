@@ -37,8 +37,10 @@ export class GameRenderer {
     }
     this.width = displayWidth;
     this.height = displayHeight;
-    const worldWidth = FIELD.width + FIELD.goalDepth * 2 + 8;
-    const worldHeight = FIELD.height + 8;
+    // Inclui a faixa de segurança (runOff) além das linhas: é onde o cobrador do lateral/escanteio
+    // fica, do lado de fora, e precisa caber na tela.
+    const worldWidth = FIELD.width + Math.max(FIELD.goalDepth, FIELD.runOff) * 2 + 8;
+    const worldHeight = FIELD.height + FIELD.runOff * 2 + 8;
     this.scale = Math.min(this.width / worldWidth, this.height / worldHeight);
     this.offsetX = (this.width - FIELD.width * this.scale) / 2;
     this.offsetY = (this.height - FIELD.height * this.scale) / 2;
@@ -111,6 +113,16 @@ export class GameRenderer {
     const top = this.y(0);
     const width = FIELD.width * this.scale;
     const height = FIELD.height * this.scale;
+
+    // Faixa de segurança (grama fora das linhas), sob o campo: onde o lateral e o escanteio são
+    // cobrados, do lado de fora.
+    ctx.fillStyle = "#1e5236";
+    ctx.fillRect(
+      this.x(-FIELD.runOff),
+      this.y(-FIELD.runOff),
+      (FIELD.width + FIELD.runOff * 2) * this.scale,
+      (FIELD.height + FIELD.runOff * 2) * this.scale,
+    );
 
     ctx.save();
     ctx.beginPath();

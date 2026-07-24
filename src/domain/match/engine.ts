@@ -42,7 +42,9 @@ export function stepMatch(state: MatchState, dt: number): void {
   updateGoalkeeperAnticipation(state, dt);
   const decisions = updateCognition(state);
   updatePlayers(state, decisions, dt);
-  resolvePlayerCollisions(state);
+  // Na bola parada os jogadores atravessam uns aos outros para se recolocar — senão um jogador no
+  // campo errado (o atacante largado após um gol) fica preso na linha adversária e nunca volta.
+  if (!(state.restart && !state.restart.ballInPlay)) resolvePlayerCollisions(state);
   clampPlayersToField(state);
   // Depois do movimento (precisa da posição final do cobrador) e antes do controle da bola (para
   // entregar a posse no mesmo tick em que o cobrador chega ao ponto).

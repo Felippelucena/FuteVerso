@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { smallSidedMatchConfig, startOpenPlay } from "./__fixtures__/reference-match";
 import { FIELD, FIXED_STEP, RESTART } from "./config";
 import { createMatchState, stepMatch } from "./index";
+import { beginRestart } from "./runtime/restart";
 import type { MatchState, Team } from "./model";
 
 const createState = (seed = 7) => createMatchState(smallSidedMatchConfig(seed));
@@ -94,6 +95,37 @@ describe("bola parada — cobrança caminhada", () => {
 
     expect(state.offsideExemptRestart).toBe(false);
     expect(state.offsideWatch).toBeNull();
+  });
+
+  it("a saída de bola só entra em jogo depois de os dois times voltarem ao próprio campo", () => {
+    const state = createState();
+    startOpenPlay(state);
+    // Um atacante azul largado no campo adversário quando a saída é armada (como logo após um gol).
+    const intruder = state.players.find(
+      (player) => player.team === "blue" && player.profile.position !== "goalkeeper",
+    )!;
+    intruder.position = { x: FIELD.width * 0.7, y: FIELD.height / 2 };
+    beginRestart(state, "kickoff", "coral", state.ball.position);
+
+    const inOwnHalves = (s: MatchState): boolean => s.players.every((player) =>
+      player.profile.position === "goalkeeper"
+      || (player.team === "blue"
+        ? player.position.x <= FIELD.width / 2 + player.radius
+        : player.position.x >= FIELD.width / 2 - player.radius));
+
+    let ownHalvesAt = -1;
+    let liveAt = -1;
+    for (let tick = 1; tick <= RESTART.maxSetupSeconds * 120 + 120 && liveAt < 0; tick += 1) {
+      stepMatch(state, FIXED_STEP);
+      if (ownHalvesAt < 0 && inOwnHalves(state)) ownHalvesAt = tick;
+      if (state.ball.controllerId !== null) liveAt = tick;
+    }
+    expect(liveAt).toBeGreaterThan(0);
+    expect(ownHalvesAt).toBeGreaterThan(0);
+    // Não entrou em jogo antes de os dois times estarem cada um no seu campo.
+    expect(liveAt).toBeGreaterThanOrEqual(ownHalvesAt);
+    // E promoveu pela readiness (não pela trava de tempo): a espera foi do reposicionamento.
+    expect(liveAt).toBeLessThan(RESTART.maxSetupSeconds * 120);
   });
 
   it("cobra dentro do limite mesmo com o cobrador cercado longe (trava anti-deadlock)", () => {

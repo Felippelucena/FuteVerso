@@ -6,7 +6,7 @@ import {
   kickoffTakerPosition,
 } from "./runtime/formation-geometry";
 import { kickoffTeamOfHalf } from "./runtime/kickoff";
-import { ANALYTICS_GRID, DEFAULT_MATCH_SEED, FIELD } from "./config";
+import { ANALYTICS_GRID, DEFAULT_MATCH_SEED, FIELD, RESTART } from "./config";
 import type { MatchConfig, MatchParticipant, MatchState, PlayerRuntime } from "./model";
 import { createPhaseSeconds, createTacticalState } from "./systems/tactics-system";
 
@@ -108,7 +108,9 @@ export function createMatchState(config: MatchConfig): MatchState {
     restart: taker
       ? {
         kind: "kickoff", team: openingTeam, takerId: taker.profile.id,
-        spot: { ...kickoffBall }, facing: { x: openingTeam === "blue" ? 1 : -1, y: 0 },
+        spot: { ...kickoffBall },
+        takerStand: { x: kickoffBall.x - (openingTeam === "blue" ? 1 : -1) * RESTART.takerStandOffset, y: kickoffBall.y },
+        facing: { x: openingTeam === "blue" ? 1 : -1, y: 0 },
         startedAt: 0, ballInPlay: false,
       }
       : null,
