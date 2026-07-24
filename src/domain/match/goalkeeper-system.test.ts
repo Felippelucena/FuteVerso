@@ -70,6 +70,12 @@ const fireShotAtGoal = (state: MatchState, aimY: number, speed: number, height: 
   const keeper = goalkeeper(state);
   keeper.position = { x: 8, y: FIELD.height / 2 };
   keeper.velocity = { x: 0, y: 0 };
+  // Ninguem no caminho: o cenario mede o goleiro, nao o zagueiro que corta a bola antes dele.
+  for (const player of state.players) {
+    if (player === keeper) continue;
+    player.position = { x: FIELD.width - 6, y: 6 };
+    player.kickCooldown = 9;
+  }
   state.ball.position = { x: range, y: FIELD.height / 2 };
   state.ball.height = height;
   state.ball.verticalVelocity = 0;
@@ -129,8 +135,10 @@ describe("alcance fisico do goleiro", () => {
     const state = createState();
     const keeper = goalkeeper(state);
     expect(goalkeeperReachRadius(keeper)).toBeCloseTo(keeper.radius * 2, 5);
-    // Um goleiro parado no meio nao pode cobrir o gol inteiro so com alcance.
-    expect(goalkeeperReachRadius(keeper)).toBeLessThan((FIELD.goalBottom - FIELD.goalTop) / 4);
+    // Um goleiro parado no meio nao pode cobrir o gol inteiro so com alcance: com o gol nas
+    // medidas oficiais e os corpos desenhados maiores que gente de verdade, o que se exige e
+    // que sobre pelo menos um terco da boca para ele ter de ir buscar com o corpo.
+    expect(goalkeeperReachRadius(keeper) * 2).toBeLessThan((FIELD.goalBottom - FIELD.goalTop) * 0.66);
   });
 });
 
@@ -183,8 +191,11 @@ describe("decisao de saltar", () => {
 
   it("mergulha em desespero e nao alcanca um chute impossivel", () => {
     const state = createState();
-    // Chute rasteiro no canto, disparado de perto: nao ha tempo de corpo para chegar la.
+    // Chute rasteiro no canto, disparado de perto: nao ha tempo de corpo para chegar la. Com o
+    // gol nas medidas de um campo de verdade, o chute impossivel e o que sai no canto oposto ao
+    // pe em que o goleiro esta — um canto qualquer, saindo do meio, ele alcanca.
     const keeper = fireShotAtGoal(state, FIELD.goalTop + 1.5, 104, 0.4, 20);
+    keeper.position.y = FIELD.goalBottom - 1.5;
     makeElite(keeper);
 
     const trace = traceSave(state, keeper, 120);

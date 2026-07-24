@@ -7,6 +7,10 @@ import type { MatchState, PlayerRuntime } from "./model";
 
 const createTestMatch = (seed = 5) => createMatchState(smallSidedMatchConfig(seed));
 
+// Distância em que os dois corpos engajam o contato (raio + raio + a margem de ombro do motor),
+// para o cenário acompanhar o tamanho dos jogadores em vez de fixar um número solto.
+const contactGap = (first: PlayerRuntime, second: PlayerRuntime): number => first.radius + second.radius + 0.5;
+
 // Afasta os não-participantes do lance (e deixa espaço atrás do defensor livre).
 const park = (state: MatchState, keep: PlayerRuntime[]): void => {
   state.players.forEach((player) => {
@@ -27,7 +31,7 @@ describe("resolveContact — desfechos de contato (Item 2)", () => {
     holder.velocity = { x: 0, y: 0 };
     holder.profile.skills.control = 1;
     holder.profile.skills.burst = 1;
-    challenger.position = { x: holder.position.x + 4, y: holder.position.y };
+    challenger.position = { x: holder.position.x + contactGap(holder, challenger), y: holder.position.y };
     challenger.velocity = { x: -16, y: 0 }; // pique em cima do portador
     challenger.profile.skills.defending = 100;
     challenger.profile.skills.acceleration = 100;
@@ -56,7 +60,7 @@ describe("resolveContact — desfechos de contato (Item 2)", () => {
     holder.position = { x: FIELD.width / 2, y: FIELD.height / 2 };
     holder.profile.skills.control = 1;
     holder.profile.skills.burst = 1;
-    challenger.position = { x: holder.position.x + 4, y: holder.position.y };
+    challenger.position = { x: holder.position.x + contactGap(holder, challenger), y: holder.position.y };
     challenger.velocity = { x: 0, y: 0 }; // parado → sem pique → não é roubo limpo
     challenger.profile.skills.defending = 100;
     challenger.profile.skills.acceleration = 100;

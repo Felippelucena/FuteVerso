@@ -36,6 +36,25 @@ describe("estado inicial e escalações", () => {
     expect(FIELD.playerRadius * 2).toBeLessThan(goalOpening);
   });
 
+  it("respeita a regra da saída de bola: cada um no seu campo, círculo central livre", () => {
+    const state = createTestMatch();
+    const insideCircle = state.players.filter((player) =>
+      Math.hypot(player.position.x - FIELD.width / 2, player.position.y - FIELD.height / 2)
+      < FIELD.centerCircleRadius + player.radius);
+
+    for (const player of state.players) {
+      const ownHalfDepth = player.team === "blue" ? player.position.x : FIELD.width - player.position.x;
+      expect(ownHalfDepth).toBeLessThanOrEqual(FIELD.width / 2);
+    }
+    // Só quem cobra entra no círculo, e ele é do time que sai jogando.
+    expect(insideCircle).toHaveLength(1);
+    expect(insideCircle[0].team).toBe("blue");
+    // A âncora da formação segue livre para colocar o atacante à frente: o recuo é só na saída.
+    const striker = state.players.find((player) => player.team === "blue" && player.profile.position === "striker")!;
+    expect(striker.homeAnchor.x).toBeGreaterThan(FIELD.width / 2);
+    expect(striker.position.x).toBeLessThan(FIELD.width / 2);
+  });
+
   it("cria onze titulares com um goleiro por time", () => {
     const state = createTestMatch();
     expect(state.players).toHaveLength(TEAM_SIZE * 2);

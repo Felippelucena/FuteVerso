@@ -38,8 +38,10 @@ describe("movimento dos jogadores", () => {
     state.ball.dribbleStartedAt = state.elapsed;
     attacker.position = { x: state.ball.position.x - 5, y: state.ball.position.y };
     defender.position = { x: state.ball.position.x - 24, y: state.ball.position.y };
+    // Todo mundo fora do lance: só o portador e o defensor disputam o toque longo. Inclusive os
+    // companheiros do portador, que na saída de bola nascem colados na bola.
     state.players.forEach((player, index) => {
-      if (player.team === "coral" && player !== defender) player.position = { x: FIELD.width - 8, y: 8 + index * 14 };
+      if (player !== attacker && player !== defender) player.position = { x: FIELD.width - 8, y: 8 + index * 14 };
     });
 
     const decision = decideAll(state).get(defender.profile.id)!;
@@ -59,6 +61,13 @@ describe("movimento dos jogadores", () => {
     const defender = state.players.find((player) => player.team === "blue" && player.profile.position === "centerBack")!;
     goalkeeper.position = { x: FIELD.width / 2 - 2, y: FIELD.height / 2 };
     defender.position = { x: FIELD.width / 2 + 11, y: FIELD.height / 2 };
+    // O resto do time azul recolhido: quem decide a pressão é a distância à bola, e o teste é
+    // sobre o goleiro não ser puxado, não sobre quem entre os de linha está mais perto.
+    for (const player of state.players) {
+      if (player.team === "blue" && player !== goalkeeper && player !== defender) {
+        player.position = { x: FIELD.width * 0.2, y: player.position.y };
+      }
+    }
     const decisions = decideAll(state);
     expect(decisions.get(goalkeeper.profile.id)?.intent).toBe("goalkeeping");
     expect(decisions.get(defender.profile.id)?.intent).toBe("pressing");

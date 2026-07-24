@@ -1,4 +1,10 @@
 import { formationAnchor } from "./ai";
+import {
+  kickoffBallPosition,
+  kickoffPosition,
+  kickoffTaker,
+  kickoffTakerPosition,
+} from "./runtime/formation-geometry";
 import { ANALYTICS_GRID, DEFAULT_MATCH_SEED, FIELD } from "./config";
 import type { MatchConfig, MatchParticipant, MatchState, PlayerRuntime } from "./model";
 import { createPhaseSeconds, createTacticalState } from "./systems/tactics-system";
@@ -69,16 +75,24 @@ const makePlayer = (participant: MatchParticipant): PlayerRuntime => {
   return player;
 };
 
+/** Quem cobra a saída no apito inicial. Depois de cada gol a bola sai com quem levou. */
+const OPENING_KICKOFF_TEAM = "blue";
+
 export function createMatchState(config: MatchConfig): MatchState {
   const players = config.participants.map(makePlayer);
   for (const player of players) {
     player.homeAnchor = formationAnchor(player);
-    player.position = { ...player.homeAnchor };
+    // A âncora da formação é a referência de recomposição, não a posição de saída: na saída
+    // ninguém pode estar no campo adversário.
+    player.position = kickoffPosition(player, OPENING_KICKOFF_TEAM);
   }
+  const kickoffBall = kickoffBallPosition(OPENING_KICKOFF_TEAM);
+  const taker = kickoffTaker(players, OPENING_KICKOFF_TEAM);
+  if (taker) taker.position = kickoffTakerPosition(taker, kickoffBall);
   return {
     players,
     ball: {
-      position: { x: FIELD.width / 2, y: FIELD.height / 2 }, velocity: { x: 0, y: 0 },
+      position: { ...kickoffBall }, velocity: { x: 0, y: 0 },
       height: 0, verticalVelocity: 0, radius: FIELD.ballRadius, lastTouch: null,
       lastTouchPlayerId: null, controllerId: null, lastAction: null, lastShotOnTarget: false,
       dribbleOwnerId: null, dribbleTarget: null, dribbleStyle: null, dribbleTouchRange: null,

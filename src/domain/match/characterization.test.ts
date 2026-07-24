@@ -64,13 +64,12 @@ describe("caracterizacao deterministica", () => {
       short: hashFingerprint(actual.short),
       long: hashFingerprint(actual.long),
     };
-    // Re-baseline: a formação deixou de ser uma tabela fixa de profundidade por coluna e passou
-    // a separar **forma** (a distância entre as linhas, desenhada na escalação) de **colocação**
-    // (onde essa forma está agora — altura de linha, largura e compressão, tudo saindo da
-    // posição da bola a cada tick). Junto vieram o limite de impedimento posicional, a
-    // recomposição em disparada para qualquer jogador fora de forma e a cobertura que aceita
-    // ficar à frente da bola. É outra partida por inteiro, de propósito.
-    expect(hashes).toEqual({ short: "b2dc391b", long: "f0f5e0b3" });
+    // Re-baseline: o gramado passou a ter as medidas oficiais convertidas por um fator único
+    // (campo, gol, áreas, marca do pênalti e círculo central), corpo e bola encolheram para a
+    // mesma escala métrica, e a saída de bola deixou de nascer com os atacantes na metade
+    // adversária — agora o time é comprimido para o próprio campo e um jogador cobra a saída.
+    // Muda geometria, colisão e a primeira jogada: é outra partida por inteiro, de propósito.
+    expect(hashes).toEqual({ short: "47cb83f6", long: "81ad5355" });
     // Timeout explícito: com 22 jogadores em campo a simulação custa ~2,4× o que custava no
     // 5x5, e o padrão de 5s estourava quando a suíte roda em paralelo.
   }, 60_000);

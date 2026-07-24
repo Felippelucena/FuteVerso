@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { smallSidedMatchConfig } from "./__fixtures__/reference-match";
 import { decideAll } from "./ai";
-import { FIELD, PHYSICS } from "./config";
+import { DUEL, FIELD, PHYSICS } from "./config";
 import { createMatchState, stepMatch } from "./index";
 
 const createTestMatch = (seed?: number) => createMatchState(smallSidedMatchConfig(seed));
@@ -31,12 +31,13 @@ describe("posse e domínio", () => {
     const holder = state.players.find((player) => player.team === "blue" && player.profile.position === "centerMid")!;
     const challenger = state.players.find((player) => player.team === "coral" && player.profile.position === "centerBack")!;
     holder.position = { x: FIELD.width / 2, y: FIELD.height / 2 };
-    challenger.position = { x: holder.position.x + 4.8, y: holder.position.y };
+    // Corpo a corpo: os dois dentro da janela de contato (raio + raio + margem de ombro).
+    challenger.position = { x: holder.position.x + holder.radius + challenger.radius + 0.5, y: holder.position.y };
     holder.profile.skills.control = 1;
     holder.profile.skills.burst = 1;
     challenger.profile.skills.defending = 100;
     challenger.profile.skills.acceleration = 100;
-    state.ball.position = { x: holder.position.x + 3.4, y: holder.position.y };
+    state.ball.position = { x: holder.position.x + holder.radius + FIELD.ballRadius, y: holder.position.y };
     state.ball.controllerId = holder.profile.id;
     state.ball.lastTouch = holder.team;
     state.ball.lastTouchPlayerId = holder.profile.id;
@@ -129,7 +130,8 @@ describe("posse e domínio", () => {
     attacker.memory.policy.dribble = 0.9;
     attacker.memory.policy.pass = 0.28;
     attacker.memory.policy.shoot = 0.28;
-    defender.position = { x: attacker.position.x + 5, y: attacker.position.y };
+    // Dentro da janela em que a finta engaja: distância < raio + raio + feintEngageMargin.
+    defender.position = { x: attacker.position.x + attacker.radius + defender.radius + DUEL.feintEngageMargin * 0.6, y: attacker.position.y };
     defender.velocity = { x: -8, y: 0 };
     state.players.forEach((player, index) => {
       if (player.team === attacker.team && player !== attacker) player.position = { x: 10 + index * 6, y: 12 + index * 8 };

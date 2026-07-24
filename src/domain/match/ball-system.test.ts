@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { smallSidedMatchConfig } from "./__fixtures__/reference-match";
 import { PASS_VARIANTS, choosePass, decideAll } from "./ai";
-import { FIELD, PHYSICS } from "./config";
+import { DUEL, FIELD, PHYSICS } from "./config";
 import { createMatchState, stepMatch } from "./index";
 import { executeBallAction } from "./systems/ball-system";
 import { distance, length } from "../shared/math";
@@ -209,7 +209,8 @@ describe("ações e física da bola", () => {
     attacker.facing = { x: 1, y: 0 };
     attacker.profile.skills.control = 100;
     attacker.profile.skills.burst = 100;
-    defender.position = { x: attacker.position.x + 5, y: attacker.position.y };
+    // Dentro da janela em que a finta engaja: distância < raio + raio + feintEngageMargin.
+    defender.position = { x: attacker.position.x + attacker.radius + defender.radius + DUEL.feintEngageMargin * 0.6, y: attacker.position.y };
     defender.velocity = { x: -2, y: 0 };
     defender.profile.skills.defending = 1;
     defender.profile.skills.acceleration = 1;

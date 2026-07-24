@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { referenceMatchConfig } from "./__fixtures__/reference-match";
-import { FIXED_STEP } from "./config";
+import { FIELD, FIXED_STEP } from "./config";
 import { createMatchState, stepMatch } from "./index";
 
 const createState = () => createMatchState(referenceMatchConfig(2026));
@@ -36,6 +36,8 @@ describe("ciclo de vida da partida", () => {
     const state = createState();
     state.kickoffTimer = 0;
     state.elapsed = 4;
+    // Longe de todo mundo: se alguém alcança a bola, o passe se resolve em vez de expirar.
+    state.ball.position = { x: FIELD.width / 2, y: 10 };
     const passer = state.players.find((player) => player.profile.id === "nilo-mid")!;
     state.pendingPass = {
       passerId: passer.profile.id,

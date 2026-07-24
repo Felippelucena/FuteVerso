@@ -126,33 +126,64 @@ export class GameRenderer {
     ctx.lineWidth = Math.max(1.5, this.scale * 0.18);
     ctx.strokeRect(left, top, width, height);
 
+    const markFill = "rgba(235, 247, 238, 0.9)";
+    const spotRadius = Math.max(1.2, this.scale * 0.34);
+    const centerX = this.x(FIELD.width / 2);
+    const centerY = this.y(FIELD.height / 2);
+
     ctx.beginPath();
-    ctx.moveTo(this.x(FIELD.width / 2), top);
-    ctx.lineTo(this.x(FIELD.width / 2), top + height);
+    ctx.moveTo(centerX, top);
+    ctx.lineTo(centerX, top + height);
     ctx.stroke();
     ctx.beginPath();
-    ctx.arc(this.x(FIELD.width / 2), this.y(FIELD.height / 2), this.scale * 9, 0, Math.PI * 2);
+    ctx.arc(centerX, centerY, FIELD.centerCircleRadius * this.scale, 0, Math.PI * 2);
     ctx.stroke();
-    ctx.fillStyle = "rgba(235, 247, 238, 0.9)";
+    ctx.fillStyle = markFill;
     ctx.beginPath();
-    ctx.arc(this.x(FIELD.width / 2), this.y(FIELD.height / 2), this.scale * 0.38, 0, Math.PI * 2);
+    ctx.arc(centerX, centerY, spotRadius, 0, Math.PI * 2);
     ctx.fill();
 
     for (const side of [0, FIELD.width]) {
       const direction = side === 0 ? 1 : -1;
-      const penaltyTop = (FIELD.height - FIELD.penaltyWidth) / 2;
-      ctx.strokeRect(
-        this.x(side + (direction < 0 ? -FIELD.penaltyDepth : 0)),
-        this.y(penaltyTop),
-        FIELD.penaltyDepth * this.scale,
-        FIELD.penaltyWidth * this.scale,
-      );
-      ctx.strokeRect(
-        this.x(side + (direction < 0 ? -FIELD.goalAreaDepth : 0)),
-        this.y(FIELD.goalTop),
-        FIELD.goalAreaDepth * this.scale,
-        (FIELD.goalBottom - FIELD.goalTop) * this.scale,
-      );
+      const box = (depth: number, boxWidth: number) => {
+        ctx.strokeRect(
+          this.x(direction > 0 ? side : side - depth),
+          this.y((FIELD.height - boxWidth) / 2),
+          depth * this.scale,
+          boxWidth * this.scale,
+        );
+      };
+      box(FIELD.penaltyDepth, FIELD.penaltyWidth);
+      box(FIELD.goalAreaDepth, FIELD.goalAreaWidth);
+
+      // Marca do pênalti e a meia-lua: o arco é o pedaço do círculo de 9,15 m que sobra fora
+      // da grande área, por isso o ângulo sai da distância entre a marca e a linha da área.
+      const spotX = side + direction * FIELD.penaltySpotDistance;
+      ctx.fillStyle = markFill;
+      ctx.beginPath();
+      ctx.arc(this.x(spotX), centerY, spotRadius, 0, Math.PI * 2);
+      ctx.fill();
+
+      const arcReach = FIELD.penaltyDepth - FIELD.penaltySpotDistance;
+      if (arcReach < FIELD.centerCircleRadius) {
+        const half = Math.acos(arcReach / FIELD.centerCircleRadius);
+        const axis = direction > 0 ? 0 : Math.PI;
+        ctx.beginPath();
+        ctx.arc(this.x(spotX), centerY, FIELD.centerCircleRadius * this.scale, axis - half, axis + half);
+        ctx.stroke();
+      }
+    }
+
+    // Arcos de escanteio: um quarto de círculo em cada quina, virado para dentro.
+    for (const cornerX of [0, FIELD.width]) {
+      for (const cornerY of [0, FIELD.height]) {
+        const towardsCenterX = cornerX === 0 ? 1 : -1;
+        const towardsCenterY = cornerY === 0 ? 1 : -1;
+        const start = towardsCenterX > 0 ? (towardsCenterY > 0 ? 0 : -Math.PI / 2) : (towardsCenterY > 0 ? Math.PI / 2 : Math.PI);
+        ctx.beginPath();
+        ctx.arc(this.x(cornerX), this.y(cornerY), FIELD.cornerArcRadius * this.scale, start, start + Math.PI / 2);
+        ctx.stroke();
+      }
     }
   }
 
@@ -168,13 +199,15 @@ export class GameRenderer {
       const back = edge + side * FIELD.goalDepth * this.scale;
       ctx.strokeRect(Math.min(edge, back), top, Math.abs(back - edge), height);
       ctx.globalAlpha = 0.35;
-      for (let y = FIELD.goalTop + 5.4; y < FIELD.goalBottom; y += 5.4) {
+      // Malha da rede com passo de ~1,2 m, para a rede acompanhar o tamanho real do gol.
+      const mesh = FIELD.unitsPerMeter * 1.2;
+      for (let y = FIELD.goalTop + mesh; y < FIELD.goalBottom - mesh * 0.2; y += mesh) {
         ctx.beginPath();
         ctx.moveTo(edge, this.y(y));
         ctx.lineTo(back, this.y(y));
         ctx.stroke();
       }
-      for (let depth = 2.7; depth < FIELD.goalDepth; depth += 2.7) {
+      for (let depth = mesh; depth < FIELD.goalDepth; depth += mesh) {
         const netX = edge + side * depth * this.scale;
         ctx.beginPath();
         ctx.moveTo(netX, top);

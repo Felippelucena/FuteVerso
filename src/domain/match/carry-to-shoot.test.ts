@@ -17,7 +17,9 @@ describe("lookahead condução→finalização (Item 3)", () => {
     shooter.profile.skills.finishing = 80;
     shooter.position = { x: FIELD.width * 0.8, y: FIELD.height / 2 };
     shooter.facing = { x: 1, y: 0 };
-    blocker.position = { x: FIELD.width * 0.9, y: FIELD.height * 0.451 }; // na linha do chute atual
+    // Na linha do chute atual: metade do caminho entre o chutador e o poste em que ele mira.
+    const nearPost = { x: FIELD.width, y: FIELD.goalTop + 2.2 };
+    blocker.position = { x: (shooter.position.x + nearPost.x) / 2, y: (shooter.position.y + nearPost.y) / 2 };
     blocker.velocity = { x: 0, y: 0 };
     keeper.position = { x: FIELD.width, y: FIELD.height / 2 };
     const opponents = state.players.filter((p) => p.team === "coral");

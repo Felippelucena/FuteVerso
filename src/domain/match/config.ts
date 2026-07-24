@@ -1,22 +1,52 @@
 // Deterministic match rules. Keep these values independent from presentation settings.
-const FIELD_SCALE = 2.5;
-const GOAL_SCALE = 1.4;
-const fieldWidth = 100 * FIELD_SCALE;
-const fieldHeight = 60 * FIELD_SCALE;
-const goalOpening = 24 * GOAL_SCALE;
+
+/**
+ * O gramado tem as medidas oficiais de um campo internacional (IFAB/FIFA), convertidas por um
+ * único fator. O gramado fica dentro da faixa que a Regra 1 permite para partida internacional
+ * (100–110 m de comprimento por 64–75 m de largura); as marcações são as fixas do regulamento:
+ * pequena área de 18,32 × 5,5 m, grande área de 40,32 × 16,5 m, marca do pênalti a 11 m e
+ * círculo central de 9,15 m de raio.
+ *
+ * Derivar tudo de `meters` é o que garante que o desenho na tela tenha as proporções de um
+ * campo de verdade. Antes cada medida tinha sua própria escala inventada e o resultado não
+ * fechava: o gol saía com a largura da pequena área e o círculo central cabia dentro dela.
+ *
+ * A única medida que foge do oficial é a boca do gol, mais larga que os 7,32 m: os corpos em
+ * campo são desenhados bem maiores que uma pessoa real, então um gol na medida exata seria
+ * coberto quase inteiro pelo goleiro parado. É knob de jogabilidade, não erro de escala.
+ *
+ * O eixo vertical (altura da bola, alcance do goleiro) NÃO usa esta escala — ele tem a própria
+ * calibragem, herdada e presa a `goalHeight`. Mexer nele é outra conversa.
+ */
+const UNITS_PER_METER = 2.4;
+const meters = (value: number): number => value * UNITS_PER_METER;
+
+const fieldWidth = meters(105);
+const fieldHeight = meters(64);
+const goalOpening = meters(8.32);
 
 export const FIELD = {
+  unitsPerMeter: UNITS_PER_METER,
   width: fieldWidth,
   height: fieldHeight,
   goalTop: (fieldHeight - goalOpening) / 2,
   goalBottom: (fieldHeight + goalOpening) / 2,
-  goalDepth: 5 * GOAL_SCALE,
+  /** Profundidade da rede atrás da linha do gol. */
+  goalDepth: meters(2),
   goalHeight: 4.8,
-  penaltyDepth: 16 * GOAL_SCALE,
-  penaltyWidth: 34 * GOAL_SCALE,
-  goalAreaDepth: 7 * GOAL_SCALE,
-  playerRadius: 2.25,
-  ballRadius: 1.15,
+  penaltyDepth: meters(16.5),
+  penaltyWidth: meters(40.32),
+  goalAreaDepth: meters(5.5),
+  goalAreaWidth: meters(18.32),
+  penaltySpotDistance: meters(11),
+  /** Mesmo raio do círculo central e da meia-lua da grande área. */
+  centerCircleRadius: meters(9.15),
+  cornerArcRadius: meters(1),
+  // Corpo e bola ficam ~2× maiores que na vida real (1,25 m de largura, bola de 42 cm) para
+  // seguirem legíveis no zoom em que o campo inteiro cabe na tela. Os dois crescem junto, então
+  // a bola continua um terço do jogador, como no futebol de verdade.
+  playerRadius: 1.5,
+  ballRadius: 0.5,
 } as const;
 
 export const PHYSICS = {
@@ -90,7 +120,7 @@ export const STAMINA = {
   // ATENÇÃO: ao contrário da volátil, a longa ainda é custo fixo por unidade percorrida —
   // este número é o knob manual que absorve mudanças de tamanho do campo. Redimensionar o
   // gramado exige reajustá-lo até a média de fim de jogo voltar à faixa de 50% a 60%.
-  longDrainScale: 0.215,
+  longDrainScale: 0.193,
   // --- Interação longa → volátil (penalidade modesta) ---
   // Custo da volátil ×(1 + (1-longa)·slope); recarga ×(1 - (1-longa)·slope).
   fatigueVolatileCostSlope: 0.5,
@@ -258,9 +288,11 @@ export const DUEL = {
   knockPastMinSpace: 0.045, // espaço livre mínimo atrás (fração de width) para valer a pena
   knockPastSpeed: 26,
   knockPastLift: 7, // apex ≈ v²/(2·gravity) ≈ 0,85 < 1,8 → bola segue jogável
-  // Finta/contato só engajam quando os raios dos jogadores quase colidem: distância <
-  // (raio + raio + isto). Antes a finta disparava a ~18u (espaço vazio); agora ~6,5u.
-  feintEngageMargin: 2,
+  // Finta/contato só engajam quando os corpos estão a um passo um do outro: distância <
+  // (raio + raio + isto). Antes a finta disparava a ~18u (espaço vazio); hoje ~6,5u, que é o
+  // 1x1 de verdade. É margem, não raio: quando os corpos encolheram para a escala métrica ela
+  // subiu de 2 para 3,5 justamente para a janela do drible continuar a mesma em metros.
+  feintEngageMargin: 3.5,
 } as const;
 
 // Lookahead de condução→finalização: valoriza conduzir para abrir um chute melhor.

@@ -165,8 +165,70 @@ export const baseCell = (player: PlayerRuntime): AssignmentZone => findSlot(play
 export const formationAnchor = (player: PlayerRuntime): Vec2 => {
   const anchor = cellAnchor(baseCell(player), player.team);
   // O goleiro não desloca por função: a linha do gol é a linha do gol.
-  const roleAdvance = player.profile.position === "goalkeeper"
-    ? 0
-    : fieldX(player.profile.role === "finisher" ? 4 : player.profile.role === "defender" ? -3 : 0);
+  const roleAdvance = fieldX(roleAdvancePercent(player));
   return { x: anchor.x + attackDirection(player.team) * roleAdvance, y: anchor.y };
+};
+
+/** Avanço que a função do jogador aplica sobre a célula-base, em percentual da largura. */
+const roleAdvancePercent = (player: PlayerRuntime): number =>
+  player.profile.position === "goalkeeper"
+    ? 0
+    : player.profile.role === "finisher" ? 4 : player.profile.role === "defender" ? -3 : 0;
+
+/** Faixa de profundidade que a formação neutra ocupa: da zaga (recuada) ao centroavante. */
+const OUTFIELD_BACK_DEPTH = NEUTRAL_LINE_HEIGHT - 3;
+const OUTFIELD_FRONT_DEPTH = NEUTRAL_LINE_HEIGHT + SHAPE_SPAN + 4;
+
+/**
+ * Colocação de saída de bola. Vale a regra do jogo de verdade: na saída todo mundo está no
+ * próprio campo e só quem cobra entra no círculo central — antes os atacantes nasciam a 57% do
+ * campo, ou seja, já dentro da metade adversária.
+ *
+ * A forma do time é preservada: em vez de empilhar os avançados na linha do meio, as linhas
+ * são comprimidas em direção ao próprio gol até a mais adiantada caber no limite. A zaga, que
+ * já está atrás do limite, não se mexe.
+ */
+export const kickoffPosition = (player: PlayerRuntime, kickoffTeam: Team): Vec2 => {
+  const anchor = formationAnchor(player);
+  if (player.profile.position === "goalkeeper") return anchor;
+  const direction = attackDirection(player.team);
+  const depth = direction > 0 ? anchor.x : FIELD.width - anchor.x;
+  // Quem cobra pode encostar na linha do meio; quem espera fica fora do círculo central.
+  const limit = FIELD.width / 2 - player.radius
+    - (player.team === kickoffTeam ? 0 : FIELD.centerCircleRadius);
+  const back = fieldX(OUTFIELD_BACK_DEPTH);
+  const front = fieldX(OUTFIELD_FRONT_DEPTH);
+  const squeezed = front <= limit || depth <= back
+    ? depth
+    : back + (depth - back) * (limit - back) / (front - back);
+  const finalDepth = clamp(squeezed, player.radius, limit);
+  return { x: direction > 0 ? finalDepth : FIELD.width - finalDepth, y: anchor.y };
+};
+
+/** A bola da saída descansa um passo dentro do campo de quem cobra. */
+export const kickoffBallPosition = (kickoffTeam: Team, lane: number = FIELD.height / 2): Vec2 => ({
+  x: FIELD.width / 2 - attackDirection(kickoffTeam) * 1.5,
+  y: lane,
+});
+
+/** Quem cobra fica atrás da bola, do lado do próprio campo, pronto para o primeiro toque. */
+export const kickoffTakerPosition = (taker: PlayerRuntime, ball: Vec2): Vec2 => ({
+  x: ball.x - attackDirection(taker.team) * (taker.radius + FIELD.ballRadius + 0.4),
+  y: ball.y,
+});
+
+/** Quem cobra a saída: o jogador de linha mais avançado da formação, o mais central entre eles. */
+export const kickoffTaker = (players: PlayerRuntime[], kickoffTeam: Team): PlayerRuntime | null => {
+  const direction = attackDirection(kickoffTeam);
+  const depth = (player: PlayerRuntime): number => {
+    const anchor = formationAnchor(player);
+    return direction > 0 ? anchor.x : FIELD.width - anchor.x;
+  };
+  const lane = (player: PlayerRuntime): number => Math.abs(formationAnchor(player).y - FIELD.height / 2);
+  return players
+    .filter((player) => player.team === kickoffTeam && player.profile.position !== "goalkeeper")
+    .sort((first, second) =>
+      depth(second) - depth(first)
+      || lane(first) - lane(second)
+      || first.profile.id.localeCompare(second.profile.id))[0] ?? null;
 };

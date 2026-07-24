@@ -8,6 +8,12 @@ import {
   registerControlledTeam,
 } from "../runtime/control";
 import { emitMatchEvent } from "../runtime/events";
+import {
+  kickoffBallPosition,
+  kickoffPosition,
+  kickoffTaker,
+  kickoffTakerPosition,
+} from "../runtime/formation-geometry";
 import { emitCognitiveEvent, relevantPlayersNear } from "../runtime/cognitive-events";
 import { playerSkillSpeed } from "../runtime/player-metrics";
 import { signedMatchNoise } from "../runtime/random";
@@ -336,9 +342,13 @@ export const updateControlledBall = (state: MatchState, decisions: Map<string, A
 
 const resetPositions = (state: MatchState, kickoffTeam: Team): void => {
   const restartOffset = signedMatchNoise(state) * 5;
+  const kickoffBall = kickoffBallPosition(kickoffTeam, FIELD.height / 2 + restartOffset);
+  const taker = kickoffTaker(state.players, kickoffTeam);
   for (const player of state.players) {
-    player.position = { ...player.homeAnchor };
+    // Saída de bola: cada um no seu campo, com o círculo central livre para quem cobra.
+    player.position = kickoffPosition(player, kickoffTeam);
     player.position.y = clamp(player.position.y + restartOffset * (player.team === "blue" ? 0.2 : -0.2), 4, FIELD.height - 4);
+    if (player === taker) player.position = kickoffTakerPosition(player, kickoffBall);
     player.velocity = { x: 0, y: 0 };
     player.facing = { x: player.team === "blue" ? 1 : -1, y: 0 };
     player.kickCooldown = 0;
@@ -358,7 +368,7 @@ const resetPositions = (state: MatchState, kickoffTeam: Team): void => {
     // Bola parada dá fôlego para a volátil; a longa (fôlego de partida) não recupera.
     player.sprintEnergy = Math.min(1, player.sprintEnergy + STAMINA.volatileDeadBallRecovery);
   }
-  state.ball.position = { x: kickoffTeam === "blue" ? FIELD.width / 2 - 1.5 : FIELD.width / 2 + 1.5, y: FIELD.height / 2 + restartOffset };
+  state.ball.position = { ...kickoffBall };
   state.ball.velocity = { x: 0, y: 0 };
   state.ball.height = 0;
   state.ball.verticalVelocity = 0;
