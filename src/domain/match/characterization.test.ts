@@ -64,6 +64,11 @@ describe("caracterizacao deterministica", () => {
       short: hashFingerprint(actual.short),
       long: hashFingerprint(actual.long),
     };
-    expect(hashes).toEqual({ short: "a5a57a61", long: "ac40090a" });
+    // Re-baseline: o custo da estamina volátil passou a ser derivado do tamanho do campo
+    // (STAMINA.volatileBurstCostPerUnit em config.ts). Antes era fixo por unidade percorrida
+    // e, com o gramado ampliado para o 5x5, uma travessia gol a gol custava 84% da barra em
+    // vez dos 70% de projeto. Toda trajetória muda em consequência, então este fingerprint
+    // foi regravado de propósito.
+    expect(hashes).toEqual({ short: "1982fbd5", long: "f2d6a362" });
   });
 });

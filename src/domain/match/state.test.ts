@@ -7,11 +7,31 @@ import { createMatchState } from "./index";
 const createTestMatch = (seed?: number) => createMatchState(referenceMatchConfig(seed));
 
 describe("estado inicial e escalações", () => {
-  it("usa campo e gol escalados", () => {
-    expect(FIELD.width).toBeCloseTo(180, 5);
-    expect(FIELD.height).toBeCloseTo(108, 5);
-    expect(FIELD.goalBottom - FIELD.goalTop).toBeCloseTo(33.6, 5);
-    expect(FIELD.goalDepth).toBe(7);
+  // O campo é redimensionado sempre que o formato muda (4x4 → 5x5 → 11x11), então fixar as
+  // medidas aqui só produziria um teste desatualizado a cada mudança. O que precisa valer em
+  // qualquer escala são as relações entre as partes.
+  it("mantém campo e gol proporcionais em qualquer escala", () => {
+    const goalOpening = FIELD.goalBottom - FIELD.goalTop;
+
+    // Proporção de um gramado de futebol de campo: mais largo que alto, sem chegar a um corredor.
+    expect(FIELD.width / FIELD.height).toBeGreaterThan(1.3);
+    expect(FIELD.width / FIELD.height).toBeLessThan(2);
+
+    // O gol cabe na linha de fundo e é uma fração pequena dela; centralizado nos dois lados.
+    expect(goalOpening).toBeGreaterThan(FIELD.height * 0.1);
+    expect(goalOpening).toBeLessThan(FIELD.height * 0.35);
+    expect(FIELD.goalTop).toBeCloseTo(FIELD.height - FIELD.goalBottom, 5);
+
+    // A grande área envolve o gol e cabe em menos de metade do campo.
+    expect(FIELD.penaltyWidth).toBeGreaterThan(goalOpening);
+    expect(FIELD.penaltyWidth).toBeLessThan(FIELD.height);
+    expect(FIELD.penaltyDepth).toBeGreaterThan(FIELD.goalAreaDepth);
+    expect(FIELD.penaltyDepth).toBeLessThan(FIELD.width / 2);
+
+    // Jogador e bola cabem no gol; a bola é menor que o jogador.
+    expect(FIELD.goalDepth).toBeGreaterThan(0);
+    expect(FIELD.ballRadius).toBeLessThan(FIELD.playerRadius);
+    expect(FIELD.playerRadius * 2).toBeLessThan(goalOpening);
   });
 
   it("cria dez titulares com um goleiro por time", () => {

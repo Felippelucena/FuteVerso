@@ -54,11 +54,30 @@ export const PHYSICS = {
 // Duas barras de estamina. A longa (fôlego) só decai na partida e termina entre 50%–60%
 // para um atleta médio; a volátil (piques) drena em disparada e recupera em ~4,5s parado.
 // Custos são por unidade de distância percorrida, então "atravessar o campo" tem preço fixo.
+/**
+ * Corrida de referência para calibrar a estamina: gol a gol, descontando o espaço atrás de
+ * cada linha de fundo, onde ninguém dispara. Tudo que mede desgaste por distância se apoia
+ * nela, de forma que redimensionar o gramado não mude o custo de atravessar o campo.
+ */
+export const GOAL_TO_GOAL_SPRINT = fieldWidth - 10;
+
+// Fração da barra volátil consumida numa travessia gol a gol, por ritmo. São estes os
+// números de game design; o custo por unidade percorrida sai deles.
+//
+// Cuidado ao mexer: nenhum jogador atravessa o campo num pique só (burstDuration cobre ~8%
+// do gramado), então esta é uma régua de calibragem, não uma corrida que acontece em jogo.
+// O que se sente em campo é o ciclo pique/espera contra volatileRecoveryPerSecond — ver a
+// faixa de mínimos verificada em volatile-probe.test.ts.
+const VOLATILE_BURST_PER_CROSSING = 0.7;
+const VOLATILE_RUN_PER_CROSSING = 0.18;
+
 export const STAMINA = {
   // --- Volátil (piques/explosões) ---
-  // 0,0035/u × ~170u (gol a gol em disparada) ≈ 0,60 da barra.
-  volatileBurstCostPerUnit: 0.0035,
-  volatileRunCostPerUnit: 0.0009,
+  // Derivado do campo: uma travessia gol a gol custa sempre a mesma fatia da barra, tenha o
+  // gramado a medida do 5x5 ou a do 11x11. Antes o custo era fixo por unidade e crescer o
+  // campo encarecia cada corrida sem ninguém perceber.
+  volatileBurstCostPerUnit: VOLATILE_BURST_PER_CROSSING / GOAL_TO_GOAL_SPRINT,
+  volatileRunCostPerUnit: VOLATILE_RUN_PER_CROSSING / GOAL_TO_GOAL_SPRINT,
   // Do zero ao cheio em ~4,5s parado/trotando.
   volatileRecoveryPerSecond: 0.22,
   // --- Longa (fôlego de partida): só decai ---
@@ -68,6 +87,9 @@ export const STAMINA = {
   longIdleCostPerSecond: 0.00092,
   longFloor: 0.2,
   // Escala global do desgaste longo, ajustada pela calibração (médio termina ~55%).
+  // ATENÇÃO: ao contrário da volátil, a longa ainda é custo fixo por unidade percorrida —
+  // este número é o knob manual que absorve mudanças de tamanho do campo. Redimensionar o
+  // gramado exige reajustá-lo até a média de fim de jogo voltar à faixa de 50% a 60%.
   longDrainScale: 0.215,
   // --- Interação longa → volátil (penalidade modesta) ---
   // Custo da volátil ×(1 + (1-longa)·slope); recarga ×(1 - (1-longa)·slope).
