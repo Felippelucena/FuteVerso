@@ -458,6 +458,31 @@ export interface AssignmentZone {
   row: number;
 }
 
+/**
+ * Onde a forma do time está agora. A formação desenha a estrutura (quem fica à frente de quem);
+ * a colocação diz onde essa estrutura inteira se encontra no gramado neste instante. É o que
+ * permite os dois times ocuparem a mesma região do campo e se misturarem, em vez de cada um
+ * viver na sua metade.
+ */
+export interface TeamShapePlacement {
+  /** Profundidade da linha de campo mais recuada, em % da largura, a partir do próprio gol. */
+  lineHeight: number;
+  /** Fração da altura do campo que a formação abre, de 0 (fila indiana) a 1 (linha a linha). */
+  width: number;
+  /**
+   * Multiplicador da distância entre as linhas. 1 é a forma desenhada na escalação; abaixo disso
+   * o time encurta — um bloco defendendo a própria área tem metade da profundidade de um time
+   * esticado saindo para o jogo.
+   */
+  depth: number;
+  /**
+   * Profundidade máxima de qualquer célula, em % da largura. Para quem ataca é a última linha
+   * adversária: é a restrição posicional que o impedimento cria, e sem ela os atacantes vivem
+   * atrás da defesa esperando a bola longa. O motor não apita impedimento — impede a posição.
+   */
+  forwardLimit: number;
+}
+
 export interface PlayerAssignment {
   duty: AssignmentDuty;
   /**
@@ -472,6 +497,12 @@ export interface PlayerAssignment {
   targetPlayerId: string | null;
   /** 0..1 — quanto o jogador pode se afastar da célula antes de estar fora de posição. */
   freedom: number;
+  /**
+   * 0..1 — quanto o jogador estica para fora da forma para fixar o próprio marcador e manter
+   * aberto o espaço que um vizinho vai atacar. É o ponta que abre na linha lateral porque viu
+   * o meia entrando por dentro.
+   */
+  lateralPull: number;
   rationale: DecisionReason;
 }
 
@@ -486,6 +517,8 @@ export interface TeamCollectivePlan {
   defensiveBlock: DefensiveBlock;
   risk: number;
   pressTrigger: PressTrigger;
+  /** Onde a forma do time está agora: altura da linha mais recuada e largura aberta. */
+  placement: TeamShapePlacement;
   /**
    * Incumbência de cada jogador do time, indexada por id. É uma função **total** sobre os onze
    * — nenhum jogador fica sem dever — e duas incumbências nunca apontam para a mesma célula da

@@ -125,13 +125,33 @@ teste:
 - **exclusividade**: duas incumbências nunca apontam para a mesma célula, que é a regra de ocupação do jogo posicional.
 
 `supportTarget` e `defensiveTarget` **renderizam** a incumbência em alvo de corrida; não decidem
-mais nada por conta própria. A âncora de cada um é a célula da grade, que desliza com o canal de
-ataque, sobe com a fase e recua com o bloco — é isso que faz o time se mover como bloco. A
-marcação é zonal por padrão (`holdLine`: respondo por quem entra na minha célula) e vira
-individual (`trackRunner`) só onde o treinador pediu `marking: "man"`.
+mais nada por conta própria. A marcação é zonal por padrão (`holdLine`: respondo por quem entra na
+minha célula) e vira individual (`trackRunner`) só onde o treinador pediu `marking: "man"`.
+
+## Forma e colocação
 
 `runtime/formation-geometry.ts` é a única tradução entre a grade 7 x 5 do editor e o gramado, e
-serve tanto ao plano coletivo quanto à decisão individual.
+separa duas coisas:
+
+- **forma** — a distância relativa entre as linhas, desenhada na escalação. Não muda em jogo.
+- **colocação** (`TeamShapePlacement`) — onde essa forma está agora: `lineHeight` (profundidade da
+  linha mais recuada), `width` (quanto o time abre), `depth` (quanto encurta a distância entre as
+  linhas) e `forwardLimit` (até onde pode avançar).
+
+A colocação sai da posição da bola e é recalculada **a cada tick**, fora do cache do plano
+coletivo: quem faz o quê muda devagar, onde o time está não pode. Com a bola a referência é a
+retaguarda (a última linha fica uma folga atrás da bola); sem a bola é a frente (a primeira linha
+de pressão fica junto da bola e a forma se estende para trás, entre a bola e o próprio gol).
+
+`forwardLimit` é a penúltima linha adversária. O motor não apita impedimento — ele impede a
+posição, que é o efeito tático que interessa: o atacante joga **na** última linha e não atrás
+dela. Sem esse limite os dois times deixam de se encaixar e a bola longa vira gol.
+
+O resultado é que as duas equipes ocupam a mesma região do gramado e suas linhas se interpenetram,
+em vez de cada uma viver na sua metade. O diagnóstico está em
+[shape-diagnostics.test.ts](../src/domain/match/shape-diagnostics.test.ts) (`it.skip`, roda sob
+demanda): sobreposição das faixas, adversários dentro da própria faixa e defensores entre a bola
+e o próprio gol.
 
 Ligar um botão novo do plano tático significa mudar **como a incumbência é escolhida**, não
 passar mais um booleano por dentro de `ai.ts`. Jogadas ensaiadas entram, quando existirem

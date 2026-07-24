@@ -3,9 +3,10 @@ import { referenceMatchConfig } from "./__fixtures__/reference-match";
 import { FIELD, FIXED_STEP } from "./config";
 import { createMatchState, stepMatch } from "./index";
 import { cellKey } from "./runtime/formation-geometry";
-import { dutyHolders } from "./systems/assignment-system";
+import { assignedAnchor, dutyHolders } from "./systems/assignment-system";
 import { updateTacticalContext } from "./systems/tactics-system";
 import { TEAM_SIZE } from "../tactics/model";
+import { findSlot } from "../tactics/slots";
 import type { MatchState, Team } from "./model";
 
 const TEAMS = ["blue", "coral"] as const;
@@ -142,6 +143,93 @@ describe("incumbências coletivas", () => {
 
     // O time sem a bola acompanha a bola como bloco: as células inteiras andam de lado.
     expect(averageRow(nearRight, "coral")).toBeGreaterThan(averageRow(nearLeft, "coral"));
+  });
+
+  it("sobe a linha do time com a bola adiantada e recua com ela no próprio campo", () => {
+    const deep = createTestMatch();
+    const carrierDeep = givePossession(deep, "blue");
+    carrierDeep.position = { x: FIELD.width * 0.18, y: FIELD.height / 2 };
+    deep.ball.position = { ...carrierDeep.position };
+    updateTacticalContext(deep, 0);
+
+    const high = createTestMatch();
+    const carrierHigh = givePossession(high, "blue");
+    carrierHigh.position = { x: FIELD.width * 0.82, y: FIELD.height / 2 };
+    high.ball.position = { ...carrierHigh.position };
+    updateTacticalContext(high, 0);
+
+    expect(planOf(high, "blue").placement.lineHeight)
+      .toBeGreaterThan(planOf(deep, "blue").placement.lineHeight + 20);
+    // O time sem a bola faz o caminho contrário: recua quando a bola sobe contra ele.
+    expect(planOf(high, "coral").placement.lineHeight)
+      .toBeLessThan(planOf(deep, "coral").placement.lineHeight);
+  });
+
+  it("abre a formação com a bola e fecha o bloco sem ela", () => {
+    const state = createTestMatch();
+    givePossession(state, "blue");
+    updateTacticalContext(state, 0);
+    expect(planOf(state, "blue").placement.width).toBeGreaterThan(planOf(state, "coral").placement.width);
+  });
+
+  it("coloca os dois times na mesma região do campo, e não um em cada metade", () => {
+    const state = createTestMatch();
+    const carrier = givePossession(state, "blue");
+    carrier.position = { x: FIELD.width * 0.62, y: FIELD.height / 2 };
+    state.ball.position = { ...carrier.position };
+    updateTacticalContext(state, 0);
+
+    const spanOf = (team: Team): [number, number] => {
+      const plan = planOf(state, team);
+      const xs = state.players
+        .filter((player) => player.team === team && player.profile.position !== "goalkeeper")
+        .map((player) => assignedAnchor(plan, player).x);
+      return [Math.min(...xs), Math.max(...xs)];
+    };
+    const [blueLow, blueHigh] = spanOf("blue");
+    const [coralLow, coralHigh] = spanOf("coral");
+    const intersection = Math.min(blueHigh, coralHigh) - Math.max(blueLow, coralLow);
+    const union = Math.max(blueHigh, coralHigh) - Math.min(blueLow, coralLow);
+    // As linhas têm que se interpenetrar: metade da área ocupada é compartilhada pelos dois.
+    expect(intersection / union).toBeGreaterThan(0.5);
+  });
+
+  it("faz o apoio subir para o espaço que o corredor abriu", () => {
+    const state = createTestMatch();
+    givePossession(state, "blue");
+    state.tactics.blue.phase = "finalThird";
+    state.tactics.blue.phaseStartedAt = state.elapsed;
+    updateTacticalContext(state, 0);
+    const plan = planOf(state, "blue");
+
+    expect(dutyHolders(plan, "runInBehind").length).toBeGreaterThan(0);
+    const supports = dutyHolders(plan, "support");
+    expect(supports.length).toBeGreaterThan(0);
+    // Com companheiros atacando as costas da linha, o apoio não fica parado na célula da
+    // escalação: ele sobe para a faixa entre as linhas que a corrida abriu.
+    const climbers = supports.filter((id) => {
+      const support = state.players.find((player) => player.profile.id === id)!;
+      return plan.assignments[id].zone.column > findSlot(support.slotId)!.zone.column;
+    });
+    expect(climbers.length).toBeGreaterThan(0);
+  });
+
+  it("estica quem segura a amplitude para fora da forma", () => {
+    const state = createTestMatch();
+    givePossession(state, "blue");
+    updateTacticalContext(state, 0);
+    const plan = planOf(state, "blue");
+    const wingerId = dutyHolders(plan, "width")[0];
+    expect(wingerId).toBeDefined();
+
+    const winger = state.players.find((player) => player.profile.id === wingerId)!;
+    const assignment = plan.assignments[wingerId];
+    expect(assignment.lateralPull).toBeGreaterThan(0);
+
+    const stretched = Math.abs(assignedAnchor(plan, winger).y - FIELD.height / 2);
+    assignment.lateralPull = 0;
+    const flat = Math.abs(assignedAnchor(plan, winger).y - FIELD.height / 2);
+    expect(stretched).toBeGreaterThan(flat);
   });
 
   it("sustenta as duas invariantes ao longo de uma partida de verdade", () => {

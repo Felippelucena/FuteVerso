@@ -1,12 +1,22 @@
-import { clamp, lerp } from "../../shared/math";
+import { clamp } from "../../shared/math";
 import { findSlot, TACTICAL_GRID } from "../../tactics/slots";
 import { FIELD } from "../config";
-import type { AssignmentZone, PlayerRuntime, Team, Vec2 } from "../model";
+import type { AssignmentZone, PlayerRuntime, Team, TeamShapePlacement, Vec2 } from "../model";
 
 /**
  * Tradução entre a grade tática 7x5 — a mesma em que o treinador escala — e as coordenadas do
- * gramado. Vive fora do `ai.ts` porque tanto a decisão individual quanto o plano coletivo
+ * gramado. Vive fora do `ai.ts` porque tanto o plano coletivo quanto a decisão individual
  * precisam dela: o coletivo distribui células, o individual as transforma em alvo de corrida.
+ *
+ * A tradução separa duas coisas que antes estavam grudadas:
+ *
+ * - **forma** (`COLUMN_SHAPE`): a distância relativa de cada linha da formação à linha mais
+ *   recuada. É o desenho do time, e não muda durante a partida.
+ * - **colocação** (`TeamShapePlacement`): onde essa forma está agora — a altura da linha mais
+ *   recuada e a largura que o time abre. É o que sobe, desce e comprime.
+ *
+ * Enquanto as duas estavam na mesma tabela, a forma tinha um teto: o jogador mais avançado
+ * nunca passava de 53% do campo, e os dois times viviam cada um na sua metade sem se misturar.
  */
 const fieldX = (original: number): number => original * FIELD.width / 100;
 
@@ -14,68 +24,108 @@ export const attackDirection = (team: Team): number => (team === "blue" ? 1 : -1
 
 const LAST_GRID_ROW = TACTICAL_GRID.rows[TACTICAL_GRID.rows.length - 1];
 
+/**
+ * Coluna do goleiro. Nenhum jogador de linha pode acabar aqui: a profundidade desta coluna é a
+ * linha do gol e não acompanha o bloco, então um zagueiro empurrado para cá nasceria dentro da
+ * própria meta.
+ */
+export const GOALKEEPER_COLUMN = TACTICAL_GRID.columns[0];
+
 /** Célula neutra: usada quando o jogador entra sem slot conhecido. */
 export const FALLBACK_CELL: AssignmentZone = { column: 6, row: 4 };
 
+/** O goleiro não se desloca com o bloco: a linha do gol é a linha do gol. */
+const GOALKEEPER_DEPTH = 6;
+
 /**
- * Profundidade da âncora por coluna do slot, em percentual da largura do campo a partir do
- * próprio gol. A grade vai da coluna 0 (gol) à 11 (centroavante avançado), mas o time inteiro
- * cabe na metade defensiva mais um pedaço: a âncora é a posição-base com a bola no meio, não
- * onde o jogador ataca. Espalhar até o fundo faria o centroavante nascer dentro da área.
+ * Forma da formação: distância de cada coluna à linha de campo mais recuada, em percentual da
+ * largura. A coluna 2 (zagueiros) é a referência zero; da zaga ao centroavante vão 31 pontos,
+ * que é a compactação vertical de um time de verdade (~35 m num campo de 105 m).
  */
-const SLOT_COLUMN_DEPTH: Record<number, number> = {
-  0: 6,
-  2: 22,
-  4: 30,
-  6: 38,
-  8: 44,
-  10: 50,
-  11: 53,
+const COLUMN_SHAPE: Record<number, number> = {
+  2: 0,
+  4: 8,
+  6: 16,
+  8: 22,
+  10: 28,
+  11: 31,
 };
 
-/** Faixa lateral ocupada pela formação: do quarto de cima ao quarto de baixo do campo. */
-export const LANE_BAND = { first: 0.25, last: 0.75 } as const;
+/** Altura de linha em que a formação reproduz exatamente as âncoras da escalação. */
+export const NEUTRAL_LINE_HEIGHT = 22;
 
-export const slotDepth = (column: number): number => {
-  const known = SLOT_COLUMN_DEPTH[column];
+/** A linha mais recuada nunca cola no próprio gol nem invade o campo adversário sozinha. */
+export const LINE_HEIGHT_RANGE = { lowest: 4, highest: 58 } as const;
+
+/** Colocação neutra: bloco no meio-campo, largura de meio campo. Equivale à âncora fixa. */
+export const NEUTRAL_PLACEMENT: TeamShapePlacement = {
+  lineHeight: NEUTRAL_LINE_HEIGHT,
+  width: 0.5,
+  depth: 1,
+  forwardLimit: 94,
+};
+
+/** Distância da coluna mais avançada à mais recuada, na forma desenhada pela escalação. */
+export const SHAPE_SPAN = 31;
+
+const columnShape = (column: number): number => {
+  const known = COLUMN_SHAPE[column];
   if (known !== undefined) return known;
-  // Coluna nova na grade: interpola entre as vizinhas conhecidas em vez de cair no gol.
-  const columns = Object.keys(SLOT_COLUMN_DEPTH).map(Number).sort((first, second) => first - second);
+  // Coluna nova na grade: interpola entre as vizinhas conhecidas em vez de cair na zaga.
+  const columns = Object.keys(COLUMN_SHAPE).map(Number).sort((first, second) => first - second);
   const next = columns.find((candidate) => candidate > column) ?? columns[columns.length - 1];
   const previous = [...columns].reverse().find((candidate) => candidate < column) ?? columns[0];
-  if (next === previous) return SLOT_COLUMN_DEPTH[next];
-  return lerp(SLOT_COLUMN_DEPTH[previous], SLOT_COLUMN_DEPTH[next], (column - previous) / (next - previous));
+  if (next === previous) return COLUMN_SHAPE[next];
+  const amount = (column - previous) / (next - previous);
+  return COLUMN_SHAPE[previous] + (COLUMN_SHAPE[next] - COLUMN_SHAPE[previous]) * amount;
 };
 
-/**
- * Grade → gramado. A coluna dá a profundidade a partir do próprio gol, a linha dá a faixa
- * lateral. O time coral joga espelhado.
- */
-export const cellAnchor = (zone: AssignmentZone, team: Team): Vec2 => {
-  const depth = fieldX(slotDepth(zone.column));
-  const lane = LANE_BAND.first + (LANE_BAND.last - LANE_BAND.first) * (zone.row / LAST_GRID_ROW);
+/** Profundidade da célula a partir do próprio gol, em percentual da largura do campo. */
+export const cellDepth = (zone: AssignmentZone, placement: TeamShapePlacement = NEUTRAL_PLACEMENT): number =>
+  zone.column === GOALKEEPER_COLUMN
+    ? GOALKEEPER_DEPTH
+    : clamp(
+      placement.lineHeight + columnShape(zone.column) * placement.depth,
+      GOALKEEPER_DEPTH + 2,
+      Math.min(94, placement.forwardLimit),
+    );
+
+/** Faixa lateral da célula, de 0 (borda de cima) a 1 (borda de baixo). */
+export const cellLane = (zone: AssignmentZone, placement: TeamShapePlacement = NEUTRAL_PLACEMENT): number =>
+  clamp(0.5 + (zone.row / LAST_GRID_ROW - 0.5) * placement.width, 0.04, 0.96);
+
+/** Grade → gramado. O time coral joga espelhado no eixo da profundidade. */
+export const cellAnchor = (
+  zone: AssignmentZone,
+  team: Team,
+  placement: TeamShapePlacement = NEUTRAL_PLACEMENT,
+): Vec2 => {
+  const depth = fieldX(cellDepth(zone, placement));
   return {
     x: attackDirection(team) > 0 ? depth : FIELD.width - depth,
-    y: FIELD.height * lane,
+    y: FIELD.height * cellLane(zone, placement),
   };
+};
+
+/** Gramado → grade: em que célula cai um ponto qualquer (a bola, um adversário). */
+export const cellAt = (
+  point: Vec2,
+  team: Team,
+  placement: TeamShapePlacement = NEUTRAL_PLACEMENT,
+): AssignmentZone => {
+  const column = [...TACTICAL_GRID.columns].sort((first, second) =>
+    Math.abs(cellAnchor({ column: first, row: 4 }, team, placement).x - point.x)
+    - Math.abs(cellAnchor({ column: second, row: 4 }, team, placement).x - point.x))[0];
+  const row = [...TACTICAL_GRID.rows].sort((first, second) =>
+    Math.abs(cellLane({ column, row: first }, placement) * FIELD.height - point.y)
+    - Math.abs(cellLane({ column, row: second }, placement) * FIELD.height - point.y))[0];
+  return { column, row };
 };
 
 /** Centro do gol que o time ataca, ou do que ele defende. */
 export const goalCenter = (team: Team, ownGoal: boolean): Vec2 => {
   const attackingX = attackDirection(team) > 0 ? FIELD.width : 0;
   return { x: ownGoal ? FIELD.width - attackingX : attackingX, y: FIELD.height / 2 };
-};
-
-/** Gramado → grade: em que célula cai um ponto qualquer (a bola, um adversário). */
-export const cellAt = (point: Vec2, team: Team): AssignmentZone => {
-  const depth = attackDirection(team) > 0 ? point.x : FIELD.width - point.x;
-  const progress = clamp(depth / FIELD.width * 100, 0, 100);
-  const column = [...TACTICAL_GRID.columns].sort((first, second) =>
-    Math.abs(slotDepth(first) - progress) - Math.abs(slotDepth(second) - progress))[0];
-  const lane = clamp((point.y / FIELD.height - LANE_BAND.first) / (LANE_BAND.last - LANE_BAND.first), 0, 1);
-  const row = [...TACTICAL_GRID.rows].sort((first, second) =>
-    Math.abs(first / LAST_GRID_ROW - lane) - Math.abs(second / LAST_GRID_ROW - lane))[0];
-  return { column, row };
 };
 
 const stepAlong = (axis: readonly number[], value: number, steps: number): number => {
@@ -109,8 +159,8 @@ export const cellKey = (zone: AssignmentZone): string => `${zone.column}:${zone.
 export const baseCell = (player: PlayerRuntime): AssignmentZone => findSlot(player.slotId)?.zone ?? FALLBACK_CELL;
 
 /**
- * Âncora de formação: a célula-base traduzida para o gramado. A função do jogador (finalizador,
- * defensor) ainda desloca alguns pontos, porque posição diz onde e função diz como.
+ * Âncora de formação: a célula-base na colocação neutra. É a posição fixa da escalação, usada
+ * como referência de recomposição e como reserva quando ainda não há plano coletivo.
  */
 export const formationAnchor = (player: PlayerRuntime): Vec2 => {
   const anchor = cellAnchor(baseCell(player), player.team);

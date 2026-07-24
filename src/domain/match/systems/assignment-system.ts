@@ -15,6 +15,7 @@ import type {
   Team,
   TeamCollectivePlan,
   TeamPosture,
+  TeamShapePlacement,
   Vec2,
 } from "../model";
 import {
@@ -24,6 +25,9 @@ import {
   cellDistance,
   cellKey,
   goalCenter,
+  GOALKEEPER_COLUMN,
+  LINE_HEIGHT_RANGE,
+  SHAPE_SPAN,
   shiftCell,
 } from "../runtime/formation-geometry";
 import { predictPlayerPosition, predictionHorizon } from "../runtime/prediction";
@@ -61,6 +65,8 @@ export interface AssignmentResult {
   assignments: Record<string, PlayerAssignment>;
   /** Líder do rest defense nesta atualização, devolvido para alimentar a histerese seguinte. */
   safetyId: string | null;
+  /** Onde a forma do time ficou: altura da linha mais recuada e largura aberta. */
+  placement: TeamShapePlacement;
 }
 
 interface DutyChoice {
@@ -123,8 +129,13 @@ const FIRST_ROW = TACTICAL_GRID.rows[0];
 const LAST_ROW = TACTICAL_GRID.rows[TACTICAL_GRID.rows.length - 1];
 const CENTER_ROW = TACTICAL_GRID.rows[(TACTICAL_GRID.rows.length - 1) / 2];
 
-const ALL_CELLS: readonly AssignmentZone[] = TACTICAL_GRID.columns.flatMap((column) =>
-  TACTICAL_GRID.rows.map((row) => ({ column, row })));
+/**
+ * Células disponíveis para jogadores de linha na resolução de ocupação. A coluna do goleiro fica
+ * de fora: quem for empurrado para lá acabaria em cima da própria linha do gol.
+ */
+const ALL_CELLS: readonly AssignmentZone[] = TACTICAL_GRID.columns
+  .filter((column) => column !== GOALKEEPER_COLUMN)
+  .flatMap((column) => TACTICAL_GRID.rows.map((row) => ({ column, row })));
 
 const attackingProgress = (team: Team, x: number): number =>
   team === "blue" ? x / FIELD.width : (FIELD.width - x) / FIELD.width;
@@ -366,19 +377,87 @@ const assignOutOfPossession = (
 // Células: deslocamento coletivo, ajuste por dever e resolução de ocupação
 // ---------------------------------------------------------------------------------------------
 
-/** Deslocamento do bloco inteiro em colunas da grade: sobe pressionando, recua protegendo. */
-const blockShift = (context: AssignmentContext): number => {
+/**
+ * Altura da linha de campo mais recuada — o que sobe e desce o time inteiro. Sai da posição da
+ * bola, com uma folga que depende do momento: com a bola a última linha acompanha de perto, para
+ * o time não se partir em dois; sem ela a folga é o próprio bloco, que alto cola na bola e baixo
+ * cai para a área.
+ *
+ * É esta função que faz os dois times ocuparem a **mesma** região do campo — quem ataca sobe
+ * atrás da bola, quem defende recua na frente dela, e as linhas se interpenetram. Enquanto a
+ * profundidade era uma tabela fixa por coluna, cada time morava na sua metade.
+ */
+const isHighBlock = (context: AssignmentContext): boolean => context.defensiveBlock === "high"
+  || context.phase === "highPress" || context.phase === "counterPress";
+
+const isLowBlock = (context: AssignmentContext): boolean => context.defensiveBlock === "low"
+  || context.phase === "lowBlock";
+
+/**
+ * Quanto o time encurta a distância entre as linhas. Com a bola o time se estica para criar
+ * espaço; sem ela encolhe, e encolhe muito quando defende a própria área — dez jogadores num
+ * bloco baixo cabem na profundidade da grande área, não em trinta e cinco metros de campo.
+ */
+const shapeDepthFor = (context: AssignmentContext): number => context.posture === "inPossession"
+  ? context.phase === "buildUp" ? 1.15 : context.phase === "counterAttack" ? 1.1 : 1
+  : isLowBlock(context) ? 0.42
+    : isHighBlock(context) ? 0.95
+      : context.phase === "recovery" ? 0.7
+        : 0.8;
+
+/**
+ * Onde a forma se coloca no campo, devolvida como a profundidade da linha mais recuada.
+ *
+ * A referência muda com o momento, e é isso que faz o time defender de verdade:
+ *
+ * - **com a bola**, a referência é a retaguarda — a última linha fica uma folga atrás da bola,
+ *   e a forma se estende para a frente até o ataque;
+ * - **sem a bola**, a referência é a frente — a primeira linha de pressão fica junto da bola
+ *   (ou à frente dela, se o bloco for alto), e a forma se estende para trás, entre a bola e o
+ *   próprio gol. Ancorar pela retaguarda deixava o time inteiro à frente da bola quando ela
+ *   entrava na área, com menos de dois homens para defender.
+ */
+const lineHeightFor = (state: MatchState, team: Team, context: AssignmentContext, depth: number): number => {
+  const ballDepth = attackingProgress(team, state.ball.position.x) * 100;
   if (context.posture === "inPossession") {
-    return context.phase === "buildUp" ? 0
-      : context.phase === "progression" ? 1
-        : 2;
+    const behind = context.phase === "buildUp" ? 6 : context.phase === "counterAttack" ? 18 : 12;
+    return clamp(ballDepth - behind, LINE_HEIGHT_RANGE.lowest, LINE_HEIGHT_RANGE.highest);
   }
-  const fromPhase = context.phase === "highPress" || context.phase === "counterPress" ? 1
-    : context.phase === "lowBlock" || context.phase === "recovery" ? -1
-      : 0;
-  const fromBlock = context.defensiveBlock === "high" ? 1 : context.defensiveBlock === "low" ? -1 : 0;
-  return clamp(fromPhase + fromBlock, -2, 2);
+  const ahead = isHighBlock(context) ? 16 : isLowBlock(context) ? 3 : 8;
+  const front = ballDepth + ahead;
+  return clamp(front - SHAPE_SPAN * depth, LINE_HEIGHT_RANGE.lowest, LINE_HEIGHT_RANGE.highest);
 };
+
+/**
+ * Largura que a formação abre. Com a bola o time procura os corredores de fora para esticar o
+ * adversário; sem a bola fecha, porque bloco compacto é o que impede o passe por dentro. Sair
+ * de aberto para fechado e voltar é o que dá ao jogo o respiro de comprimir e espalhar.
+ */
+/**
+ * Até onde a forma pode chegar à frente. Para quem **ataca**, o limite é a penúltima linha
+ * adversária — a mesma referência do impedimento. O motor não apita a infração; ele impede que
+ * a incumbência coloque alguém lá, que é o efeito tático que interessa: o atacante joga **na**
+ * última linha, não atrás dela, e as duas equipes se encaixam uma na outra em vez de uma viver
+ * nas costas da outra esperando a bola longa.
+ *
+ * Quem defende não tem limite: recuar é sempre permitido.
+ */
+const forwardLimitFor = (state: MatchState, team: Team, context: AssignmentContext): number => {
+  if (context.posture !== "inPossession") return 94;
+  const opponents = state.players
+    .filter((player) => player.team !== team)
+    .map((player) => attackingProgress(team, player.position.x) * 100)
+    .sort((first, second) => second - first);
+  // O segundo mais recuado do adversário (contando o goleiro) é a linha do impedimento.
+  const offsideLine = opponents[1] ?? 94;
+  // Nunca atrás da bola: quem está à frente dela com a bola no pé não está impedido.
+  const ballDepth = attackingProgress(team, state.ball.position.x) * 100;
+  return clamp(Math.max(offsideLine, ballDepth) + 2, 32, 94);
+};
+
+const teamWidthFor = (context: AssignmentContext): number => context.posture === "inPossession"
+  ? context.phase === "finalThird" ? 0.78 : context.phase === "buildUp" ? 0.72 : 0.7
+  : isLowBlock(context) ? 0.38 : isHighBlock(context) ? 0.5 : 0.44;
 
 /** Deslizamento lateral do bloco: para o canal de ataque com a bola, para a bola sem ela. */
 const laneShift = (state: MatchState, context: AssignmentContext): number => {
@@ -394,24 +473,53 @@ const desiredCell = (
   team: Team,
   player: PlayerRuntime,
   choice: DutyChoice,
-  collectiveShift: { columns: number; rows: number },
+  placement: TeamShapePlacement,
+  rowShift: number,
+  attackingCells: AssignmentZone[],
 ): AssignmentZone => {
   const base = baseCell(player);
   if (choice.duty === "goalkeep") return base;
   // Quem vai à bola ocupa a célula da bola; quem marca homem ocupa a do marcado.
   if (choice.duty === "carry" || choice.duty === "receive" || choice.duty === "press") {
-    return cellAt(state.ball.position, team);
+    return cellAt(state.ball.position, team, placement);
   }
   if (choice.duty === "trackRunner") {
     const mark = state.players.find((candidate) => candidate.profile.id === choice.targetPlayerId);
-    if (mark) return cellAt(mark.position, team);
+    if (mark) return cellAt(mark.position, team, placement);
   }
-  const shifted = shiftCell(base, collectiveShift.columns, collectiveShift.rows);
+  // A coluna já não carrega a subida do bloco — isso é a altura de linha. O que sobra aqui é o
+  // desenho: quem ataca a profundidade vive uma linha à frente, quem protege uma atrás.
+  const shifted = shiftCell(base, 0, rowShift);
   if (choice.duty === "runInBehind" || choice.duty === "overlap") return shiftCell(shifted, 1, 0);
-  if (choice.duty === "restDefense") return shiftCell(shifted, -1, 0);
+  if (choice.duty === "restDefense") {
+    // Recuar uma linha, mas nunca até a coluna do goleiro: ali a profundidade é a linha do gol.
+    const dropped = shiftCell(shifted, -1, 0);
+    return dropped.column === GOALKEEPER_COLUMN ? shifted : dropped;
+  }
   // Quem segura a largura vai para a faixa de fora do seu lado, não para a que o bloco deslizou.
   if (choice.duty === "width") return { column: shifted.column, row: base.row <= CENTER_ROW ? FIRST_ROW : LAST_ROW };
+  // Apoio: se um vizinho da frente saiu para atacar as costas da linha, sobe uma linha para
+  // ocupar o espaço que abriu entre as linhas, em vez de manter a própria célula. É o
+  // companheiro entrando no buraco que a corrida acabou de criar.
+  if (choice.duty === "support") {
+    const neighbourRuns = attackingCells.some((cell) =>
+      cell.column > shifted.column && cellDistance(shifted, cell) <= 3);
+    if (neighbourRuns) return shiftCell(shifted, 1, 0);
+  }
   return shifted;
+};
+
+/**
+ * Quanto o jogador estica para fora da forma. O ponta que vê o meia entrando por dentro abre na
+ * linha lateral: leva o marcador junto e mantém aberto o espaço que o companheiro vai atacar.
+ * É a reação ao vizinho que o desenho da formação sozinho não produz.
+ */
+const lateralPullFor = (player: PlayerRuntime, choice: DutyChoice, attackingRows: Set<number>): number => {
+  if (choice.duty === "overlap") return 0.6;
+  if (choice.duty !== "width") return 0;
+  const row = baseCell(player).row;
+  const neighbourAttacks = [...attackingRows].some((other) => other !== row && Math.abs(other - row) <= 2);
+  return neighbourAttacks ? 1 : 0.35;
 };
 
 const firstFreeCell = (desired: AssignmentZone, taken: Set<string>): AssignmentZone => {
@@ -422,6 +530,23 @@ const firstFreeCell = (desired: AssignmentZone, taken: Set<string>): AssignmentZ
       || Math.abs(first.column - desired.column) - Math.abs(second.column - desired.column)
       || first.column - second.column
       || first.row - second.row)[0] ?? desired;
+};
+
+/**
+ * Onde a forma do time está neste instante. Sai do plano coletivo de propósito: **quem faz o
+ * quê** muda devagar e pode ficar em cache por alguns segundos, mas **onde o time está** é
+ * contínuo e tem que acompanhar a bola a cada tick. Enquanto a colocação viajava dentro do
+ * plano em cache, o bloco levava segundos para recuar e a bola entrava na área com o time
+ * inteiro ainda à frente dela.
+ */
+export const placementFor = (state: MatchState, team: Team, context: AssignmentContext): TeamShapePlacement => {
+  const depth = shapeDepthFor(context);
+  return {
+    lineHeight: lineHeightFor(state, team, context, depth),
+    width: teamWidthFor(context),
+    depth,
+    forwardLimit: forwardLimitFor(state, team, context),
+  };
 };
 
 export const buildAssignments = (
@@ -442,14 +567,26 @@ export const buildAssignments = (
     ? assignInPossession(state, team, context, outfield, duties)
     : (assignOutOfPossession(state, team, context, players, outfield, opponents, duties), null);
 
-  const collectiveShift = { columns: blockShift(context), rows: laneShift(state, context) };
-  const wanted = players.map((player) => {
-    const choice = duties.get(player.profile.id)
-      // Rede de segurança: se alguma trilha nova esquecer um jogador, ele sustenta a zona dele
-      // em vez de virar um corpo sem função. A invariante de totalidade é testada à parte.
-      ?? { duty: "holdLine" as AssignmentDuty, priority: 99, targetPlayerId: null };
-    return { player, choice, cell: desiredCell(state, team, player, choice, collectiveShift) };
-  });
+  const placement = placementFor(state, team, context);
+  const rowShift = laneShift(state, context);
+  const chosen = players.map((player) => ({
+    player,
+    // Rede de segurança: se alguma trilha nova esquecer um jogador, ele sustenta a zona dele em
+    // vez de virar um corpo sem função. A invariante de totalidade é testada à parte.
+    choice: duties.get(player.profile.id)
+      ?? { duty: "holdLine" as AssignmentDuty, priority: 99, targetPlayerId: null },
+  }));
+  const attackers = chosen.filter(({ choice }) => choice.duty === "runInBehind" || choice.duty === "overlap");
+  // De onde saiu quem foi atacar: é a referência de quem apoia (sobe para o espaço aberto) e de
+  // quem segura a amplitude (estica para levar o marcador embora dali).
+  const attackingCells = attackers.map(({ player }) => shiftCell(baseCell(player), 0, rowShift));
+  const attackingRows = new Set(attackers.map(({ player }) => baseCell(player).row));
+  const wanted = chosen.map(({ player, choice }) => ({
+    player,
+    choice,
+    cell: desiredCell(state, team, player, choice, placement, rowShift, attackingCells),
+    lateralPull: lateralPullFor(player, choice, attackingRows),
+  }));
 
   const taken = new Set<string>();
   const assignments: Record<string, PlayerAssignment> = {};
@@ -459,7 +596,7 @@ export const buildAssignments = (
     || second.player.positionFit - first.player.positionFit
     || byId(first.player, second.player));
 
-  for (const { player, choice, cell } of ordered) {
+  for (const { player, choice, cell, lateralPull } of ordered) {
     const zone = firstFreeCell(cell, taken);
     taken.add(cellKey(zone));
     assignments[player.profile.id] = {
@@ -468,6 +605,7 @@ export const buildAssignments = (
       zone,
       targetPlayerId: choice.targetPlayerId,
       freedom: clamp(SUPPORT_FREEDOM[player.instruction.support] * DUTY_FREEDOM[choice.duty], 0, 1),
+      lateralPull,
       rationale: DUTY_REASON[choice.duty],
     };
   }
@@ -482,7 +620,7 @@ export const buildAssignments = (
     for (const { player, choice } of ordered) {
       if (choice.duty !== "holdLine") continue;
       const assignment = assignments[player.profile.id];
-      const anchor = cellAnchor(assignment.zone, team);
+      const anchor = cellAnchor(assignment.zone, team, placement);
       const inZone = opponents
         .filter((opponent) => opponent.profile.position !== "goalkeeper" && !claimed.has(opponent.profile.id))
         .filter((opponent) => distance(opponent.position, anchor) < DEFENSE.zoneRadius * FIELD.width)
@@ -495,7 +633,7 @@ export const buildAssignments = (
     }
   }
 
-  return { assignments, safetyId };
+  return { assignments, safetyId, placement };
 };
 
 // ---------------------------------------------------------------------------------------------
@@ -517,8 +655,15 @@ export const dutyLeader = (plan: TeamCollectivePlan | null | undefined, duty: As
   dutyHolders(plan, duty)[0] ?? null;
 
 /**
- * Âncora da célula em que o jogador foi encarregado de viver agora. Sem incumbência — cenário de
- * teste montado à mão, primeiro tick antes do plano — cai na âncora fixa da formação.
+ * Âncora da célula em que o jogador foi encarregado de viver agora, já com a colocação do time e
+ * o esticamento lateral aplicados. Sem plano — cenário de teste montado à mão, primeiro tick —
+ * cai na âncora fixa da formação.
  */
-export const assignedAnchor = (assignment: PlayerAssignment | null, player: PlayerRuntime): Vec2 =>
-  assignment ? cellAnchor(assignment.zone, player.team) : player.homeAnchor;
+export const assignedAnchor = (plan: TeamCollectivePlan | null | undefined, player: PlayerRuntime): Vec2 => {
+  const assignment = plan?.assignments[player.profile.id];
+  if (!plan || !assignment) return player.homeAnchor;
+  const anchor = cellAnchor(assignment.zone, player.team, plan.placement);
+  const outward = assignment.zone.row < CENTER_ROW ? -1 : assignment.zone.row > CENTER_ROW ? 1 : 0;
+  const stretched = anchor.y + outward * assignment.lateralPull * FIELD.height * 0.1;
+  return { x: anchor.x, y: clamp(stretched, FIELD.height * 0.03, FIELD.height * 0.97) };
+};

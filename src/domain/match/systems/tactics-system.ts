@@ -15,7 +15,7 @@ import type {
 } from "../model";
 import { activeBallPlayerId } from "../runtime/control";
 import { predictPlayerPosition, predictedSpaceAt, predictionHorizon } from "../runtime/prediction";
-import { buildAssignments } from "./assignment-system";
+import { buildAssignments, placementFor } from "./assignment-system";
 
 export const TACTICAL_PHASES: TacticalPhase[] = [
   "buildUp", "progression", "finalThird", "counterAttack",
@@ -158,7 +158,7 @@ const createCollectivePlan = (state: MatchState, team: Team): TeamCollectivePlan
   const personalityRisk = average(players, (player) => player.profile.mental.creativity * 0.45 + player.profile.mental.aggression * 0.35 + player.profile.mental.composure * 0.2) / 100;
   const risk = clamp(personalityRisk + (scoreDifference < 0 ? urgency * 0.3 : scoreDifference > 0 ? -urgency * 0.2 : 0), 0.2, 0.95);
 
-  const { assignments, safetyId } = buildAssignments(state, team, {
+  const { assignments, safetyId, placement } = buildAssignments(state, team, {
     posture,
     phase: tactical.phase,
     attackChannel,
@@ -182,6 +182,7 @@ const createCollectivePlan = (state: MatchState, team: Team): TeamCollectivePlan
     defensiveBlock,
     risk,
     pressTrigger: choosePressTrigger(state, team),
+    placement,
     assignments,
   };
 };
@@ -217,6 +218,20 @@ export const updateTacticalContext = (state: MatchState, dt: number): void => {
     }
     tactical.shape = shape;
     if (collectivePlanNeedsRefresh(state, team)) tactical.collectivePlan = createCollectivePlan(state, team);
+    else if (tactical.collectivePlan) {
+      // A colocação do bloco é contínua e não pode esperar o próximo plano: a bola atravessa o
+      // campo em menos tempo do que o cache de deveres dura. Quem faz o quê muda devagar; onde
+      // o time está, não.
+      tactical.collectivePlan.placement = placementFor(state, team, {
+        posture: tactical.collectivePlan.posture,
+        phase: tactical.phase,
+        attackChannel: tactical.collectivePlan.attackChannel,
+        defensiveBlock: tactical.collectivePlan.defensiveBlock,
+        risk: tactical.collectivePlan.risk,
+        ballActorId: tactical.collectivePlan.ballActorId,
+        previousSafetyId: tactical.safetyPlayerId,
+      });
+    }
     const progress = attackingProgress(team, state.ball.position.x);
     if (state.possessionTeam !== team || progress <= POSSESSION.finalThirdRearm) tactical.finalThirdLatched = false;
     const inFinalThird = state.possessionTeam === team && progress >= POSSESSION.finalThirdEnter;

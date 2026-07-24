@@ -228,8 +228,10 @@ export const DEFENSE = {
   // --- Item 4: recomposição garantida do zagueiro adiantado ---
   // Quão à frente do próprio anchor (fração de width) conta como "adiantado".
   recoverAdvancedGap: 0.07,
-  // Janela após perder a posse em que a recomposição em disparada é garantida.
+  // Janela após perder a posse em que a recomposição em disparada é garantida (só para a zaga).
   recoverWindow: 3.5,
+  // Fora dessa janela, qualquer um recompõe em disparada desde que tenha pique sobrando.
+  recoverMinEnergy: 0.35,
   // Teto de duração do pique de recomposição.
   recoverBurstMax: 1.6,
   // Risco mínimo do plano coletivo para liberar o lateral a sobrepor no ataque.

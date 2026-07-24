@@ -463,7 +463,7 @@ const supportTarget = (
   const assignment = assignmentOf(collective, player.profile.id);
   // A âncora do apoio é a célula que o coletivo entregou, não a posição fixa da escalação. É
   // ela que faz o bloco inteiro deslizar com o canal de ataque e subir com a fase.
-  const anchor = assignedAnchor(assignment, player);
+  const anchor = assignedAnchor(collective, player);
   const duty = assignment?.duty ?? "support";
   const supportDepth = perceptionDepth(player, state.ball.position);
   const phase = state.tactics[player.team].phase;
@@ -507,13 +507,12 @@ const supportTarget = (
       burst: false,
     };
   }
-  // A célula já carrega o avanço do bloco por fase e o deslizamento pelo canal, então o
-  // acompanhamento contínuo da bola pesa menos do que pesava sobre a âncora fixa. É um dos
-  // números que a remedição do Passo 5 vai revisitar.
+  // A profundidade da âncora **é** o acompanhamento da bola: a altura de linha do time sai da
+  // posição dela. Somar aqui outra vez faria o bloco perseguir a bola em dobro e se esticar.
   // Quem segura a largura quase não desliza atrás do portador: a função dele é justamente não
   // fechar a faixa que o time precisa manter aberta.
   const base = {
-    x: anchor.x + (state.ball.position.x - FIELD.width / 2) * 0.26,
+    x: anchor.x,
     y: anchor.y + (controller.position.y - FIELD.height / 2) * (duty === "width" ? 0.12 : 0.28),
   };
   const candidate = blend(passingPocket, base, 0.35 + supportDepth * 0.4);
@@ -553,27 +552,23 @@ const defensiveTarget = (
   state: MatchState,
   assignment: PlayerAssignment | null,
 ): { target: Vec2; intent: AgentDecision["intent"]; burst: boolean; reason: DecisionReason; burstDuration?: number } => {
-  const anchor = assignedAnchor(assignment, player);
+  const collective = state.tactics[player.team].collectivePlan;
+  const anchor = assignedAnchor(collective, player);
   const direction = attackDirection(player.team);
   const thinkingTime = perceptionDepth(player, state.ball.position);
   const ownGoal = goalCenter(player.team, true);
   const phase = state.tactics[player.team].phase;
-  const collective = state.tactics[player.team].collectivePlan;
   const marksMan = assignment?.duty === "trackRunner";
   const markWeight = player.memory.policy.mark * (marksMan ? 0.68 : 0.46);
   const coverWeight = player.memory.policy.cover * (marksMan ? 0.24 : 0.38);
-  const minimumGap = fieldX(collective?.defensiveBlock === "low" || phase === "lowBlock"
-    ? 9
-    : collective?.defensiveBlock === "high" || phase === "counterPress" || phase === "highPress"
-      ? 16
-      : 12);
   const predictedBall = predictBallPosition(state, predictionHorizon(player, 0.7) * 0.5);
   // A escada de cobertura por índice global morreu aqui. A distância à bola sai da profundidade
-  // da própria célula: quem foi encarregado de uma zona funda cobre de longe, quem tem célula
-  // adiantada cobre de perto. Escala para qualquer número de jogadores sem esticar o bloco.
+  // da própria célula, e o valor pode ser **negativo**: quem tem zona funda cobre atrás da bola,
+  // quem tem célula adiantada fica à frente dela, fechando a saída. Sem isso o time inteiro
+  // desabava para trás da bola e as duas equipes viravam dois blocos que não se tocam.
   const coverDistance = clamp(
     distance(predictedBall, ownGoal) - distance(anchor, ownGoal),
-    minimumGap,
+    -FIELD.width * 0.3,
     FIELD.width * 0.46,
   );
   const coverPoint = add(predictedBall, scale(normalize(subtract(ownGoal, predictedBall)), coverDistance));
@@ -597,8 +592,13 @@ const defensiveTarget = (
     && state.lastControlledTeam !== player.team
     && state.elapsed - state.controlChangedAt < DEFENSE.recoverWindow;
   const advanced = direction * (player.position.x - anchor.x) > DEFENSE.recoverAdvancedGap * FIELD.width;
-  if (player.profile.role === "defender" && justLost && advanced) {
-    const recoverPoint = clampToField(blend(anchor, ownGoal, 0.25), 3);
+  // Quem está à frente da própria célula com o time sem a bola volta em disparada. Antes isso só
+  // valia para zagueiros nos segundos seguintes à perda, porque a âncora era fixa e ficar
+  // adiantado era exceção. Com o bloco subindo e descendo atrás da bola, estar fora de forma é a
+  // situação comum — e recompor passou a ser trabalho de todo mundo, não só da zaga.
+  const guaranteed = player.profile.role === "defender" && justLost;
+  if (advanced && (guaranteed || (player.sprintEnergy > DEFENSE.recoverMinEnergy && player.sprintCooldown <= 0))) {
+    const recoverPoint = clampToField(guaranteed ? blend(anchor, ownGoal, 0.25) : anchor, 3);
     const raceSpeed = playerSkillSpeed(player) * PHYSICS.burstSpeedFactor;
     const burstDuration = clamp(distance(player.position, recoverPoint) / Math.max(1, raceSpeed), PHYSICS.burstDuration, DEFENSE.recoverBurstMax);
     return { target: recoverPoint, intent: "covering", reason: "recoverShape", burst: true, burstDuration };
