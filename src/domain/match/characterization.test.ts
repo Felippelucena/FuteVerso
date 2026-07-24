@@ -64,10 +64,12 @@ describe("caracterizacao deterministica", () => {
       short: hashFingerprint(actual.short),
       long: hashFingerprint(actual.long),
     };
-    // Re-baseline: a partida virou 11x11 e a âncora de cada jogador passou a vir do slot do
-    // plano tático, em vez de ser derivada da posição e da ordem na escalação. É outra
-    // partida, com outro elenco em campo — o fingerprint muda por inteiro, de propósito.
-    expect(hashes).toEqual({ short: "a6e62916", long: "b634b246" });
+    // Re-baseline: o plano coletivo passou a distribuir uma incumbência para cada um dos onze
+    // (`PlayerAssignment`), e a movimentação sem bola virou renderização dessa incumbência.
+    // Mudaram, de propósito: a âncora de apoio e de cobertura, que agora é a célula da grade e
+    // desliza com o bloco; a escada de cobertura por índice, que virou profundidade da própria
+    // célula; e a marcação por índice, que virou zonal. Outra partida, outro fingerprint.
+    expect(hashes).toEqual({ short: "3b880719", long: "b0fac3f2" });
     // Timeout explícito: com 22 jogadores em campo a simulação custa ~2,4× o que custava no
     // 5x5, e o padrão de 5s estourava quando a suíte roda em paralelo.
   }, 60_000);

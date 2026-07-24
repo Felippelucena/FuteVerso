@@ -2,11 +2,11 @@ import type { GameApplication } from "../../application/game-application";
 import { SIMULATION_SPEEDS, type SimulationSpeed } from "../../application/match/match-session";
 import { ANALYTICS_GRID, FIELD } from "../../domain/match/config";
 import type { MatchState } from "../../domain/match";
-import type { PlayerRuntime } from "../../domain/match/model";
+import type { AssignmentDuty, PlayerRuntime } from "../../domain/match/model";
 import { goalkeeperQuality } from "../../domain/match/systems/goalkeeper-system";
 import type { Team } from "../../domain/shared/model";
 import type { GameRenderer } from "../canvas/game-renderer";
-import { DRIBBLE_RANGE_REASON_LABELS, DRIBBLE_TOUCH_LABELS, escapeHtml, formatClock, INTENT_LABELS, PACE_LABELS, PASS_PURPOSE_LABELS, percentage, PHASE_LABELS, POSITION_LABELS, REASON_LABELS, ROLE_LABELS, SHOT_TECHNIQUE_LABELS, type TeamNames } from "../app/labels";
+import { DRIBBLE_RANGE_REASON_LABELS, DRIBBLE_TOUCH_LABELS, DUTY_LABELS, escapeHtml, formatClock, INTENT_LABELS, PACE_LABELS, PASS_PURPOSE_LABELS, percentage, PHASE_LABELS, POSITION_LABELS, REASON_LABELS, ROLE_LABELS, SHOT_TECHNIQUE_LABELS, type TeamNames } from "../app/labels";
 import { hydrateIcons } from "../app/icons";
 import { formatMatchEvent } from "./format-match-event";
 import { createContestMetric, createMatchHeaderViewModel, createMatchSummary } from "./match-view-model";
@@ -70,8 +70,8 @@ export const matchScreenTemplate = (): string => `
       <section id="inspector-analysis" class="inspector-panel analysis-section" role="tabpanel" data-inspector-panel="analysis" hidden aria-label="Análise tática da partida">
         <div class="analysis-heading"><div><span class="eyebrow">TÁTICA</span><strong id="analysis-title">Relatório ao vivo</strong></div><span id="contest-metric">Disputa 0%</span></div>
         <div class="phase-grid">
-          <div class="phase-card phase-card--blue"><small id="phase-name-blue">CASA</small><strong id="phase-blue">Bloco médio</strong><span id="shape-blue">Largura 0 · Prof. 0</span><canvas id="tactical-map-blue" width="128" height="72" aria-label="Mapa de calor e rede de passes do time da casa"></canvas></div>
-          <div class="phase-card phase-card--coral"><small id="phase-name-coral">VISITANTE</small><strong id="phase-coral">Bloco médio</strong><span id="shape-coral">Largura 0 · Prof. 0</span><canvas id="tactical-map-coral" width="128" height="72" aria-label="Mapa de calor e rede de passes do time visitante"></canvas></div>
+          <div class="phase-card phase-card--blue"><small id="phase-name-blue">CASA</small><strong id="phase-blue">Bloco médio</strong><span id="shape-blue">Largura 0 · Prof. 0</span><span id="duties-blue" class="phase-duties">-</span><canvas id="tactical-map-blue" width="128" height="72" aria-label="Mapa de calor e rede de passes do time da casa"></canvas></div>
+          <div class="phase-card phase-card--coral"><small id="phase-name-coral">VISITANTE</small><strong id="phase-coral">Bloco médio</strong><span id="shape-coral">Largura 0 · Prof. 0</span><span id="duties-coral" class="phase-duties">-</span><canvas id="tactical-map-coral" width="128" height="72" aria-label="Mapa de calor e rede de passes do time visitante"></canvas></div>
         </div>
         <div class="analysis-table" id="analysis-table"></div>
         <p id="match-summary" class="match-summary">A análise será atualizada conforme a partida evolui.</p>
@@ -444,6 +444,18 @@ export class MatchScreen {
       this.find(`#shape-${team}`).textContent = collective
         ? `${styleLabel} · corredor ${channelLabel} · risco ${Math.round(collective.risk * 100)}%`
         : `Largura ${Math.round(shape.width)} · Prof. ${Math.round(shape.depth)}`;
+      // Como o time está dividido agora. Todo jogador aparece aqui: se a soma não bater com o
+      // tamanho do time, alguém ficou sem função — que é justamente o que não pode acontecer.
+      const duties = new Map<string, number>();
+      for (const assignment of Object.values(collective?.assignments ?? {})) {
+        duties.set(assignment.duty, (duties.get(assignment.duty) ?? 0) + 1);
+      }
+      this.find(`#duties-${team}`).textContent = duties.size === 0
+        ? "-"
+        : [...duties.entries()]
+          .sort(([, first], [, second]) => second - first)
+          .map(([duty, count]) => `${count} ${DUTY_LABELS[duty as AssignmentDuty]}`)
+          .join(" · ");
       this.renderTacticalMap(team);
     }
     const blue = state.stats.blue; const coral = state.stats.coral;

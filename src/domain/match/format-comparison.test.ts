@@ -2,8 +2,7 @@ import { describe, expect, it } from "vitest";
 import { referenceMatchConfig, smallSidedMatchConfig } from "./__fixtures__/reference-match";
 import { FIELD, FIXED_STEP } from "./config";
 import { createMatchState, stepMatch } from "./index";
-import type { MatchConfig, MatchState } from "./model";
-import type { Team } from "../shared/model";
+import type { MatchConfig } from "./model";
 
 /**
  * Comparação entre o 5x5 antigo e o 11x11 do jogo, nas mesmas sementes. É o instrumento que
@@ -33,26 +32,21 @@ interface FormatReport {
   distanciaPorJogador: number;
   estaminaLongaFinal: number;
   volatilMinima: number;
+  /** Depois do Passo 3 tem que ser zero: a incumbência é uma função total sobre os onze. */
   fracaoSemPapelColetivo: number;
+  /** Fração do tempo que os jogadores de linha passam em cada dever. */
+  distribuicaoDeDeveres: Record<string, number>;
 }
 
 const average = (values: number[]): number =>
   values.length === 0 ? 0 : values.reduce((sum, value) => sum + value, 0) / values.length;
-
-const namedRoleIds = (state: MatchState, team: Team): Set<string> => {
-  const plan = state.tactics[team].collectivePlan;
-  if (!plan) return new Set();
-  return new Set([
-    plan.primaryRunnerId, plan.secondaryRunnerId, plan.safetyPlayerId,
-    plan.presserId, plan.secondPresserId, plan.overlapFullBackId,
-  ].filter((id): id is string => id !== null));
-};
 
 const simulate = (config: MatchConfig) => {
   const state = createMatchState(config);
   const started = performance.now();
   let roleSamples = 0;
   let idleSamples = 0;
+  const dutyCounts = new Map<string, number>();
   const lowestVolatile = new Map<string, number>();
 
   while (!state.finished) {
@@ -60,13 +54,17 @@ const simulate = (config: MatchConfig) => {
     for (const player of state.players) {
       lowestVolatile.set(player.profile.id, Math.min(lowestVolatile.get(player.profile.id) ?? 1, player.sprintEnergy));
     }
-    // Amostra a ociosidade a cada segundo simulado, não a cada tick.
+    // Amostra a ociosidade e a distribuição de deveres a cada segundo simulado, não a cada tick.
     if (Math.abs(state.elapsed % 1) < FIXED_STEP) {
       for (const team of ["blue", "coral"] as const) {
-        const named = namedRoleIds(state, team);
+        const plan = state.tactics[team].collectivePlan;
         const outfield = state.players.filter((player) => player.team === team && player.profile.position !== "goalkeeper");
         roleSamples += outfield.length;
-        idleSamples += outfield.filter((player) => !named.has(player.profile.id)).length;
+        for (const player of outfield) {
+          const duty = plan?.assignments[player.profile.id]?.duty;
+          if (!duty) idleSamples += 1;
+          else dutyCounts.set(duty, (dutyCounts.get(duty) ?? 0) + 1);
+        }
       }
     }
   }
@@ -95,6 +93,9 @@ const simulate = (config: MatchConfig) => {
     longStamina: average(outfield.map((player) => player.stamina)),
     volatileMinimum: Math.min(...outfield.map((player) => lowestVolatile.get(player.profile.id) ?? 1)),
     idleShare: roleSamples > 0 ? idleSamples / roleSamples : 0,
+    dutyShare: Object.fromEntries([...dutyCounts.entries()]
+      .sort(([, first], [, second]) => second - first)
+      .map(([duty, count]) => [duty, Number((count / Math.max(1, roleSamples)).toFixed(3))])),
   };
 };
 
@@ -121,6 +122,11 @@ const report = (formato: string, build: (seed: number) => MatchConfig): FormatRe
     estaminaLongaFinal: Number(mean((run) => run.longStamina).toFixed(3)),
     volatilMinima: Number(mean((run) => run.volatileMinimum).toFixed(3)),
     fracaoSemPapelColetivo: Number(mean((run) => run.idleShare).toFixed(3)),
+    distribuicaoDeDeveres: Object.fromEntries(
+      [...new Set(runs.flatMap((run) => Object.keys(run.dutyShare)))]
+        .map((duty) => [duty, Number(average(runs.map((run) => run.dutyShare[duty] ?? 0)).toFixed(3))] as const)
+        .sort(([, first], [, second]) => second - first),
+    ),
   };
 };
 

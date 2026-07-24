@@ -68,12 +68,20 @@ os dois e um plano tático padrão por clube.
 - **Nomes por país** em `src/content/names/`: um JSON por país que você acrescenta
   sem tocar em código. País sem lista toma nomes emprestados dos demais.
 
+- **Onze contra onze**: o time que o treinador escala é o que entra em campo, com
+  cada jogador ancorado na célula do slot em que foi escalado.
+- **Incumbência para todo mundo**: a cada instante o plano coletivo entrega um
+  dever a cada um dos onze — pressionar, sustentar a zona, atacar as costas da
+  linha, segurar a amplitude, proteger o contra-ataque. Ninguém fica perdido em
+  campo, e duas incumbências nunca disputam a mesma célula da grade.
+- **Marcação zonal por padrão**, individual só onde o treinador pedir.
+
 ## Próximos passos
 
-1. **Motor em 11x11** — o plano escala onze, a simulação ainda coloca cinco em
-   campo. Exige recalibrar pressão, cobertura e espaçamento.
+1. **Recalibrar o 11x11** — campo, gol, estamina e faixas de passe, guiados pelo
+   harness de medição em `format-comparison.test.ts`.
 2. **Ajustes táticos no motor** — ligar mentalidade, saída, bloco, gatilhos e
-   instruções ao comportamento, que hoje é totalmente emergente.
+   instruções ao comportamento, que hoje é quase todo emergente.
 3. **Interface em React** com menu inicial, Jogo Rápido e a tela de partida.
 4. **Editores** de jogadores e de clubes, com o campo tático de arrastar e soltar.
 

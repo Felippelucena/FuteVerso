@@ -1,4 +1,4 @@
-import type { DecisionReason, DribbleRangeReason, DribbleTouchRange, MovementPace, PassPurpose, ShotTechnique, TacticalPhase } from "../../domain/match/model";
+import type { AssignmentDuty, DecisionReason, DribbleRangeReason, DribbleTouchRange, MovementPace, PassPurpose, ShotTechnique, TacticalPhase } from "../../domain/match/model";
 import type { PlayerPosition, PlayerRole } from "../../domain/roster/model";
 import type { Team } from "../../domain/shared/model";
 
@@ -112,6 +112,21 @@ export const PHASE_LABELS: Record<TacticalPhase, string> = {
   recovery: "Recomposição",
 };
 
+/** Nome curto de cada dever, para a linha de distribuição do painel de análise. */
+export const DUTY_LABELS: Record<AssignmentDuty, string> = {
+  carry: "com a bola",
+  receive: "recebendo",
+  runInBehind: "em profundidade",
+  support: "apoio",
+  width: "amplitude",
+  overlap: "sobreposição",
+  restDefense: "retaguarda",
+  press: "pressão",
+  trackRunner: "marcação",
+  holdLine: "zona",
+  goalkeep: "goleiro",
+};
+
 export const REASON_LABELS: Record<DecisionReason, string> = {
   shootingWindow: "Janela de finalização",
   progressivePass: "Passe rompe linha",
@@ -125,6 +140,7 @@ export const REASON_LABELS: Record<DecisionReason, string> = {
   restDefense: "Proteger o contra-ataque",
   pressBall: "Pressionar o portador",
   coverGoal: "Cobrir o gol",
+  holdZone: "Sustentar a zona",
   markThreat: "Marcar ameaça",
   attackReception: "Atacar a recepção",
   firstTimeAction: "Ação de primeira",

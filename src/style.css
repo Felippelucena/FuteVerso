@@ -288,6 +288,8 @@ select {
 .phase-card small { color: var(--muted); font-size: 7px; font-weight: 800; }
 .phase-card strong { margin-top: 2px; overflow: hidden; font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
 .phase-card span { margin-top: 4px; color: var(--muted); font-size: 7px; }
+/* Distribuição de deveres: quebra em várias linhas, porque num 11x11 são cinco ou seis grupos. */
+.phase-duties { line-height: 1.5; opacity: 0.82; }
 .phase-card canvas {
   width: 100%;
   height: 58px;

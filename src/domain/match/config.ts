@@ -234,6 +234,11 @@ export const DEFENSE = {
   recoverBurstMax: 1.6,
   // Risco mínimo do plano coletivo para liberar o lateral a sobrepor no ataque.
   overlapMinRisk: 0.5,
+  // --- Marcação zonal ---
+  // Raio (fração de width) em que um adversário conta como "dentro da minha zona". Acima disso
+  // o defensor sustenta a célula e não encosta em ninguém: é o que impede a marcação zonal de
+  // virar perseguição individual disfarçada.
+  zoneRadius: 0.14,
 } as const;
 
 // Desfechos de contato (tabela resolveContact). Os gates de "roubo limpo" exigem momento real

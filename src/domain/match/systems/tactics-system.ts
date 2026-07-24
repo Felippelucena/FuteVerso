@@ -1,11 +1,10 @@
-import { DEFENSE, FIELD, MATCH_DURATION, POSSESSION, TACTICS } from "../config";
+import { FIELD, MATCH_DURATION, POSSESSION, TACTICS } from "../config";
 import { clamp, distance } from "../../shared/math";
 import type {
   AttackChannel,
   BuildUpStyle,
   DefensiveBlock,
   MatchState,
-  PlayerPosition,
   PlayerRuntime,
   PressTrigger,
   TacticalPhase,
@@ -16,10 +15,7 @@ import type {
 } from "../model";
 import { activeBallPlayerId } from "../runtime/control";
 import { predictPlayerPosition, predictedSpaceAt, predictionHorizon } from "../runtime/prediction";
-
-// Quem sobe pela lateral quando o time ataca por um corredor: os dois laterais, que é o
-// papel clássico do overlap.
-const OVERLAP_POSITIONS: readonly PlayerPosition[] = ["rightBack", "leftBack"];
+import { buildAssignments } from "./assignment-system";
 
 export const TACTICAL_PHASES: TacticalPhase[] = [
   "buildUp", "progression", "finalThird", "counterAttack",
@@ -40,7 +36,6 @@ export const createTacticalState = (team: Team): TeamTacticalState => ({
   lastFinalThirdEntryAt: -POSSESSION.finalThirdEntryCooldown,
   collectivePlan: null,
   safetyPlayerId: null,
-  safetySelectedAt: 0,
 });
 
 const attackingProgress = (team: Team, x: number): number => team === "blue" ? x / FIELD.width : (FIELD.width - x) / FIELD.width;
@@ -144,63 +139,10 @@ const choosePressTrigger = (state: MatchState, team: Team): PressTrigger => {
   return edgeDistance < FIELD.height * 0.18 ? "touchline" : "compact";
 };
 
-const choosePresser = (state: MatchState, team: Team, players: PlayerRuntime[]): string | null => {
-  const ownGoalX = team === "blue" ? 0 : FIELD.width;
-  return [...players].sort((first, second) => {
-    const score = (player: PlayerRuntime): number => {
-      const goalkeeperPenalty = player.profile.position === "goalkeeper"
-        && Math.abs(state.ball.position.x - ownGoalX) > FIELD.width * 0.14 ? FIELD.width * 0.2 : 0;
-      const mentality = (player.profile.mental.aggression + player.profile.mental.intensity + player.profile.mental.anticipation) / 300;
-      const future = predictPlayerPosition(player, predictionHorizon(player, 0.85) * 0.55);
-      return distance(future, state.ball.position) + goalkeeperPenalty - mentality * FIELD.width * 0.045;
-    };
-    return score(first) - score(second);
-  })[0]?.profile.id ?? null;
-};
-
-// Item 1: um segundo defensor sai da linha para dividir quando a bola do adversário entra no
-// nosso terço defensivo e o portador não tem pressão real (o 1º presser está longe).
-const chooseSecondPresser = (state: MatchState, team: Team, players: PlayerRuntime[], presserId: string | null): string | null => {
-  if (collectivePosture(state, team) !== "outOfPossession") return null;
-  const carrier = state.players.find((player) => player.profile.id === activeBallPlayerId(state));
-  if (!carrier || carrier.team === team) return null;
-  if (attackingProgress(team, state.ball.position.x) >= DEFENSE.dangerZoneProgress) return null;
-  const presser = players.find((player) => player.profile.id === presserId) ?? null;
-  const presserGap = presser ? distance(presser.position, state.ball.position) : Number.POSITIVE_INFINITY;
-  if (presserGap <= DEFENSE.secondPresserUnpressuredGap * FIELD.width) return null;
-  const carrierFuture = predictPlayerPosition(carrier, predictionHorizon(carrier, 0.7) * 0.4);
-  const eligible = players.filter((player) => player.profile.role === "defender"
-    && player.profile.position !== "goalkeeper"
-    && player.profile.id !== presserId
-    && distance(player.position, carrierFuture) < DEFENSE.secondPresserEngageRange * FIELD.width);
-  return [...eligible].sort((first, second) =>
-    distance(first.position, carrierFuture) - distance(second.position, carrierFuture)
-    || first.profile.id.localeCompare(second.profile.id))[0]?.profile.id ?? null;
-};
-
-// Item 4: em posse e fases de progressão/ataque, um lateral do lado do canal é liberado a subir
-// como peça de triangulação. Só um por vez, nunca o jogador de segurança (rest defense).
-const chooseOverlapFullBack = (
-  state: MatchState,
-  team: Team,
-  outfield: PlayerRuntime[],
-  attackChannel: AttackChannel,
-  safetyId: string | null,
-  risk: number,
-): string | null => {
-  if (risk < DEFENSE.overlapMinRisk) return null;
-  if (collectivePosture(state, team) !== "inPossession") return null;
-  const phase = state.tactics[team].phase;
-  if (phase !== "progression" && phase !== "finalThird" && phase !== "counterAttack") return null;
-  const corridor = channelY(attackChannel);
-  const eligible = outfield.filter((player) => OVERLAP_POSITIONS.includes(player.profile.position)
-    && player.profile.id !== safetyId
-    && player.sprintEnergy > 0.4
-    && Math.abs(player.position.y - corridor) < FIELD.height * 0.5);
-  return [...eligible].sort((first, second) =>
-    Math.abs(first.position.y - corridor) - Math.abs(second.position.y - corridor)
-    || first.profile.id.localeCompare(second.profile.id))[0]?.profile.id ?? null;
-};
+/**
+ * Estratégia do time neste instante. Fase, canal, risco e bloco são decisões do coletivo; quem
+ * faz o quê sai daqui para `buildAssignments`, que devolve a incumbência de cada um dos onze.
+ */
 
 const createCollectivePlan = (state: MatchState, team: Team): TeamCollectivePlan => {
   const tactical = state.tactics[team];
@@ -210,43 +152,25 @@ const createCollectivePlan = (state: MatchState, team: Team): TeamCollectivePlan
   const actorId = activeBallPlayerId(state);
   const posture = collectivePosture(state, team);
   const attackChannel = selectAttackChannel(state, team, outfield, opponents);
-  const corridor = channelY(attackChannel);
-  const candidates = outfield.filter((player) => player.profile.id !== actorId).sort((first, second) => {
-    const score = (player: PlayerRuntime): number => {
-      const role = player.profile.role === "finisher" ? 0.34 : player.profile.role === "playmaker" ? 0.16 : 0;
-      const vertical = player.profile.skills.sprintSpeed * 0.004 + player.profile.mental.anticipation * 0.003;
-      const channelFit = 1 - clamp(Math.abs(player.position.y - corridor) / (FIELD.height * 0.5), 0, 1);
-      const progress = attackingProgress(team, player.position.x);
-      return role + vertical + channelFit * 0.24 + progress * 0.12;
-    };
-    return score(second) - score(first);
-  });
-  const safetyCandidates = outfield.filter((player) => player.profile.id !== actorId);
-  const safetyScore = (player: PlayerRuntime): number => {
-    const goalSide = 1 - attackingProgress(team, player.position.x);
-    const central = 1 - clamp(Math.abs(player.position.y - FIELD.height / 2) / (FIELD.height / 2), 0, 1);
-    return player.profile.skills.defending * 0.42 + player.profile.mental.decisionMaking * 0.2
-      + player.profile.mental.anticipation * 0.18 + player.profile.mental.teamwork * 0.12
-      + goalSide * 5 + central * 3;
-  };
-  const rankedSafety = [...safetyCandidates].sort((first, second) => safetyScore(second) - safetyScore(first));
-  const bestSafety = rankedSafety[0] ?? null;
-  const currentSafety = safetyCandidates.find((player) => player.profile.id === tactical.safetyPlayerId) ?? null;
-  const switchLocked = currentSafety && state.elapsed - tactical.safetySelectedAt < 1.2;
-  const safety = currentSafety && (switchLocked || !bestSafety || safetyScore(bestSafety) < safetyScore(currentSafety) * 1.12)
-    ? currentSafety
-    : bestSafety;
-  if (safety?.profile.id !== tactical.safetyPlayerId) {
-    tactical.safetyPlayerId = safety?.profile.id ?? null;
-    tactical.safetySelectedAt = state.elapsed;
-  }
-  const primary = candidates.find((player) => player.profile.id !== safety?.profile.id) ?? candidates[0] ?? null;
-  const secondary = candidates.find((player) => player.profile.id !== primary?.profile.id && player.profile.id !== safety?.profile.id) ?? null;
+  const defensiveBlock = chooseDefensiveBlock(state, team, players);
   const scoreDifference = state.stats[team].goals - state.stats[team === "blue" ? "coral" : "blue"].goals;
   const urgency = clamp((state.elapsed - MATCH_DURATION * 0.65) / (MATCH_DURATION * 0.35), 0, 1);
   const personalityRisk = average(players, (player) => player.profile.mental.creativity * 0.45 + player.profile.mental.aggression * 0.35 + player.profile.mental.composure * 0.2) / 100;
   const risk = clamp(personalityRisk + (scoreDifference < 0 ? urgency * 0.3 : scoreDifference > 0 ? -urgency * 0.2 : 0), 0.2, 0.95);
-  const presserId = choosePresser(state, team, players);
+
+  const { assignments, safetyId } = buildAssignments(state, team, {
+    posture,
+    phase: tactical.phase,
+    attackChannel,
+    defensiveBlock,
+    risk,
+    ballActorId: actorId,
+    previousSafetyId: tactical.safetyPlayerId,
+  });
+  // O último homem só é reescolhido com a bola no pé: perder a posse por um instante não pode
+  // apagar quem estava segurando a retaguarda.
+  if (posture === "inPossession") tactical.safetyPlayerId = safetyId;
+
   return {
     startedAt: state.elapsed,
     expiresAt: state.elapsed + TACTICS.collectivePlanSeconds * (0.82 + average(players, (player) => player.profile.mental.teamwork) / 360),
@@ -255,15 +179,10 @@ const createCollectivePlan = (state: MatchState, team: Team): TeamCollectivePlan
     ballActorId: actorId,
     buildUpStyle: chooseBuildUpStyle(players),
     attackChannel,
-    defensiveBlock: chooseDefensiveBlock(state, team, players),
+    defensiveBlock,
     risk,
-    primaryRunnerId: primary?.profile.id ?? null,
-    secondaryRunnerId: secondary?.profile.id ?? null,
-    safetyPlayerId: safety?.profile.id ?? null,
-    presserId,
-    secondPresserId: chooseSecondPresser(state, team, players, presserId),
-    overlapFullBackId: chooseOverlapFullBack(state, team, outfield, attackChannel, safety?.profile.id ?? null, risk),
     pressTrigger: choosePressTrigger(state, team),
+    assignments,
   };
 };
 

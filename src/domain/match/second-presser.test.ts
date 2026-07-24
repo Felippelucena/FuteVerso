@@ -3,6 +3,7 @@ import { smallSidedMatchConfig } from "./__fixtures__/reference-match";
 import { decideAll } from "./ai";
 import { FIELD } from "./config";
 import { createMatchState } from "./index";
+import { dutyHolders } from "./systems/assignment-system";
 import { updateTacticalContext } from "./systems/tactics-system";
 import type { MatchState, PlayerRuntime } from "./model";
 
@@ -41,8 +42,7 @@ describe("segundo engajador na zona de perigo (Item 1)", () => {
 
     updateTacticalContext(state, 0);
     const plan = state.tactics.blue.collectivePlan!;
-    expect(plan.presserId).toBe(presser.profile.id);
-    expect(plan.secondPresserId).toBe(stepper.profile.id);
+    expect(dutyHolders(plan, "press")).toEqual([presser.profile.id, stepper.profile.id]);
 
     const decision = decideAll(state).get(stepper.profile.id)!;
     expect(decision.intent).toBe("pressing");
@@ -64,6 +64,6 @@ describe("segundo engajador na zona de perigo (Item 1)", () => {
     state.ball.controllerId = carrier.profile.id;
 
     updateTacticalContext(state, 0);
-    expect(state.tactics.blue.collectivePlan!.secondPresserId).toBeNull();
+    expect(dutyHolders(state.tactics.blue.collectivePlan, "press")).toHaveLength(1);
   });
 });

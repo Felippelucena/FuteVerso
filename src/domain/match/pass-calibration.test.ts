@@ -5,6 +5,7 @@ import { FIELD } from "./config";
 import type { PendingPass } from "./model";
 import { evaluateForwardRunway } from "./runtime/dribble-runway";
 import { evaluateShotOpportunity } from "./runtime/shot-opportunity";
+import { dutyLeader } from "./systems/assignment-system";
 
 type Bucket = { total: number; intended: number; teammate: number; opponent: number; expired: number };
 
@@ -114,7 +115,7 @@ describe("calibracao deterministica da partida", () => {
             if (shot && !shot.blocked && shot.distance < FIELD.width * 0.18 && !activeClearChances.has(controller.profile.id)) {
               activeClearChances.set(controller.profile.id, { startedAt: state.elapsed, expiresAt: state.elapsed + 0.75 });
             }
-            const safetyId = state.tactics[controller.team].collectivePlan?.safetyPlayerId;
+            const safetyId = dutyLeader(state.tactics[controller.team].collectivePlan, "restDefense");
             const safety = state.players.find((player) => player.profile.id === safetyId);
             if (state.tactics[controller.team].phase === "finalThird" && safety) {
               safetySamples += 1;

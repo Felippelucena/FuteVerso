@@ -14,7 +14,9 @@ describe("integração do motor", () => {
       stepMatch(second, 1 / 120);
     }
     expect(second).toEqual(first);
-  });
+    // Timeout explícito: são duas partidas de 22 jogadores simuladas em paralelo, e o padrão de
+    // 5s estoura quando a suíte roda concorrente. É custo de simulação, não lentidão de teste.
+  }, 30_000);
 
   it("produz trajetorias diferentes quando a semente muda", () => {
     const first = createTestMatch(12_345);
@@ -25,7 +27,7 @@ describe("integração do motor", () => {
     }
     expect(second.players.map((player) => player.position))
       .not.toEqual(first.players.map((player) => player.position));
-  });
+  }, 30_000);
 
   it("simula dez minutos sem valores inválidos ou atletas fora do campo", () => {
     const state = createTestMatch(98765);

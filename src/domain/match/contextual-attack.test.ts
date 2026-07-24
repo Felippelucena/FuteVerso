@@ -9,6 +9,7 @@ import { evaluateShotOpportunity } from "./runtime/shot-opportunity";
 import { executeBallAction } from "./systems/ball-system";
 import { updateCognition } from "./systems/cognition-system";
 import { updatePossession } from "./systems/possession-system";
+import { dutyLeader } from "./systems/assignment-system";
 import { updateTacticalContext } from "./systems/tactics-system";
 
 const createTestMatch = (seed = 7401) => createMatchState(smallSidedMatchConfig(seed));
@@ -123,7 +124,7 @@ describe("ataque contextual e eventos cognitivos", () => {
     state.players.filter((player) => player.team === "coral" && player.profile.position !== "goalkeeper")
       .forEach((player, index) => { player.position = { x: FIELD.width * (0.7 + index * 0.035), y: 20 + index * 22 }; });
     updateTacticalContext(state, 0);
-    const safetyId = state.tactics.blue.collectivePlan?.safetyPlayerId;
+    const safetyId = dutyLeader(state.tactics.blue.collectivePlan, "restDefense");
     const safetyDecision = decideAll(state).get(safetyId!)!;
     expect(safetyDecision.reason).toBe("restDefense");
     expect(safetyDecision.movementTarget.x).toBeGreaterThan(FIELD.width / 2);

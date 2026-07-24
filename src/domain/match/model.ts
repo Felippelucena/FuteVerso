@@ -91,6 +91,7 @@ export type DecisionReason =
   | "reboundAlert"
   | "smotherLoose"
   | "recoverShape"
+  | "holdZone"
   | "overlapRun";
 export type PlayerIntent =
   | "carrying"
@@ -425,8 +426,53 @@ export interface TeamTacticalState {
   finalThirdLatched: boolean;
   lastFinalThirdEntryAt: number;
   collectivePlan: TeamCollectivePlan | null;
+  /** Último homem da atualização anterior. Só existe para dar histerese ao rest defense. */
   safetyPlayerId: string | null;
-  safetySelectedAt: number;
+}
+
+/**
+ * O que um jogador está encarregado de fazer agora. É a entrega do nível coletivo para o
+ * individual: quem decide movimento e ação lê o dever, em vez de redescobrir o trabalho a
+ * partir de booleanos avulsos e da função do atleta.
+ */
+export type AssignmentDuty =
+  // Com a bola nos pés (ou a caminho deles).
+  | "carry"
+  | "receive"
+  // Sem a bola, com o time em posse.
+  | "runInBehind"
+  | "support"
+  | "width"
+  | "overlap"
+  | "restDefense"
+  // Sem a bola, com o time fora de posse.
+  | "press"
+  | "trackRunner"
+  | "holdLine"
+  // Em qualquer momento.
+  | "goalkeep";
+
+/** Célula da grade tática 7x5 — as mesmas coordenadas de `TacticalSlot.zone`. */
+export interface AssignmentZone {
+  column: number;
+  row: number;
+}
+
+export interface PlayerAssignment {
+  duty: AssignmentDuty;
+  /**
+   * Ordem dentro do dever: 0 é quem manda nele — o primeiro pressionador, o último homem, o
+   * corredor de referência. Substitui os ids únicos que o plano coletivo nomeava um a um e
+   * mantém a singularidade onde ela importa, sem impedir que o dever seja de vários.
+   */
+  priority: number;
+  /** Célula que este jogador ocupa agora. Distinta da de todo companheiro. */
+  zone: AssignmentZone;
+  /** Alvo humano quando o dever é relacional (marcar, pressionar, receber). */
+  targetPlayerId: string | null;
+  /** 0..1 — quanto o jogador pode se afastar da célula antes de estar fora de posição. */
+  freedom: number;
+  rationale: DecisionReason;
 }
 
 export interface TeamCollectivePlan {
@@ -439,15 +485,13 @@ export interface TeamCollectivePlan {
   attackChannel: AttackChannel;
   defensiveBlock: DefensiveBlock;
   risk: number;
-  primaryRunnerId: string | null;
-  secondaryRunnerId: string | null;
-  safetyPlayerId: string | null;
-  presserId: string | null;
-  /** Segundo defensor que sai da linha para dividir na zona de perigo (Item 1). */
-  secondPresserId: string | null;
-  /** Lateral liberado a sobrepor como peça de triangulação no ataque (Item 4). */
-  overlapFullBackId: string | null;
   pressTrigger: PressTrigger;
+  /**
+   * Incumbência de cada jogador do time, indexada por id. É uma função **total** sobre os onze
+   * — nenhum jogador fica sem dever — e duas incumbências nunca apontam para a mesma célula da
+   * grade. Essas duas invariantes são o que impede um jogador de ficar perdido em campo.
+   */
+  assignments: Record<string, PlayerAssignment>;
 }
 
 interface MatchEventBase {

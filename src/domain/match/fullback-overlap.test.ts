@@ -3,6 +3,7 @@ import { smallSidedMatchConfig } from "./__fixtures__/reference-match";
 import { decideAll } from "./ai";
 import { FIELD } from "./config";
 import { createMatchState } from "./index";
+import { dutyLeader } from "./systems/assignment-system";
 import { updateTacticalContext } from "./systems/tactics-system";
 
 const createTestMatch = (seed = 9) => createMatchState(smallSidedMatchConfig(seed));
@@ -36,7 +37,7 @@ describe("zagueiro-ofensivo moderado + recomposição (Item 4)", () => {
 
     updateTacticalContext(state, 0);
     const plan = state.tactics.blue.collectivePlan!;
-    expect(plan.overlapFullBackId).toBe(fb.profile.id);
+    expect(dutyLeader(plan, "overlap")).toBe(fb.profile.id);
 
     const decisions = decideAll(state);
     expect(decisions.get(fb.profile.id)!.reason).toBe("overlapRun");

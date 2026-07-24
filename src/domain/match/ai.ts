@@ -1,6 +1,6 @@
 import { COGNITION, CONDUCT, DEFENSE, DUEL, FIELD, PHYSICS, TACTICS } from "./config";
-import { add, clamp, distance, dot, lerp, normalize, scale, subtract } from "../shared/math";
-import type { AgentDecision, BallAction, DecisionReason, DribbleStyle, MatchState, PlanTarget, PlayerPlan, PlayerRuntime, Team, Vec2 } from "./model";
+import { add, clamp, distance, dot, normalize, scale, subtract } from "../shared/math";
+import type { AgentDecision, AssignmentDuty, BallAction, DecisionReason, DribbleStyle, MatchState, PlanTarget, PlayerAssignment, PlayerPlan, PlayerRuntime, Team, Vec2 } from "./model";
 import { activeBallPlayerId } from "./runtime/control";
 import {
   interceptionThreat,
@@ -16,8 +16,13 @@ import { chooseDribbleTouch, evaluateForwardRunway } from "./runtime/dribble-run
 import { classifyPassPurpose } from "./runtime/pass-purpose";
 import { evaluateShotOpportunity } from "./runtime/shot-opportunity";
 import { goalkeeperDecision } from "./systems/goalkeeper-system";
-import { findSlot, TACTICAL_GRID } from "../tactics/slots";
+import { assignedAnchor, assignmentOf, dutyHolders } from "./systems/assignment-system";
+import { attackDirection, formationAnchor, goalCenter } from "./runtime/formation-geometry";
 import { prepareReceptionAction } from "./runtime/reception-planning";
+
+// A geometria da grade tática (célula → gramado) vive em runtime/formation-geometry, porque o
+// plano coletivo também precisa dela. Reexportadas aqui para quem já as importava daqui.
+export { attackDirection, formationAnchor };
 
 export const PASS_VARIANTS = (["ground", "air"] as const).flatMap((trajectory) =>
   (["short", "long"] as const).flatMap((range) =>
@@ -25,12 +30,8 @@ export const PASS_VARIANTS = (["ground", "air"] as const).flatMap((trajectory) =
   ),
 );
 
-export const attackDirection = (team: Team): number => (team === "blue" ? 1 : -1);
-
 const fieldX = (original: number): number => original * FIELD.width / 100;
 const fieldY = (original: number): number => original * FIELD.height / 60;
-// Última linha da grade tática, usada para normalizar a faixa lateral da âncora.
-const LAST_GRID_ROW = TACTICAL_GRID.rows[TACTICAL_GRID.rows.length - 1];
 
 const PERCEPTION = {
   intervention: fieldX(12),
@@ -61,73 +62,23 @@ const channelAffinity = (position: Vec2, channel: "left" | "center" | "right"): 
   return 1 - clamp(Math.abs(position.y - targetY) / (FIELD.height * 0.42), 0, 1);
 };
 
+/**
+ * Custo de jogar fora de posição, em cima do encaixe (`positionFit`) que o plano tático
+ * calculou. Encaixe 1 (posição natural) não cobra nada; o pior improviso possível hoje é 0,55.
+ *
+ * A referência é a "familiaridade" do FC IQ, que pesa de 10% a 40% do resultado conforme o
+ * contexto: aqui o improviso encarece o erro de decisão em até ~27% e alarga o intervalo de
+ * pensamento em até ~14%. Não mexe nas habilidades — um zagueiro improvisado de lateral não
+ * fica mais lento, ele lê o jogo pior naquela função.
+ */
+const outOfPositionCost = (player: PlayerRuntime): number => clamp(1 - player.positionFit, 0, 1);
+
 const decisionNoise = (player: PlayerRuntime, state: MatchState, salt: number): number => {
   let hash = (state.randomSeed ^ Math.imul(Math.floor(state.elapsed / COGNITION.teamTickSeconds) + salt, 2654435761)) >>> 0;
   for (let index = 0; index < player.profile.id.length; index += 1) hash = Math.imul(hash ^ player.profile.id.charCodeAt(index), 16777619) >>> 0;
   const normalized = hash / 0xffff_ffff * 2 - 1;
-  return normalized * (1 - player.profile.mental.decisionMaking / 100) * 0.34;
-};
-
-/**
- * Profundidade da âncora por coluna do slot, em percentual da largura do campo a partir do
- * próprio gol. A grade tática vai da coluna 0 (gol) à 11 (centroavante avançado), mas o time
- * inteiro cabe na metade defensiva mais um pedaço: a âncora é a posição-base com a bola no
- * meio, não onde o jogador ataca. Espalhar até o fundo do campo faria o centroavante nascer
- * dentro da área adversária.
- */
-const SLOT_COLUMN_DEPTH: Record<number, number> = {
-  0: 6,
-  2: 22,
-  4: 30,
-  6: 38,
-  8: 44,
-  10: 50,
-  11: 53,
-};
-
-// Faixa lateral ocupada pela formação: do quarto de cima ao quarto de baixo do campo. É a mesma
-// banda que o espalhamento anterior produzia, agora endereçada pela linha do slot.
-const LANE_BAND = { first: 0.25, last: 0.75 } as const;
-
-const slotDepth = (column: number): number => {
-  const known = SLOT_COLUMN_DEPTH[column];
-  if (known !== undefined) return known;
-  // Coluna nova na grade: interpola entre as vizinhas conhecidas em vez de cair no gol.
-  const columns = Object.keys(SLOT_COLUMN_DEPTH).map(Number).sort((first, second) => first - second);
-  const next = columns.find((candidate) => candidate > column) ?? columns[columns.length - 1];
-  const previous = [...columns].reverse().find((candidate) => candidate < column) ?? columns[0];
-  if (next === previous) return SLOT_COLUMN_DEPTH[next];
-  const amount = (column - previous) / (next - previous);
-  return lerp(SLOT_COLUMN_DEPTH[previous], SLOT_COLUMN_DEPTH[next], amount);
-};
-
-/**
- * Âncora de formação: vem do slot em que o treinador escalou o jogador. A coluna dá a
- * profundidade, a linha dá a faixa lateral. A função do jogador (finalizador, defensor)
- * ainda desloca alguns pontos, porque posição diz onde e função diz como.
- */
-export const formationAnchor = (player: PlayerRuntime): Vec2 => {
-  const direction = attackDirection(player.team);
-  const mirroredX = (blueX: number): number => direction > 0 ? blueX : FIELD.width - blueX;
-  const slot = findSlot(player.slotId);
-  // Sem slot conhecido o jogador viraria goleiro reserva no córner do campo; o meio-campo é o
-  // palpite menos danoso.
-  const zone = slot?.zone ?? { column: 6, row: 4 };
-  // O goleiro não desloca por função: a linha do gol é a linha do gol.
-  const roleAdvance = player.profile.position === "goalkeeper"
-    ? 0
-    : fieldX(player.profile.role === "finisher" ? 4 : player.profile.role === "defender" ? -3 : 0);
-  const lane = LANE_BAND.first + (LANE_BAND.last - LANE_BAND.first) * (zone.row / LAST_GRID_ROW);
-  return {
-    x: mirroredX(fieldX(slotDepth(zone.column)) + roleAdvance),
-    y: FIELD.height * lane,
-  };
-};
-
-const goalCenter = (team: Team, ownGoal: boolean): Vec2 => {
-  const direction = attackDirection(team);
-  const attackingX = direction > 0 ? FIELD.width : 0;
-  return { x: ownGoal ? FIELD.width - attackingX : attackingX, y: FIELD.height / 2 };
+  return normalized * (1 - player.profile.mental.decisionMaking / 100) * 0.34
+    * (1 + outOfPositionCost(player) * 0.6);
 };
 
 const distanceToSegment = (point: Vec2, start: Vec2, end: Vec2): number => {
@@ -222,11 +173,20 @@ export const choosePass = (player: PlayerRuntime, teammates: PlayerRuntime[], op
       const aerialValue = variant.trajectory === "air"
         ? (rawLanePressure > 0.9 ? 0.3 : -0.16) - landingContest * 0.72 - (variant.range === "long" ? 0.08 : 0)
         : 0;
+      // O valor de passar para alguém sai do dever dele, não de um id nomeado no plano. Cada
+      // dever decai com a ordem (`priority`), para o time não despejar tudo no mesmo corredor
+      // só porque três jogadores foram encarregados de atacar as costas da linha.
+      const receiverDuty = assignmentOf(collective, teammate.profile.id);
+      const dutyBonus = !collective || !receiverDuty ? 0
+        : receiverDuty.duty === "runInBehind" ? (0.34 + collective.risk * 0.18) / (1 + receiverDuty.priority * 0.6)
+          : receiverDuty.duty === "overlap" ? 0.2
+            : receiverDuty.duty === "support" ? 0.18 / (1 + receiverDuty.priority)
+              : receiverDuty.duty === "restDefense" && progress < 0
+                ? (1 - collective.risk) * 0.3 / (1 + receiverDuty.priority)
+                : 0;
       const collectiveBonus = collective
-        ? (collective.primaryRunnerId === teammate.profile.id ? 0.34 + collective.risk * 0.18 : 0)
-          + (collective.secondaryRunnerId === teammate.profile.id ? 0.18 : 0)
+        ? dutyBonus
           + channelAffinity(target, collective.attackChannel) * 0.2
-          + (collective.safetyPlayerId === teammate.profile.id && progress < 0 ? (1 - collective.risk) * 0.3 : 0)
           + (collective.buildUpStyle === "direct"
             ? clamp(progress / fieldX(24), -0.12, 0.3)
             : collective.buildUpStyle === "short"
@@ -467,58 +427,68 @@ const carrierDecision = (
   };
 };
 
+/**
+ * Profundidade do apoio por dever, em percentual da largura do campo à frente do portador.
+ * Antes vinha de `profile.role`, que tem três valores e não sabia o que o time estava pedindo:
+ * agora vem da incumbência, que é o que o coletivo de fato decidiu para este jogador agora.
+ */
+const DUTY_DEPTH: Record<AssignmentDuty, { fast: number; final: number; base: number }> = {
+  runInBehind: { fast: 33, final: 28, base: 23 },
+  overlap: { fast: 30, final: 26, base: 22 },
+  width: { fast: 18, final: 15, base: 12 },
+  support: { fast: 12, final: 9, base: 7 },
+  restDefense: { fast: -22, final: -24, base: -18 },
+  holdLine: { fast: 8, final: 6, base: 4 },
+  // Deveres que nunca chegam aqui (quem tem a bola, quem pressiona, o goleiro) ficam neutros.
+  carry: { fast: 0, final: 0, base: 0 },
+  receive: { fast: 0, final: 0, base: 0 },
+  press: { fast: 0, final: 0, base: 0 },
+  trackRunner: { fast: 0, final: 0, base: 0 },
+  goalkeep: { fast: 0, final: 0, base: 0 },
+};
+
+/** Largura do bolsão de recepção que cada dever procura, em unidades verticais do campo. */
+const DUTY_WIDTH: Record<AssignmentDuty, number> = {
+  width: 22, support: 21, overlap: 20, runInBehind: 16, restDefense: 10,
+  holdLine: 10, press: 10, trackRunner: 10, carry: 0, receive: 0, goalkeep: 0,
+};
+
 const supportTarget = (
   player: PlayerRuntime,
   controller: PlayerRuntime,
   state: MatchState,
 ): { target: Vec2; reason: DecisionReason; burst: boolean } => {
   const direction = attackDirection(player.team);
-  const anchor = player.homeAnchor;
+  const collective = state.tactics[player.team].collectivePlan;
+  const assignment = assignmentOf(collective, player.profile.id);
+  // A âncora do apoio é a célula que o coletivo entregou, não a posição fixa da escalação. É
+  // ela que faz o bloco inteiro deslizar com o canal de ataque e subir com a fase.
+  const anchor = assignedAnchor(assignment, player);
+  const duty = assignment?.duty ?? "support";
   const supportDepth = perceptionDepth(player, state.ball.position);
   const phase = state.tactics[player.team].phase;
-  const collective = state.tactics[player.team].collectivePlan;
   const phaseIsFast = phase === "counterAttack";
   const phaseIsFinal = phase === "finalThird";
-  const primaryRunner = collective?.primaryRunnerId === player.profile.id;
-  const secondaryRunner = collective?.secondaryRunnerId === player.profile.id;
-  const safetyPlayer = collective?.safetyPlayerId === player.profile.id;
-  const overlapRunner = collective?.overlapFullBackId === player.profile.id;
-  const side = player.profile.role === "playmaker"
-    ? (controller.position.y < FIELD.height / 2 ? 1 : -1)
-    : (player.lineupIndex % 2 === 0 ? 1 : -1);
+  // O lado do bolsão vem da célula do jogador em relação ao portador: quem foi encarregado da
+  // faixa de cima oferece a linha por cima. Antes era a paridade do índice na escalação.
+  const side = anchor.y <= controller.position.y ? -1 : 1;
   const controllerNearEdge = edgeRisk(controller.position);
-  const roleDepth = overlapRunner
-    ? fieldX(phaseIsFast ? 30 : phaseIsFinal ? 26 : 22)
-    : primaryRunner
-    ? fieldX(phaseIsFast ? 33 : phaseIsFinal ? 28 : 23)
-    : safetyPlayer
-      ? -fieldX(phaseIsFinal ? 24 : 18)
-      : player.profile.role === "finisher"
-    ? fieldX(phaseIsFast ? 27 : phaseIsFinal ? 23 : 19)
-    : player.profile.role === "defender"
-      ? fieldX(phaseIsFast ? 10 : phaseIsFinal ? 8 : 6)
-      : fieldX(phaseIsFast ? 12 : phaseIsFinal ? 9 : 7);
+  const depth = DUTY_DEPTH[duty];
+  const roleDepth = fieldX(phaseIsFast ? depth.fast : phaseIsFinal ? depth.final : depth.base);
   const anticipatedRoleDepth = roleDepth * (0.86 + player.profile.mental.anticipation / 500);
-  const roleWidth = overlapRunner ? fieldY(20) : player.profile.role === "defender" ? fieldY(10) : player.profile.role === "finisher" ? fieldY(16) : fieldY(21);
-  const reason: DecisionReason = overlapRunner
-    ? "overlapRun"
-    : safetyPlayer
-    ? "restDefense"
-    : primaryRunner || player.profile.role === "finisher" && phase !== "buildUp"
-      ? "runInBehind"
-      : secondaryRunner || player.profile.role === "playmaker"
-        ? "thirdManSupport"
-        : "giveWidth";
+  const roleWidth = fieldY(DUTY_WIDTH[duty]);
+  const reason: DecisionReason = assignment?.rationale ?? "giveWidth";
   const horizon = predictionHorizon(player, phaseIsFast ? 0.82 : 0.42);
   const predictedController = predictPlayerPosition(controller, horizon * 0.55);
   const preferredY = collective
     ? collective.attackChannel === "left" ? FIELD.height * 0.22 : collective.attackChannel === "right" ? FIELD.height * 0.78 : FIELD.height * 0.5
     : controller.position.y + side * roleWidth;
+  const channelPull = duty === "runInBehind" ? 0.72 : duty === "support" ? 0.42 : duty === "width" ? 0.1 : 0.18;
   const passingPocket = {
     x: predictedController.x + direction * anticipatedRoleDepth,
-    y: blend({ x: 0, y: predictedController.y + side * roleWidth }, { x: 0, y: preferredY }, primaryRunner ? 0.72 : secondaryRunner ? 0.42 : 0.18).y,
+    y: blend({ x: 0, y: predictedController.y + side * roleWidth }, { x: 0, y: preferredY }, channelPull).y,
   };
-  if (safetyPlayer) {
+  if (duty === "restDefense") {
     const gap = fieldX(phase === "buildUp" ? 18 : phase === "progression" ? 20 : phaseIsFast ? 22 : 24);
     const ballLine = state.ball.position.x - direction * gap;
     const transitionThreats = state.players.filter((candidatePlayer) => candidatePlayer.team !== player.team
@@ -537,9 +507,14 @@ const supportTarget = (
       burst: false,
     };
   }
+  // A célula já carrega o avanço do bloco por fase e o deslizamento pelo canal, então o
+  // acompanhamento contínuo da bola pesa menos do que pesava sobre a âncora fixa. É um dos
+  // números que a remedição do Passo 5 vai revisitar.
+  // Quem segura a largura quase não desliza atrás do portador: a função dele é justamente não
+  // fechar a faixa que o time precisa manter aberta.
   const base = {
-    x: anchor.x + (state.ball.position.x - FIELD.width / 2) * 0.42,
-    y: anchor.y + (controller.position.y - FIELD.height / 2) * (player.profile.role === "defender" ? 0.12 : 0.28),
+    x: anchor.x + (state.ball.position.x - FIELD.width / 2) * 0.26,
+    y: anchor.y + (controller.position.y - FIELD.height / 2) * (duty === "width" ? 0.12 : 0.28),
   };
   const candidate = blend(passingPocket, base, 0.35 + supportDepth * 0.4);
   if (controllerNearEdge > 0.35) candidate.y = blend(candidate, { x: candidate.x, y: FIELD.height / 2 }, controllerNearEdge * 0.65).y;
@@ -557,12 +532,12 @@ const supportTarget = (
   const targetGap = distance(player.position, target);
   const forwardProgress = direction * (target.x - player.position.x);
   const transitionAge = state.elapsed - state.controlChangedAt;
+  // O rest defense já saiu por cima, com alvo próprio: aqui só passa quem apoia o ataque.
   const transitionRun = phaseIsFast
     && transitionAge < TACTICS.counterAttackWindow * 0.72
-    && !safetyPlayer
     && forwardProgress > fieldX(7)
     && targetGap > fieldX(10);
-  const depthRun = (primaryRunner || overlapRunner || player.profile.role === "finisher")
+  const depthRun = (duty === "runInBehind" || duty === "overlap")
     && phase !== "buildUp"
     && forwardProgress > fieldX(8)
     && targetGap > fieldX(11)
@@ -576,37 +551,46 @@ const defensiveTarget = (
   player: PlayerRuntime,
   mark: PlayerRuntime | null,
   state: MatchState,
-  coverSlot: number,
+  assignment: PlayerAssignment | null,
 ): { target: Vec2; intent: AgentDecision["intent"]; burst: boolean; reason: DecisionReason; burstDuration?: number } => {
-  const anchor = player.homeAnchor;
+  const anchor = assignedAnchor(assignment, player);
   const direction = attackDirection(player.team);
   const thinkingTime = perceptionDepth(player, state.ball.position);
   const ownGoal = goalCenter(player.team, true);
   const phase = state.tactics[player.team].phase;
   const collective = state.tactics[player.team].collectivePlan;
-  const markWeight = player.memory.policy.mark * (player.profile.role === "defender" ? 0.68 : 0.46);
-  const coverWeight = player.memory.policy.cover * (player.profile.role === "defender" ? 0.38 : 0.24);
-  const phaseDistance = collective?.defensiveBlock === "low" || phase === "lowBlock"
+  const marksMan = assignment?.duty === "trackRunner";
+  const markWeight = player.memory.policy.mark * (marksMan ? 0.68 : 0.46);
+  const coverWeight = player.memory.policy.cover * (marksMan ? 0.24 : 0.38);
+  const minimumGap = fieldX(collective?.defensiveBlock === "low" || phase === "lowBlock"
     ? 9
     : collective?.defensiveBlock === "high" || phase === "counterPress" || phase === "highPress"
       ? 16
-      : 12;
-  const coverDistance = fieldX(phaseDistance + coverSlot * 4.5);
+      : 12);
   const predictedBall = predictBallPosition(state, predictionHorizon(player, 0.7) * 0.5);
+  // A escada de cobertura por índice global morreu aqui. A distância à bola sai da profundidade
+  // da própria célula: quem foi encarregado de uma zona funda cobre de longe, quem tem célula
+  // adiantada cobre de perto. Escala para qualquer número de jogadores sem esticar o bloco.
+  const coverDistance = clamp(
+    distance(predictedBall, ownGoal) - distance(anchor, ownGoal),
+    minimumGap,
+    FIELD.width * 0.46,
+  );
   const coverPoint = add(predictedBall, scale(normalize(subtract(ownGoal, predictedBall)), coverDistance));
   const predictedMark = mark ? predictPlayerPosition(mark, predictionHorizon(player, 0.55) * 0.48) : null;
-  const markSide = mark ? {
-    x: predictedMark!.x - direction * fieldX(player.profile.role === "defender" ? 5 : 3),
-    y: predictedMark!.y + Math.sign(anchor.y - predictedMark!.y || (coverSlot % 2 ? 1 : -1)) * fieldY(3),
+  const markSide = predictedMark ? {
+    x: predictedMark.x - direction * fieldX(marksMan ? 5 : 3),
+    y: predictedMark.y + Math.sign(anchor.y - predictedMark.y || 1) * fieldY(3),
   } : anchor;
-  const roleCoverBias = player.profile.role === "defender" ? 0.3 : player.profile.role === "playmaker" ? 0.46 : 0.62;
-  const medium = blend(coverPoint, markSide, roleCoverBias + markWeight * 0.18 - coverWeight * 0.1);
+  // Marcação individual persegue o homem; a zonal só encosta em quem entrou na célula dela.
+  const markBias = marksMan ? 0.75 : 0.3;
+  const medium = blend(coverPoint, markSide, markBias + markWeight * 0.18 - coverWeight * 0.1);
   const farPlan = blend(anchor, markSide, markWeight * (0.42 + thinkingTime * 0.3));
   const contextualTarget = blend(medium, farPlan, thinkingTime);
   const laneDiscipline = phase === "lowBlock" ? 0.36 : 0.28;
   const target = clampToField(blend(contextualTarget, { x: contextualTarget.x, y: anchor.y }, laneDiscipline), 3);
-  const intent = roleCoverBias > 0.52 ? "marking" : "covering";
-  const reason: DecisionReason = intent === "marking" ? "markThreat" : "coverGoal";
+  const intent = mark ? "marking" : "covering";
+  const reason: DecisionReason = mark ? "markThreat" : "holdZone";
   // Item 4B: zagueiro adiantado que acabou de perder a posse recompõe em disparada garantida
   // (sem o gate de intensidade/fase do burst defensivo normal).
   const justLost = state.previousControlledTeam === player.team
@@ -672,23 +656,16 @@ export const decideAll = (state: MatchState): Map<string, AgentDecision> => {
     const teammates = state.players.filter((player) => player.team === team);
     const opponents = state.players.filter((player) => player.team !== team);
     const teamHasPossession = controller?.team === team;
-    const plannedPresserId = state.tactics[team].collectivePlan?.presserId;
-    const presser = teammates.find((player) => player.profile.id === plannedPresserId)
+    const plan = state.tactics[team].collectivePlan;
+    // Quem pressiona vem do dever `press`: prioridade 0 é quem chega primeiro na bola,
+    // prioridade 1 é o segundo que sai da linha para dividir.
+    const pressers = dutyHolders(plan, "press");
+    const presser = teammates.find((player) => player.profile.id === pressers[0])
       ?? choosePresser(team, teammates, state.ball.position);
-    const secondPresserId = state.tactics[team].collectivePlan?.secondPresserId ?? null;
-    const secondPresser = secondPresserId && secondPresserId !== presser.profile.id
-      ? teammates.find((player) => player.profile.id === secondPresserId) ?? null
+    const secondPresser = pressers[1] && pressers[1] !== presser.profile.id
+      ? teammates.find((player) => player.profile.id === pressers[1]) ?? null
       : null;
     const ownGoal = goalCenter(team, true);
-    const threats = [...opponents].sort((a, b) => {
-      const threat = (opponent: PlayerRuntime): number => distance(opponent.position, ownGoal) * 0.54
-        + distance(opponent.position, state.ball.position) * 0.34
-        + Math.abs(opponent.position.y - FIELD.height / 2) * 0.12;
-      return threat(a) - threat(b);
-    });
-    const coveringPlayers = teammates.filter((player) => player.profile.position !== "goalkeeper"
-      && player.profile.id !== presser.profile.id
-      && player.profile.id !== secondPresser?.profile.id);
     for (const player of teammates) {
       const keeperReaction = player.profile.position === "goalkeeper" && actualController?.profile.id !== player.profile.id
         ? goalkeeperDecision(player, state)
@@ -772,9 +749,13 @@ export const decideAll = (state: MatchState): Map<string, AgentDecision> => {
         decisions.set(player.profile.id, { movementTarget: clampToField(goalSide, 3), burst: true, burstDuration, posture: "outOfPossession", intent: "pressing", reason: "pressBall", ballAction: { kind: "none" } });
         continue;
       }
-      const coverSlot = Math.max(0, coveringPlayers.findIndex((candidate) => candidate.profile.id === player.profile.id));
-      const assignedMark = threats[coverSlot % Math.max(1, threats.length)] ?? null;
-      const { target, intent, burst, reason, burstDuration } = defensiveTarget(player, assignedMark, state, coverSlot);
+      // Sem ranking global de ameaça e sem marcação por índice: o jogador responde por quem o
+      // plano coletivo colocou dentro da célula dele. Ninguém atravessa o campo atrás de um número.
+      const assignment = assignmentOf(plan, player.profile.id);
+      const assignedMark = assignment?.targetPlayerId
+        ? opponents.find((opponent) => opponent.profile.id === assignment.targetPlayerId) ?? null
+        : null;
+      const { target, intent, burst, reason, burstDuration } = defensiveTarget(player, assignedMark, state, assignment);
       decisions.set(player.profile.id, { movementTarget: target, burst, burstDuration, posture: "outOfPossession", intent, reason, ballAction: { kind: "none" } });
     }
   }
@@ -804,7 +785,10 @@ const planTarget = (player: PlayerRuntime, decision: AgentDecision, state: Match
 };
 
 export const thinkingInterval = (player: PlayerRuntime): number => {
-  const quality = clamp((player.profile.mental.decisionMaking * 0.72 + player.profile.mental.anticipation * 0.28) / 100, 0, 1);
+  const read = (player.profile.mental.decisionMaking * 0.72 + player.profile.mental.anticipation * 0.28) / 100;
+  // Fora de posição o jogador lê o jogo mais devagar: as referências que ele conhece não estão
+  // onde ele está acostumado a procurar.
+  const quality = clamp(read * (1 - outOfPositionCost(player) * 0.3), 0, 1);
   return COGNITION.slowestThinkSeconds + (COGNITION.fastestThinkSeconds - COGNITION.slowestThinkSeconds) * quality;
 };
 

@@ -3,6 +3,7 @@ import { smallSidedMatchConfig } from "./__fixtures__/reference-match";
 import { FIELD } from "./config";
 import { createMatchState } from "./index";
 import { predictBallPosition, predictPlayerPosition } from "./runtime/prediction";
+import { dutyLeader } from "./systems/assignment-system";
 import { updateTacticalContext } from "./systems/tactics-system";
 
 const createTestMatch = (seed = 2026) => createMatchState(smallSidedMatchConfig(seed));
@@ -23,9 +24,12 @@ describe("cerebro coletivo e previsao curta", () => {
     updateTacticalContext(state, 0);
     const plan = state.tactics.blue.collectivePlan!;
     expect(plan.posture).toBe("inPossession");
-    expect(plan.primaryRunnerId).not.toBeNull();
-    expect(plan.secondaryRunnerId).not.toBe(plan.primaryRunnerId);
-    expect(plan.safetyPlayerId).not.toBe(plan.primaryRunnerId);
+    const runner = dutyLeader(plan, "runInBehind");
+    expect(runner).not.toBeNull();
+    expect(dutyLeader(plan, "restDefense")).not.toBe(runner);
+    // Todo jogador de linha tem dever, e dois deveres nunca apontam para a mesma célula.
+    const outfield = state.players.filter((player) => player.team === "blue" && player.profile.position !== "goalkeeper");
+    expect(outfield.every((player) => plan.assignments[player.profile.id])).toBe(true);
 
     state.elapsed += 0.5;
     updateTacticalContext(state, 0);
