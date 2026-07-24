@@ -1,12 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { referenceMatchConfig } from "./__fixtures__/reference-match";
+import { smallSidedMatchConfig } from "./__fixtures__/reference-match";
 import { PASS_VARIANTS, choosePass, decideAll } from "./ai";
 import { FIELD, PHYSICS } from "./config";
 import { createMatchState, stepMatch } from "./index";
 import { executeBallAction } from "./systems/ball-system";
 import { distance, length } from "../shared/math";
 
-const createTestMatch = (seed?: number) => createMatchState(referenceMatchConfig(seed));
+const createTestMatch = (seed?: number) => createMatchState(smallSidedMatchConfig(seed));
 
 describe("ações e física da bola", () => {
   it("expõe as oito combinações de passe", () => {

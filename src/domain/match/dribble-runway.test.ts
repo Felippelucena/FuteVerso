@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { referenceMatchConfig } from "./__fixtures__/reference-match";
+import { smallSidedMatchConfig } from "./__fixtures__/reference-match";
 import { createMatchState } from "./index";
 import { chooseDribbleTouch, evaluateForwardRunway } from "./runtime/dribble-runway";
 import { executeBallAction } from "./systems/ball-system";
@@ -7,7 +7,7 @@ import { FIELD } from "./config";
 import { length } from "../shared/math";
 import type { DribbleTouchRange } from "./model";
 
-const createTestMatch = (seed = 5150) => createMatchState(referenceMatchConfig(seed));
+const createTestMatch = (seed = 5150) => createMatchState(smallSidedMatchConfig(seed));
 
 const arrangeCarrier = () => {
   const state = createTestMatch();

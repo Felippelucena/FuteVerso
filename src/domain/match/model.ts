@@ -1,4 +1,6 @@
 import type { PlayerMemory, PlayerProfile } from "../roster/model";
+import type { PlayerInstruction } from "../tactics/model";
+import type { TacticalSlotId } from "../tactics/slots";
 import type { AttackChannel, BuildUpStyle, DefensiveBlock, PressTrigger } from "../tactics/vocabulary";
 import type { Team, Vec2 } from "../shared/model";
 
@@ -16,7 +18,13 @@ export type {
 // O vocabulário tático é declarado por domain/tactics, que é quem oferece essas opções ao
 // treinador; o motor as consome e reexporta para manter sua superfície pública intacta.
 export type { AttackChannel, BuildUpStyle, DefensiveBlock, PressTrigger } from "../tactics/vocabulary";
+export type { PlayerInstruction } from "../tactics/model";
+export type { TacticalSlotId } from "../tactics/slots";
 
+/**
+ * O que o plano tático entrega ao motor sobre um jogador. O motor não conhece
+ * `TeamTacticalPlan`: recebe o resultado já resolvido, participante a participante.
+ */
 export interface MatchParticipant {
   team: Team;
   lineupIndex: number;
@@ -24,6 +32,15 @@ export interface MatchParticipant {
   memory: PlayerMemory;
   /** Camisa vestida nesta partida. Vem do contrato, não do jogador. */
   shirtNumber: number;
+  /** Slot do plano tático em que o jogador foi escalado; define a âncora dele em campo. */
+  slotId: TacticalSlotId;
+  /**
+   * Encaixe do jogador no slot (0..1), vindo de domain/tactics/position-fit. 1 é posição
+   * natural; abaixo disso o atleta está improvisando e rende menos.
+   */
+  positionFit: number;
+  /** Instrução individual do treinador para este slot. */
+  instruction: PlayerInstruction;
   /**
    * Estamina longa com que o atleta entra em campo (0..1). No jogo rápido é sempre 1;
    * em modos com progressão diária (carreira/roguelike) carrega o desgaste do dia.
@@ -104,6 +121,11 @@ export interface PlayerRuntime {
   team: Team;
   lineupIndex: number;
   shirtNumber: number;
+  /** Slot do plano tático. Manda na âncora e na zona que o jogador defende. */
+  slotId: TacticalSlotId;
+  /** Encaixe no slot (0..1). Abaixo de 1, o jogador está improvisando. */
+  positionFit: number;
+  instruction: PlayerInstruction;
   position: Vec2;
   /** Posição-base na formação (âncora fixa do jogador), calculada uma vez na criação da partida. */
   homeAnchor: Vec2;

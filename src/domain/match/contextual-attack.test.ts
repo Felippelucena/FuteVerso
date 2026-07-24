@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { referenceMatchConfig } from "./__fixtures__/reference-match";
+import { smallSidedMatchConfig } from "./__fixtures__/reference-match";
 import { decideAll } from "./ai";
 import { FIELD } from "./config";
 import { createMatchState } from "./index";
@@ -11,7 +11,7 @@ import { updateCognition } from "./systems/cognition-system";
 import { updatePossession } from "./systems/possession-system";
 import { updateTacticalContext } from "./systems/tactics-system";
 
-const createTestMatch = (seed = 7401) => createMatchState(referenceMatchConfig(seed));
+const createTestMatch = (seed = 7401) => createMatchState(smallSidedMatchConfig(seed));
 
 describe("ataque contextual e eventos cognitivos", () => {
   it("distingue cruzamento, cutback, profundidade e inversao pela geometria", () => {

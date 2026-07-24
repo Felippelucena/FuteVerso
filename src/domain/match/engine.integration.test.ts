@@ -38,5 +38,5 @@ describe("integração do motor", () => {
       expect(player.position.y).toBeLessThanOrEqual(FIELD.height - player.radius);
     }
     expect(Number.isFinite(state.ball.position.x) && Number.isFinite(state.ball.position.y)).toBe(true);
-  }, 15_000);
+  }, 60_000);
 });

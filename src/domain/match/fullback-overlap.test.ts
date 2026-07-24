@@ -1,11 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { referenceMatchConfig } from "./__fixtures__/reference-match";
+import { smallSidedMatchConfig } from "./__fixtures__/reference-match";
 import { decideAll } from "./ai";
 import { FIELD } from "./config";
 import { createMatchState } from "./index";
 import { updateTacticalContext } from "./systems/tactics-system";
 
-const createTestMatch = (seed = 9) => createMatchState(referenceMatchConfig(seed));
+const createTestMatch = (seed = 9) => createMatchState(smallSidedMatchConfig(seed));
 
 describe("zagueiro-ofensivo moderado + recomposição (Item 4)", () => {
   it("libera o lateral a sobrepor no ataque; nenhum outro jogador recebe overlapRun", () => {

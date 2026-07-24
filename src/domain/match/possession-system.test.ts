@@ -1,10 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { referenceMatchConfig } from "./__fixtures__/reference-match";
+import { smallSidedMatchConfig } from "./__fixtures__/reference-match";
 import { decideAll } from "./ai";
 import { FIELD, PHYSICS } from "./config";
 import { createMatchState, stepMatch } from "./index";
 
-const createTestMatch = (seed?: number) => createMatchState(referenceMatchConfig(seed));
+const createTestMatch = (seed?: number) => createMatchState(smallSidedMatchConfig(seed));
 
 describe("posse e domínio", () => {
   it("usa defesa e controle para decidir uma bola dividida", () => {

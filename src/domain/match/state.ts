@@ -34,6 +34,9 @@ const makePlayer = (participant: MatchParticipant): PlayerRuntime => {
     team,
     lineupIndex,
     shirtNumber: participant.shirtNumber,
+    slotId: participant.slotId,
+    positionFit: participant.positionFit,
+    instruction: { ...participant.instruction },
     position: { x: 0, y: 0 },
     homeAnchor: { x: 0, y: 0 },
     velocity: { x: 0, y: 0 },
@@ -69,7 +72,7 @@ const makePlayer = (participant: MatchParticipant): PlayerRuntime => {
 export function createMatchState(config: MatchConfig): MatchState {
   const players = config.participants.map(makePlayer);
   for (const player of players) {
-    player.homeAnchor = formationAnchor(player, players.filter((mate) => mate.team === player.team));
+    player.homeAnchor = formationAnchor(player);
     player.position = { ...player.homeAnchor };
   }
   return {

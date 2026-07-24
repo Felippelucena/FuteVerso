@@ -43,7 +43,7 @@ describe("GameApplication", () => {
     const { application } = context;
     expect(application.clubOf("blue").id).toBe(application.world.clubs[0].id);
     expect(application.clubOf("coral").id).toBe(application.world.clubs[1].id);
-    expect(application.state.players).toHaveLength(10);
+    expect(application.state.players).toHaveLength(TEAM_SIZE * 2);
   });
 
   it("troca os clubes em campo e reinicia a partida", () => {

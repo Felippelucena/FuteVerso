@@ -1,11 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { referenceMatchConfig } from "./__fixtures__/reference-match";
+import { smallSidedMatchConfig } from "./__fixtures__/reference-match";
 import { decideAll } from "./ai";
 import { FIELD } from "./config";
 import { createMatchState } from "./index";
 import { evaluateShotOpportunity } from "./runtime/shot-opportunity";
 
-const createTestMatch = (seed = 3) => createMatchState(referenceMatchConfig(seed));
+const createTestMatch = (seed = 3) => createMatchState(smallSidedMatchConfig(seed));
 
 describe("lookahead condução→finalização (Item 3)", () => {
   it("avalia o chute a partir de uma posição futura: mais perto e livre supera a atual bloqueada", () => {

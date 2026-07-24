@@ -1,12 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { REFERENCE_PLAYERS, referenceMatchConfig } from "../match/__fixtures__/reference-match";
+import { REFERENCE_PLAYERS, smallSidedMatchConfig } from "../match/__fixtures__/reference-match";
 import { decideAll, thinkingInterval } from "../match/ai";
 import { FIELD } from "../match/config";
 import { createMatchState } from "../match";
 import { createInitialPolicy, createMentalAttributes, policyLearningBounds } from "./personality";
 import { isValidProfile } from "./rules";
 
-const createTestMatch = (seed: number) => createMatchState(referenceMatchConfig(seed));
+const createTestMatch = (seed: number) => createMatchState(smallSidedMatchConfig(seed));
 
 describe("personalidade dos jogadores", () => {
   it("faz perfis cerebrais e ousados partirem de preferencias diferentes", () => {

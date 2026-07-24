@@ -1,6 +1,6 @@
 import { COGNITION, CONDUCT, DEFENSE, DUEL, FIELD, PHYSICS, TACTICS } from "./config";
-import { add, clamp, distance, dot, normalize, scale, subtract } from "../shared/math";
-import type { AgentDecision, BallAction, DecisionReason, DribbleStyle, MatchState, PlanTarget, PlayerPlan, PlayerPosition, PlayerRuntime, Team, Vec2 } from "./model";
+import { add, clamp, distance, dot, lerp, normalize, scale, subtract } from "../shared/math";
+import type { AgentDecision, BallAction, DecisionReason, DribbleStyle, MatchState, PlanTarget, PlayerPlan, PlayerRuntime, Team, Vec2 } from "./model";
 import { activeBallPlayerId } from "./runtime/control";
 import {
   interceptionThreat,
@@ -16,6 +16,7 @@ import { chooseDribbleTouch, evaluateForwardRunway } from "./runtime/dribble-run
 import { classifyPassPurpose } from "./runtime/pass-purpose";
 import { evaluateShotOpportunity } from "./runtime/shot-opportunity";
 import { goalkeeperDecision } from "./systems/goalkeeper-system";
+import { findSlot, TACTICAL_GRID } from "../tactics/slots";
 import { prepareReceptionAction } from "./runtime/reception-planning";
 
 export const PASS_VARIANTS = (["ground", "air"] as const).flatMap((trajectory) =>
@@ -28,11 +29,8 @@ export const attackDirection = (team: Team): number => (team === "blue" ? 1 : -1
 
 const fieldX = (original: number): number => original * FIELD.width / 100;
 const fieldY = (original: number): number => original * FIELD.height / 60;
-// Faixa lateral da âncora: espalha os jogadores de linha do time pela largura, da lane de
-// cima (fieldY 15) à de baixo (fieldY 45), simétrica em torno do centro. Independe do total,
-// então serve para 4x4, 5x5, 11x11... Para 3 jogadores reproduz 15/30/45; para 4, 15/25/35/45.
-const lateralLane = (rank: number, count: number): number =>
-  count <= 1 ? FIELD.height / 2 : fieldY(15) + (fieldY(45) - fieldY(15)) * rank / (count - 1);
+// Última linha da grade tática, usada para normalizar a faixa lateral da âncora.
+const LAST_GRID_ROW = TACTICAL_GRID.rows[TACTICAL_GRID.rows.length - 1];
 
 const PERCEPTION = {
   intervention: fieldX(12),
@@ -70,38 +68,60 @@ const decisionNoise = (player: PlayerRuntime, state: MatchState, salt: number): 
   return normalized * (1 - player.profile.mental.decisionMaking / 100) * 0.34;
 };
 
-// Profundidade da âncora por posição, em percentual da largura do campo a partir do próprio
-// gol. Enquanto a escalação não vier do plano tático, é isto que espalha o time no eixo x;
-// na fase do plano tático a coluna do slot passa a mandar (ver domain/tactics/slots.ts).
-const POSITION_DEPTH: Record<PlayerPosition, number> = {
-  goalkeeper: 6,
-  centerBack: 22,
-  rightBack: 29,
-  leftBack: 29,
-  defensiveMid: 33,
-  centerMid: 38,
-  rightMid: 38,
-  leftMid: 38,
-  attackingMid: 42,
-  rightWing: 45,
-  leftWing: 45,
-  striker: 47,
+/**
+ * Profundidade da âncora por coluna do slot, em percentual da largura do campo a partir do
+ * próprio gol. A grade tática vai da coluna 0 (gol) à 11 (centroavante avançado), mas o time
+ * inteiro cabe na metade defensiva mais um pedaço: a âncora é a posição-base com a bola no
+ * meio, não onde o jogador ataca. Espalhar até o fundo do campo faria o centroavante nascer
+ * dentro da área adversária.
+ */
+const SLOT_COLUMN_DEPTH: Record<number, number> = {
+  0: 6,
+  2: 22,
+  4: 30,
+  6: 38,
+  8: 44,
+  10: 50,
+  11: 53,
 };
 
-// Âncora de formação: profundidade (x) pela posição, faixa lateral (y) pela ordem do jogador
-// entre os companheiros de linha. `teammates` deve conter o time inteiro (com goleiro) para
-// que o total de jogadores de linha seja conhecido — assim o espalhamento se adapta ao formato.
-export const formationAnchor = (player: PlayerRuntime, teammates: PlayerRuntime[]): Vec2 => {
+// Faixa lateral ocupada pela formação: do quarto de cima ao quarto de baixo do campo. É a mesma
+// banda que o espalhamento anterior produzia, agora endereçada pela linha do slot.
+const LANE_BAND = { first: 0.25, last: 0.75 } as const;
+
+const slotDepth = (column: number): number => {
+  const known = SLOT_COLUMN_DEPTH[column];
+  if (known !== undefined) return known;
+  // Coluna nova na grade: interpola entre as vizinhas conhecidas em vez de cair no gol.
+  const columns = Object.keys(SLOT_COLUMN_DEPTH).map(Number).sort((first, second) => first - second);
+  const next = columns.find((candidate) => candidate > column) ?? columns[columns.length - 1];
+  const previous = [...columns].reverse().find((candidate) => candidate < column) ?? columns[0];
+  if (next === previous) return SLOT_COLUMN_DEPTH[next];
+  const amount = (column - previous) / (next - previous);
+  return lerp(SLOT_COLUMN_DEPTH[previous], SLOT_COLUMN_DEPTH[next], amount);
+};
+
+/**
+ * Âncora de formação: vem do slot em que o treinador escalou o jogador. A coluna dá a
+ * profundidade, a linha dá a faixa lateral. A função do jogador (finalizador, defensor)
+ * ainda desloca alguns pontos, porque posição diz onde e função diz como.
+ */
+export const formationAnchor = (player: PlayerRuntime): Vec2 => {
   const direction = attackDirection(player.team);
   const mirroredX = (blueX: number): number => direction > 0 ? blueX : FIELD.width - blueX;
-  if (player.profile.position === "goalkeeper") return { x: mirroredX(fieldX(6)), y: FIELD.height / 2 };
-  const roleAdvance = fieldX(player.profile.role === "finisher" ? 4 : player.profile.role === "defender" ? -3 : 0);
-  const depth = POSITION_DEPTH[player.profile.position];
-  const outfield = teammates
-    .filter((mate) => mate.profile.position !== "goalkeeper")
-    .sort((first, second) => first.lineupIndex - second.lineupIndex);
-  const rank = Math.max(0, outfield.findIndex((mate) => mate.profile.id === player.profile.id));
-  return { x: mirroredX(fieldX(depth) + roleAdvance), y: lateralLane(rank, outfield.length) };
+  const slot = findSlot(player.slotId);
+  // Sem slot conhecido o jogador viraria goleiro reserva no córner do campo; o meio-campo é o
+  // palpite menos danoso.
+  const zone = slot?.zone ?? { column: 6, row: 4 };
+  // O goleiro não desloca por função: a linha do gol é a linha do gol.
+  const roleAdvance = player.profile.position === "goalkeeper"
+    ? 0
+    : fieldX(player.profile.role === "finisher" ? 4 : player.profile.role === "defender" ? -3 : 0);
+  const lane = LANE_BAND.first + (LANE_BAND.last - LANE_BAND.first) * (zone.row / LAST_GRID_ROW);
+  return {
+    x: mirroredX(fieldX(slotDepth(zone.column)) + roleAdvance),
+    y: FIELD.height * lane,
+  };
 };
 
 const goalCenter = (team: Team, ownGoal: boolean): Vec2 => {

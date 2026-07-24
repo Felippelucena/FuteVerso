@@ -1,11 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { referenceMatchConfig } from "./__fixtures__/reference-match";
+import { smallSidedMatchConfig } from "./__fixtures__/reference-match";
 import { decideAll } from "./ai";
 import { FIELD } from "./config";
 import { createMatchState } from "./index";
 import { executeBallAction } from "./systems/ball-system";
 
-const createTestMatch = (seed = 1) => createMatchState(referenceMatchConfig(seed));
+const createTestMatch = (seed = 1) => createMatchState(smallSidedMatchConfig(seed));
 
 describe("finta — raio de colisão e posse", () => {
   it("finta que falha NÃO faz o portador perder a posse", () => {

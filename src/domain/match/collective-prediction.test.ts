@@ -1,11 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { referenceMatchConfig } from "./__fixtures__/reference-match";
+import { smallSidedMatchConfig } from "./__fixtures__/reference-match";
 import { FIELD } from "./config";
 import { createMatchState } from "./index";
 import { predictBallPosition, predictPlayerPosition } from "./runtime/prediction";
 import { updateTacticalContext } from "./systems/tactics-system";
 
-const createTestMatch = (seed = 2026) => createMatchState(referenceMatchConfig(seed));
+const createTestMatch = (seed = 2026) => createMatchState(smallSidedMatchConfig(seed));
 
 describe("cerebro coletivo e previsao curta", () => {
   it("define papeis coletivos distintos e sustenta o plano entre atualizacoes", () => {

@@ -1,11 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { referenceMatchConfig } from "./__fixtures__/reference-match";
+import { smallSidedMatchConfig } from "./__fixtures__/reference-match";
 import { decideAll } from "./ai";
 import { FIELD, PHYSICS } from "./config";
 import { createMatchState, stepMatch } from "./index";
 import { playerSpeedLimit } from "./systems/movement-system";
 
-const createTestMatch = (seed?: number) => createMatchState(referenceMatchConfig(seed));
+const createTestMatch = (seed?: number) => createMatchState(smallSidedMatchConfig(seed));
 
 describe("movimento dos jogadores", () => {
   it("mantém a bola colada sempre lenta e diferencia corrida e explosão sem a bola", () => {

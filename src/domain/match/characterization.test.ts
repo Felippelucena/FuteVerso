@@ -64,11 +64,11 @@ describe("caracterizacao deterministica", () => {
       short: hashFingerprint(actual.short),
       long: hashFingerprint(actual.long),
     };
-    // Re-baseline: o custo da estamina volátil passou a ser derivado do tamanho do campo
-    // (STAMINA.volatileBurstCostPerUnit em config.ts). Antes era fixo por unidade percorrida
-    // e, com o gramado ampliado para o 5x5, uma travessia gol a gol custava 84% da barra em
-    // vez dos 70% de projeto. Toda trajetória muda em consequência, então este fingerprint
-    // foi regravado de propósito.
-    expect(hashes).toEqual({ short: "1982fbd5", long: "f2d6a362" });
-  });
+    // Re-baseline: a partida virou 11x11 e a âncora de cada jogador passou a vir do slot do
+    // plano tático, em vez de ser derivada da posição e da ordem na escalação. É outra
+    // partida, com outro elenco em campo — o fingerprint muda por inteiro, de propósito.
+    expect(hashes).toEqual({ short: "a6e62916", long: "b634b246" });
+    // Timeout explícito: com 22 jogadores em campo a simulação custa ~2,4× o que custava no
+    // 5x5, e o padrão de 5s estourava quando a suíte roda em paralelo.
+  }, 60_000);
 });

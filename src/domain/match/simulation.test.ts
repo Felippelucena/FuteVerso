@@ -87,7 +87,7 @@ describe("qualidade coletiva da simulacao", () => {
       expect(state.stats[team].goalsFromShots + state.stats[team].goalsFromPasses + state.stats[team].goalsFromDribbles)
         .toBe(state.stats[team].goals);
     }
-  }, 15_000);
+  }, 60_000);
 
   it("preserva variedade de acoes em oito sementes curtas", () => {
     const totals = { passes: 0, shots: 0, expressiveDribbles: 0 };
@@ -109,7 +109,7 @@ describe("qualidade coletiva da simulacao", () => {
     expect(totals.shots).toBeGreaterThan(0);
     expect(totals.expressiveDribbles).toBeGreaterThan(0);
     expect(signatures.size).toBeGreaterThan(4);
-  }, 15_000);
+  }, 60_000);
 
   it("muda a fase e coordena funções ofensivas conforme o contexto", () => {
     const state = createTestMatch(456);

@@ -1,11 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { referenceMatchConfig } from "./__fixtures__/reference-match";
+import { smallSidedMatchConfig } from "./__fixtures__/reference-match";
 import { FIELD } from "./config";
 import { createMatchState } from "./index";
 import { updatePossession } from "./systems/possession-system";
 import type { MatchState, PlayerRuntime } from "./model";
 
-const createTestMatch = (seed = 5) => createMatchState(referenceMatchConfig(seed));
+const createTestMatch = (seed = 5) => createMatchState(smallSidedMatchConfig(seed));
 
 // Afasta os não-participantes do lance (e deixa espaço atrás do defensor livre).
 const park = (state: MatchState, keep: PlayerRuntime[]): void => {

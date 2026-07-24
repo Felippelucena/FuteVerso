@@ -1,12 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { referenceMatchConfig } from "./__fixtures__/reference-match";
+import { smallSidedMatchConfig } from "./__fixtures__/reference-match";
 import { decideAll } from "./ai";
 import { FIELD } from "./config";
 import { createMatchState } from "./index";
 import { updateTacticalContext } from "./systems/tactics-system";
 import type { MatchState, PlayerRuntime } from "./model";
 
-const createTestMatch = (seed = 7) => createMatchState(referenceMatchConfig(seed));
+const createTestMatch = (seed = 7) => createMatchState(smallSidedMatchConfig(seed));
 
 const parkOthers = (state: MatchState, keep: PlayerRuntime[]): void => {
   state.players.forEach((player, index) => {

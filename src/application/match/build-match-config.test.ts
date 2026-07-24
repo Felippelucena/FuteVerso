@@ -1,21 +1,27 @@
 import { describe, expect, it } from "vitest";
 import { squadOf } from "../../domain/contract/queries";
 import { TEAM_SIZE } from "../../domain/tactics/model";
-import { GOALKEEPER_SLOT_ID } from "../../domain/tactics/slots";
+import { DEFAULT_INSTRUCTION, instructionFor } from "../../domain/tactics/model";
+import { positionFit } from "../../domain/tactics/position-fit";
+import { findSlot, GOALKEEPER_SLOT_ID } from "../../domain/tactics/slots";
 import { createTestSetup, createTestWorld } from "../__fixtures__/test-world";
-import { buildMatchConfig, ENGINE_FIELD_PLAYERS, selectStarters } from "./build-match-config";
+import { buildMatchConfig } from "./build-match-config";
 
 describe("buildMatchConfig", () => {
   it("monta os participantes dos dois clubes com goleiro em primeiro", () => {
     const world = createTestWorld();
     const config = buildMatchConfig(world, createTestSetup(world));
 
-    expect(config.participants).toHaveLength((ENGINE_FIELD_PLAYERS + 1) * 2);
+    expect(config.participants).toHaveLength(TEAM_SIZE * 2);
     for (const team of ["blue", "coral"] as const) {
       const side = config.participants.filter((participant) => participant.team === team);
-      expect(side.map(({ lineupIndex }) => lineupIndex)).toEqual([0, 1, 2, 3, 4]);
+      expect(side.map(({ lineupIndex }) => lineupIndex)).toEqual([...Array(TEAM_SIZE).keys()]);
+      expect(side[0].slotId).toBe(GOALKEEPER_SLOT_ID);
       expect(side[0].profile.position).toBe("goalkeeper");
       expect(side.slice(1).every((participant) => participant.profile.position !== "goalkeeper")).toBe(true);
+      // Do gol ao ataque: a coluna do slot nunca anda para trás.
+      const columns = side.map(({ slotId }) => findSlot(slotId)!.zone.column);
+      expect(columns).toEqual([...columns].sort((first, second) => first - second));
     }
     expect(config.seed).toBe(world.settings.randomSeed);
     expect(config.learningEnabled).toBe(true);
@@ -74,33 +80,44 @@ describe("buildMatchConfig", () => {
   });
 });
 
-describe("selectStarters", () => {
-  it("recorta os onze escalados no formato que o motor ainda simula", () => {
+describe("plano tático que viaja com o participante", () => {
+  it("leva slot, encaixe e instrução de cada titular", () => {
     const world = createTestWorld();
-    const plan = world.clubs[0].defaultPlan;
-    expect(plan.assignments).toHaveLength(TEAM_SIZE);
+    const setup = createTestSetup(world);
+    const config = buildMatchConfig(world, setup);
 
-    const starters = selectStarters(plan);
-
-    expect(starters).toHaveLength(ENGINE_FIELD_PLAYERS + 1);
-    expect(starters[0].slot.id).toBe(GOALKEEPER_SLOT_ID);
-    expect(new Set(starters.map(({ playerId }) => playerId)).size).toBe(starters.length);
-  });
-
-  it("mantém forma de time: um defensor, dois meias e um atacante", () => {
-    const world = createTestWorld(4);
-    for (const club of world.clubs) {
-      const outfield = selectStarters(club.defaultPlan).slice(1);
-      const bands = outfield.map(({ slot }) => slot.zone.column <= 2 ? "defesa" : slot.zone.column <= 6 ? "meio" : "ataque");
-      expect(bands.filter((band) => band === "defesa")).toHaveLength(1);
-      expect(bands.filter((band) => band === "meio")).toHaveLength(2);
-      expect(bands.filter((band) => band === "ataque")).toHaveLength(1);
+    for (const team of ["blue", "coral"] as const) {
+      const squad = squadOf(world.players, world.contracts, setup[team].clubId);
+      for (const participant of config.participants.filter((entry) => entry.team === team)) {
+        const assignment = setup[team].plan.assignments
+          .find(({ playerId }) => playerId === participant.profile.id)!;
+        const profile = squad.find(({ id }) => id === participant.profile.id)!;
+        expect(participant.slotId).toBe(assignment.slotId);
+        expect(participant.positionFit).toBe(positionFit(profile, findSlot(assignment.slotId)!).rating);
+        expect(participant.instruction).toEqual(instructionFor(setup[team].plan, assignment.slotId));
+      }
     }
   });
 
-  it("devolve o time inteiro quando o corte não é necessário", () => {
+  it("usa a instrução padrão para slot sem ajuste do treinador", () => {
     const world = createTestWorld();
-    const starters = selectStarters(world.clubs[0].defaultPlan, TEAM_SIZE - 1);
-    expect(starters).toHaveLength(TEAM_SIZE);
+    const setup = createTestSetup(world);
+    setup.blue.plan.instructions = {};
+
+    const config = buildMatchConfig(world, setup);
+
+    expect(config.participants.filter(({ team }) => team === "blue")
+      .every(({ instruction }) => instruction.support === DEFAULT_INSTRUCTION.support)).toBe(true);
+  });
+
+  it("entrega instrução isolada do plano", () => {
+    const world = createTestWorld();
+    const setup = createTestSetup(world);
+    const config = buildMatchConfig(world, setup);
+    const participant = config.participants[0];
+
+    participant.instruction.support = "attack";
+
+    expect(instructionFor(setup.blue.plan, participant.slotId).support).toBe(DEFAULT_INSTRUCTION.support);
   });
 });
