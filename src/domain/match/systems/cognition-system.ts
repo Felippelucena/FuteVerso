@@ -10,7 +10,7 @@ const planNeedsRefresh = (player: PlayerRuntime, state: MatchState): boolean => 
   if (!plan) return true;
   if (plan.possessionTeam !== state.possessionTeam || plan.ballActorId !== activeBallPlayerId(state)) return true;
   if (plan.collectivePlanStartedAt !== (state.tactics[player.team].collectivePlan?.startedAt ?? 0)) return true;
-  if (plan.duringRestart !== (state.kickoffTimer > 0)) return true;
+  if (plan.duringRestart !== (state.restart !== null)) return true;
   if (plan.ballAction.kind !== "none"
     && state.ball.controllerId !== player.profile.id
     && state.ball.dribbleOwnerId !== player.profile.id) return true;

@@ -137,12 +137,10 @@ export const smallSidedMatchConfig = (seed: number = DEFAULT_MATCH_SEED): MatchC
 });
 
 /**
- * Coloca o cenário em jogo corrido: sem contagem regressiva de saída e sem a restrição da
- * Regra 8 sobre quem pode tocar a bola. É o que um teste que monta uma jogada no meio da
- * partida pressupõe — zerar só o `kickoffTimer` deixaria a saída de bola pendente, e com ela
- * a regra de que ninguém além do cobrador encosta na bola.
+ * Coloca o cenário em jogo corrido: sem bola parada pendente e sem a restrição da Regra 8 sobre
+ * quem pode tocar a bola. É o que um teste que monta uma jogada no meio da partida pressupõe —
+ * deixar um `restart` ativo prenderia a bola no ponto e proibiria todo mundo de tocá-la.
  */
 export const startOpenPlay = (state: MatchState): void => {
-  state.kickoffTimer = 0;
-  state.kickoff = null;
+  state.restart = null;
 };

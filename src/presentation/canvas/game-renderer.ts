@@ -1,4 +1,4 @@
-import { FIELD, PHYSICS } from "../../domain/match/config";
+import { FIELD, PHYSICS, RESTART } from "../../domain/match/config";
 import { clamp, distance, length } from "../../domain/shared/math";
 import { goalkeeperJumpHeight } from "../../domain/match/systems/goalkeeper-system";
 import { progressToX } from "../../domain/match/runtime/offside";
@@ -71,7 +71,7 @@ export class GameRenderer {
     }
     this.drawBall(state);
     if (state.offsideCall) this.drawOffside(state, state.offsideCall);
-    else if (state.kickoffTimer > 0) this.drawKickoff(state.kickoffTimer);
+    else if (state.restart && !state.restart.ballInPlay) this.drawRestart(state);
   }
 
   private updateBallTrail(state: MatchState): void {
@@ -81,15 +81,16 @@ export class GameRenderer {
       this.lastTrailTime = state.elapsed;
       return;
     }
+    const ballParked = state.restart !== null && !state.restart.ballInPlay;
     const latest = this.ballTrail[this.ballTrail.length - 1];
     const restarted = state.elapsed < this.lastTrailTime
-      || state.kickoffTimer > 0
+      || ballParked
       || (latest && distance(latest.position, current.position) > FIELD.width * 0.2);
     if (restarted) this.ballTrail = [];
     const sampleNeeded = !latest
       || current.time - latest.time >= 0.025
       || distance(latest.position, current.position) >= 0.75;
-    if (sampleNeeded && state.kickoffTimer <= 0) this.ballTrail.push(current);
+    if (sampleNeeded && !ballParked) this.ballTrail.push(current);
     this.ballTrail = this.ballTrail.filter((sample) => current.time - sample.time <= 0.72).slice(-24);
     this.lastTrailTime = state.elapsed;
   }
@@ -405,15 +406,23 @@ export class GameRenderer {
     ctx.restore();
   }
 
-  private drawKickoff(timer: number): void {
+  private drawRestart(state: MatchState): void {
+    const restart = state.restart!;
     const ctx = this.context;
-    const alpha = clamp(timer / 1.1, 0, 1);
-    ctx.fillStyle = `rgba(9, 13, 11, ${alpha * 0.52})`;
+    // Some conforme o preparo avança: quanto mais perto da cobrança, mais leve o véu.
+    const remaining = restart.startedAt + RESTART.maxSetupSeconds - state.elapsed;
+    const alpha = clamp(remaining / RESTART.maxSetupSeconds, 0, 1);
+    const label = restart.kind === "throwIn" ? "LATERAL"
+      : restart.kind === "corner" ? "ESCANTEIO"
+        : restart.kind === "goalKick" ? "TIRO DE META"
+          : restart.kind === "freeKick" ? "FALTA"
+            : "SAIDA";
+    ctx.fillStyle = `rgba(9, 13, 11, ${alpha * 0.4})`;
     ctx.fillRect(this.x(0), this.y(0), FIELD.width * this.scale, FIELD.height * this.scale);
     ctx.fillStyle = `rgba(255, 255, 255, ${alpha})`;
     ctx.font = `700 ${Math.max(18, this.scale * 3)}px ui-sans-serif, system-ui`;
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
-    ctx.fillText("SAIDA", this.x(FIELD.width / 2), this.y(FIELD.height / 2));
+    ctx.fillText(label, this.x(FIELD.width / 2), this.y(FIELD.height / 2));
   }
 }

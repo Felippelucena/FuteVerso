@@ -559,11 +559,4 @@ export const resolveGoalkeeperContact = (
   return false;
 };
 
-export const clearGoalkeeperAttempts = (state: MatchState): void => {
-  for (const goalkeeper of state.players.filter((player) => player.profile.position === "goalkeeper")) {
-    goalkeeper.goalkeeperAttempt = null;
-    goalkeeper.goalkeeperRecoveryUntil = 0;
-    goalkeeper.goalkeeperHoldUntil = 0;
-    goalkeeper.goalkeeperAlertUntil = 0;
-  }
-};
+export { clearGoalkeeperAttempts } from "../runtime/control";

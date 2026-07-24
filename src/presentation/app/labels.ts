@@ -1,4 +1,5 @@
-import type { AssignmentDuty, DecisionReason, DribbleRangeReason, DribbleTouchRange, MovementPace, PassPurpose, ShotTechnique, TacticalPhase } from "../../domain/match/model";
+import { HALF_DURATION } from "../../domain/match/config";
+import type { AssignmentDuty, DecisionReason, DribbleRangeReason, DribbleTouchRange, MatchState, MovementPace, PassPurpose, ShotTechnique, TacticalPhase } from "../../domain/match/model";
 import type { PlayerPosition, PlayerRole } from "../../domain/roster/model";
 import type { Team } from "../../domain/shared/model";
 
@@ -170,5 +171,18 @@ export const teamLabel = (team: Team, names: TeamNames): string => names[team];
 export const formatClock = (seconds: number): string => (
   `${Math.floor(seconds / 60).toString().padStart(2, "0")}:${Math.floor(seconds % 60).toString().padStart(2, "0")}`
 );
+
+/**
+ * Relógio da partida com acréscimos: mostra "05:00 +00:07" ao passar do fim nominal do tempo ou
+ * enquanto a placa de acréscimos está no ar. O relógio é contínuo (não zera no intervalo).
+ */
+export const formatMatchClock = (state: MatchState): string => {
+  const nominal = HALF_DURATION * state.half;
+  if (state.elapsed > nominal || state.stoppage.awaitingEnd) {
+    const base = Math.min(state.elapsed, nominal);
+    return `${formatClock(base)} +${formatClock(state.elapsed - nominal)}`;
+  }
+  return formatClock(state.elapsed);
+};
 
 export const percentage = (value: number, total: number): string => `${total > 0 ? Math.round(value / total * 100) : 0}%`;

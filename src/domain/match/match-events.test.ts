@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { referenceMatchConfig, startOpenPlay } from "./__fixtures__/reference-match";
-import { FIELD, FIXED_STEP, MATCH_DURATION } from "./config";
+import { FIELD, FIXED_STEP, MATCH_DURATION, MATCH_HALVES } from "./config";
 import { createMatchState, stepMatch } from "./index";
 import { executeBallAction } from "./systems/ball-system";
 
@@ -11,11 +11,18 @@ describe("eventos estruturados do motor", () => {
     const state = createState();
     expect(state.events[0]).toEqual({ id: 1, time: 0, type: "match-started" });
 
-    state.elapsed = MATCH_DURATION - FIXED_STEP;
-    state.kickoffTimer = 1;
+    // Último tempo, já no acréscimo, e com a bola morta (impedimento apitado): o fim-com-contexto
+    // libera o apito no primeiro momento de jogo parado depois do tempo esgotado.
+    state.half = MATCH_HALVES;
+    state.elapsed = MATCH_DURATION + 1;
+    state.offsideCall = {
+      team: "blue", offenderId: state.players[0].profile.id, lineProgress: 0.5,
+      spot: { x: FIELD.width / 2, y: FIELD.height / 2 }, calledAt: state.elapsed, resolveAt: state.elapsed + 5,
+    };
     stepMatch(state, FIXED_STEP);
 
-    expect(state.events[0]).toMatchObject({ type: "match-finished", time: MATCH_DURATION });
+    expect(state.events[0]).toMatchObject({ type: "match-finished" });
+    expect((state.events[0] as { time: number }).time).toBeGreaterThanOrEqual(MATCH_DURATION);
   });
 
   it("registra finalização com time e jogador", () => {

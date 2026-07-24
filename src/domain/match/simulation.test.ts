@@ -21,7 +21,9 @@ describe("qualidade coletiva da simulacao", () => {
     let freeDribbleTicks = 0;
     const observedPaces = new Set<string>();
 
-    for (let tick = 0; tick < 72_000; tick += 1) {
+    // Passa do fim nominal para cumprir os acréscimos: a partida encerra entre 600s e o teto
+    // absoluto (600 + graceCeiling). Para no apito.
+    for (let tick = 0; tick < 78_000 && !state.finished; tick += 1) {
       stepMatch(state, 1 / 120);
       const controller = state.players.find((player) => player.profile.id === state.ball.controllerId);
       if (controller) {
@@ -351,7 +353,8 @@ describe("qualidade coletiva da simulacao", () => {
 
     stepMatch(state, 1 / 120);
 
-    expect(state.possessionTeam).toBe("coral");
+    // A cobrança é armada para o adversário; a posse só vem quando o cobrador assume (walk-in).
+    expect(state.restart).toMatchObject({ kind: "throwIn", team: "coral", ballInPlay: false });
     expect(state.events[0]).toMatchObject({ type: "restart-awarded", team: "coral", restartKind: "throwIn" });
     expect(state.ball.position.y).toBeGreaterThan(0);
   });

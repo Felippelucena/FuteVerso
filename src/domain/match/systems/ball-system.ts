@@ -1,4 +1,4 @@
-import { DUEL, FIELD, PHYSICS, STAMINA } from "../config";
+import { DUEL, FIELD, PHYSICS } from "../config";
 import { add, clamp, distance, dot, lerp, length, limit, normalize, rotate, scale, subtract } from "../../shared/math";
 import type { AgentDecision, BallAction, DribbleStyle, DribbleTouchRange, MatchState, PlayerRuntime, Team, Vec2 } from "../model";
 import {
@@ -8,20 +8,14 @@ import {
   registerControlledTeam,
 } from "../runtime/control";
 import { emitMatchEvent } from "../runtime/events";
-import {
-  kickoffBallPosition,
-  kickoffPosition,
-  kickoffTaker,
-  kickoffTakerPosition,
-} from "../runtime/formation-geometry";
 import { emitCognitiveEvent, relevantPlayersNear } from "../runtime/cognitive-events";
-import { registerKickoffKick } from "../runtime/kickoff";
+import { beginRestart, registerRestartKick } from "../runtime/restart";
 import { offsideOffendersAtPass } from "../runtime/offside";
 import { playerSkillSpeed } from "../runtime/player-metrics";
 import { signedMatchNoise } from "../runtime/random";
 import { solvePassTrajectory, targetAlongDirection } from "../runtime/pass-trajectory";
 import { predictShotPoint, solveShotTrajectory } from "../runtime/shot-trajectory";
-import { clearGoalkeeperAttempts, resolveGoalkeeperContact } from "./goalkeeper-system";
+import { resolveGoalkeeperContact } from "./goalkeeper-system";
 
 const dribbleTravelPlan = (
   player: PlayerRuntime,
@@ -67,9 +61,9 @@ const releaseBall = (state: MatchState, player: PlayerRuntime, direction: Vec2, 
   state.ball.lastTouchPlayerId = player.profile.id;
   state.ballControlTeam = null;
   state.possessionCandidateSince = state.elapsed;
-  // Regra 8: a bola da saída entra em jogo quando é chutada e se move claramente — que é
-  // exatamente o que acontece aqui. A partir deste instante o cobrador não pode tocá-la de novo.
-  registerKickoffKick(state, player.profile.id);
+  // Regra 8: a bola parada entra em jogo quando o cobrador a chuta e ela se move claramente — que
+  // é exatamente o que acontece aqui. A partir deste instante ele não pode tocá-la de novo.
+  registerRestartKick(state, player.profile.id);
 };
 
 export const executeBallAction = (state: MatchState, player: PlayerRuntime, action: BallAction): void => {
@@ -364,146 +358,7 @@ export const updateControlledBall = (state: MatchState, decisions: Map<string, A
   if (actionReady && firstTouchSettled) executeBallAction(state, controller, decision.ballAction);
 };
 
-/**
- * Arma um pontapé de saída: bola na marca central, os dois times no próprio campo, o círculo
- * central livre para quem cobra e a restrição da Regra 8 de pé até o primeiro toque. Serve tanto
- * ao início de cada tempo quanto à saída depois de um gol.
- */
-export const setupKickoff = (state: MatchState, kickoffTeam: Team): void => {
-  // Ruído só nas posições de espera: a bola não sai da marca, mas o desenho de quem espera não
-  // precisa ser idêntico saída após saída.
-  const restartOffset = signedMatchNoise(state) * 5;
-  const kickoffBall = kickoffBallPosition();
-  const taker = kickoffTaker(state.players, kickoffTeam);
-  for (const player of state.players) {
-    // Saída de bola: cada um no seu campo, com o círculo central livre para quem cobra.
-    player.position = kickoffPosition(player, kickoffTeam);
-    player.position.y = clamp(player.position.y + restartOffset * (player.team === "blue" ? 0.2 : -0.2), 4, FIELD.height - 4);
-    if (player === taker) player.position = kickoffTakerPosition(player, kickoffBall);
-    player.velocity = { x: 0, y: 0 };
-    player.facing = { x: player.team === "blue" ? 1 : -1, y: 0 };
-    player.kickCooldown = 0;
-    player.sprintTimer = 0;
-    player.sprintCooldown = 0;
-    player.dribbleTouchCooldown = 0;
-    player.reactionTimer = 0;
-    player.duelCooldown = 0;
-    player.controlCooldown = 0;
-    player.plan = null;
-    player.objective = null;
-    player.objectiveExpiresAt = 0;
-    player.goalkeeperAttempt = null;
-    player.goalkeeperRecoveryUntil = 0;
-    player.nextThinkAt = state.elapsed;
-    player.pace = "walk";
-    // Bola parada dá fôlego para a volátil; a longa (fôlego de partida) não recupera.
-    player.sprintEnergy = Math.min(1, player.sprintEnergy + STAMINA.volatileDeadBallRecovery);
-  }
-  state.ball.position = { ...kickoffBall };
-  state.ball.velocity = { x: 0, y: 0 };
-  state.ball.height = 0;
-  state.ball.verticalVelocity = 0;
-  state.ball.lastTouch = null;
-  state.ball.lastTouchPlayerId = null;
-  state.ball.controllerId = null;
-  clearDribbleOwner(state);
-  state.ball.controlStartedAt = 0;
-  state.ball.lastAction = null;
-  state.ball.lastShotOnTarget = false;
-  state.ballControlTeam = null;
-  state.possessionTeam = null;
-  state.possessionCandidateTeam = null;
-  state.possessionCandidateSince = state.elapsed;
-  if (state.pendingPass) emitCognitiveEvent(state, "passResolved", null, { passId: state.pendingPass.id, outcome: "out" });
-  state.pendingPass = null;
-  state.activeShot = null;
-  clearGoalkeeperAttempts(state);
-  state.feintEvasion = null;
-  state.kickoffTimer = 1.15;
-  state.kickoff = taker ? { team: kickoffTeam, takerId: taker.profile.id, ballInPlay: false } : null;
-  // Saída de bola arma impedimento normalmente (a Lei 11 vale desde o pontapé inicial), mas na
-  // prática ninguém está impedido: todos no próprio campo, ninguém à frente da última linha.
-  state.offsideWatch = null;
-  state.offsideExemptRestart = false;
-  state.nextCognitionAt = state.elapsed;
-};
-
 const otherTeam = (team: Team): Team => team === "blue" ? "coral" : "blue";
-const fieldRestartMargin = (): number => Math.max(8, FIELD.goalAreaDepth * 0.55);
-
-type RestartKind = "throwIn" | "corner" | "goalKick" | "freeKick";
-
-const restartPlay = (
-  state: MatchState,
-  team: Team,
-  kind: RestartKind,
-  exitPosition: Vec2,
-): void => {
-  const eligible = state.players.filter((player) => player.team === team && (kind === "goalKick"
-    ? player.profile.position === "goalkeeper"
-    : player.profile.position !== "goalkeeper"));
-  const restarter = [...eligible].sort((a, b) => distance(a.position, exitPosition) - distance(b.position, exitPosition))[0];
-  if (!restarter) return;
-  const attacksRight = team === "blue";
-  let restartPosition: Vec2;
-  let facing: Vec2;
-  if (kind === "throwIn") {
-    const top = exitPosition.y < FIELD.height / 2;
-    restartPosition = { x: clamp(exitPosition.x, fieldRestartMargin(), FIELD.width - fieldRestartMargin()), y: top ? 5 : FIELD.height - 5 };
-    facing = normalize({ x: attacksRight ? 0.35 : -0.35, y: top ? 1 : -1 });
-  } else if (kind === "corner") {
-    const fromLeft = exitPosition.x < FIELD.width / 2;
-    const top = exitPosition.y < FIELD.height / 2;
-    restartPosition = { x: fromLeft ? 5 : FIELD.width - 5, y: top ? 5 : FIELD.height - 5 };
-    facing = normalize({ x: fromLeft ? 1 : -1, y: top ? 1 : -1 });
-  } else if (kind === "freeKick") {
-    // Tiro livre indireto do impedimento: no ponto da infração, virado para o ataque do time.
-    const margin = fieldRestartMargin();
-    restartPosition = {
-      x: clamp(exitPosition.x, margin, FIELD.width - margin),
-      y: clamp(exitPosition.y, 5, FIELD.height - 5),
-    };
-    facing = { x: attacksRight ? 1 : -1, y: 0 };
-  } else {
-    const ownLeft = team === "blue";
-    restartPosition = { x: ownLeft ? FIELD.goalAreaDepth * 0.72 : FIELD.width - FIELD.goalAreaDepth * 0.72, y: FIELD.height / 2 };
-    facing = { x: ownLeft ? 1 : -1, y: 0 };
-  }
-  restarter.position = restartPosition;
-  restarter.velocity = { x: 0, y: 0 };
-  restarter.facing = facing;
-  restarter.kickCooldown = 0;
-  const releaseDistance = restarter.radius + state.ball.radius + 0.15;
-  state.ball.position = add(restarter.position, scale(facing, releaseDistance));
-  state.ball.velocity = { x: 0, y: 0 };
-  state.ball.height = 0;
-  state.ball.verticalVelocity = 0;
-  state.ball.controllerId = restarter.profile.id;
-  clearDribbleOwner(state);
-  state.ball.controlStartedAt = state.elapsed;
-  state.ball.lastTouch = team;
-  state.ball.lastTouchPlayerId = restarter.profile.id;
-  state.ball.lastAction = null;
-  state.ball.lastShotOnTarget = false;
-  registerControlledTeam(state, team, true);
-  if (state.pendingPass) emitCognitiveEvent(state, "passResolved", null, { passId: state.pendingPass.id, outcome: "out" });
-  state.pendingPass = null;
-  state.activeShot = null;
-  clearGoalkeeperAttempts(state);
-  state.feintEvasion = null;
-  state.kickoffTimer = 0.72;
-  // A bola saiu de campo: qualquer saída de bola pendente morre aqui.
-  state.kickoff = null;
-  state.offsideWatch = null;
-  // Lateral, escanteio e tiro de meta não têm impedimento na cobrança; o tiro livre, sim.
-  state.offsideExemptRestart = kind === "throwIn" || kind === "corner" || kind === "goalKick";
-  emitMatchEvent(state, { type: "restart-awarded", team, restartKind: kind });
-};
-
-/** Reinício do impedimento: tiro livre indireto para o time que defende, no ponto da infração. */
-export const restartFreeKick = (state: MatchState, defendingTeam: Team, spot: Vec2): void => {
-  restartPlay(state, defendingTeam, "freeKick", spot);
-};
 
 const registerGoal = (state: MatchState, scorerTeam: Team): void => {
   const conceding: Team = scorerTeam === "blue" ? "coral" : "blue";
@@ -527,11 +382,22 @@ const registerGoal = (state: MatchState, scorerTeam: Team): void => {
   if (assist && assist.profile.id !== scorer?.profile.id) assist.memory.stats.assists += 1;
   emitMatchEvent(state, { type: "goal-scored", team: scorerTeam, playerId: scorer?.profile.id ?? null, origin });
   state.lastAssist = null;
-  setupKickoff(state, conceding);
+  // Bola no meio: os jogadores voltam à formação e o cobrador caminha até a marca central. A
+  // posição de saída não importa aqui — o kickoff sempre nasce no centro.
+  beginRestart(state, "kickoff", conceding, state.ball.position);
 };
 
 export const updateBall = (state: MatchState, dt: number): void => {
   const ball = state.ball;
+  // Bola parada: enquanto o cobrador caminha (ninguém com a posse), a bola fica presa no ponto —
+  // sem física livre e sem re-detectar limite. Quando o cobrador assume, o controle a solta daqui.
+  if (state.restart && !state.restart.ballInPlay && ball.controllerId === null) {
+    ball.position = { ...state.restart.spot };
+    ball.velocity = { x: 0, y: 0 };
+    ball.height = 0;
+    ball.verticalVelocity = 0;
+    return;
+  }
   const previousPosition = { ...ball.position };
   const previousHeight = ball.height;
   const airborne = ball.height > 0 || ball.verticalVelocity > 0;
@@ -568,7 +434,7 @@ export const updateBall = (state: MatchState, dt: number): void => {
     else if (!inGoal) {
       const defendingTeam: Team = "blue";
       const restartTeam = ball.lastTouch === defendingTeam ? otherTeam(defendingTeam) : defendingTeam;
-      restartPlay(state, restartTeam, restartTeam === defendingTeam ? "goalKick" : "corner", ball.position);
+      beginRestart(state, restartTeam === defendingTeam ? "goalKick" : "corner", restartTeam, ball.position);
     } else ball.velocity.x = Math.abs(ball.velocity.x);
     return;
   }
@@ -579,12 +445,12 @@ export const updateBall = (state: MatchState, dt: number): void => {
     else if (!inGoal) {
       const defendingTeam: Team = "coral";
       const restartTeam = ball.lastTouch === defendingTeam ? otherTeam(defendingTeam) : defendingTeam;
-      restartPlay(state, restartTeam, restartTeam === defendingTeam ? "goalKick" : "corner", ball.position);
+      beginRestart(state, restartTeam === defendingTeam ? "goalKick" : "corner", restartTeam, ball.position);
     } else ball.velocity.x = -Math.abs(ball.velocity.x);
     return;
   }
   if (ball.position.y < -ball.radius || ball.position.y > FIELD.height + ball.radius) {
     const restartTeam = ball.lastTouch ? otherTeam(ball.lastTouch) : (ball.position.x < FIELD.width / 2 ? "blue" : "coral");
-    restartPlay(state, restartTeam, "throwIn", ball.position);
+    beginRestart(state, "throwIn", restartTeam, ball.position);
   }
 };

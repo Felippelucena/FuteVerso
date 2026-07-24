@@ -77,5 +77,15 @@ export const clearDribbleOwner = (state: MatchState): void => {
   state.ball.dribbleStartedAt = 0;
 };
 
+/** Zera as tentativas/estados de defesa dos goleiros — usado ao reiniciar a jogada (bola parada). */
+export const clearGoalkeeperAttempts = (state: MatchState): void => {
+  for (const goalkeeper of state.players.filter((player) => player.profile.position === "goalkeeper")) {
+    goalkeeper.goalkeeperAttempt = null;
+    goalkeeper.goalkeeperRecoveryUntil = 0;
+    goalkeeper.goalkeeperHoldUntil = 0;
+    goalkeeper.goalkeeperAlertUntil = 0;
+  }
+};
+
 export const isEvadedDefender = (state: MatchState, player: PlayerRuntime): boolean =>
   state.feintEvasion?.defenderId === player.profile.id && state.elapsed < state.feintEvasion.expiresAt;

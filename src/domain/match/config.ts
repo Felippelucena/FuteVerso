@@ -141,6 +141,40 @@ export const HALF_DURATION = 5 * 60;
 export const MATCH_DURATION = HALF_DURATION * MATCH_HALVES;
 export const DEFAULT_MATCH_SEED = 0x4a39b70d;
 
+// Bola parada: o cobrador CAMINHA até a bola em vez de teleportar. `min`/`maxSetupSeconds` dão o
+// ritmo (curto) e a trava anti-deadlock; o resto é geometria dos pontos de cobrança. A bola só
+// entra em jogo quando o cobrador chega (raio de chegada) E passou o tempo mínimo de preparo.
+export const RESTART = {
+  // Piso do preparo: mesmo com o cobrador já no ponto, a cobrança espera este tempo (ritmo curto).
+  minSetupSeconds: 2,
+  // Teto absoluto: se o cobrador não chegou (cercado), força a colocação e cobra. É uma trava
+  // anti-deadlock, generosa o bastante para o cobrador trotar de longe sem saltar no caso comum.
+  maxSetupSeconds: 5,
+  arrivalRadius: FIELD.playerRadius + FIELD.ballRadius + 0.6,
+  // Distância a que o cobrador para atrás da bola (a bola fica no ponto; ele, um passo atrás).
+  takerStandOffset: FIELD.playerRadius + FIELD.ballRadius + 0.15,
+  // Recuo mínimo do ponto de lateral/escanteio em relação à linha; e da meta no tiro de meta.
+  sidelineInset: 5,
+  fieldMarginFactor: 0.55,
+  fieldMarginFloor: 8,
+  goalKickSpotFactor: 0.72,
+  // Colocação (TeamShapePlacement) que espalha os dois times para o meio no tiro de meta.
+  goalKickLineHeight: 40,
+  goalKickWidth: 0.7,
+  // Escanteio: atacantes ocupam a área (forwardLimit alto), defensores comprimem no próprio gol.
+  cornerAttackForwardLimit: 92,
+  cornerDefendLineHeight: 8,
+} as const;
+
+// Acréscimos (Regra 7 estendida): o tempo de bola morta vira tempo adicional, e o tempo/jogo só
+// termina após o lance concluir. `maxAddedTime` limita o placar; `graceCeiling` é o teto absoluto
+// além do nominal — passou disso, apita seja como for (garante o término).
+export const STOPPAGE = {
+  accrualFactor: 1,
+  maxAddedTime: 30,
+  graceCeiling: 45,
+} as const;
+
 export const TACTICS = {
   counterAttackWindow: 4.5,
   counterPressWindow: 3.2,

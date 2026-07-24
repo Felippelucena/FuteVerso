@@ -2,7 +2,7 @@ import { COGNITION, CONDUCT, DEFENSE, DUEL, FIELD, OFFSIDE, PHYSICS, TACTICS } f
 import { add, clamp, distance, dot, normalize, scale, subtract } from "../shared/math";
 import type { AgentDecision, AssignmentDuty, BallAction, DecisionReason, DribbleStyle, MatchState, PlanTarget, PlayerAssignment, PlayerPlan, PlayerRuntime, Team, Vec2 } from "./model";
 import { activeBallPlayerId } from "./runtime/control";
-import { isKickoffTaker } from "./runtime/kickoff";
+import { isRestartTaker, restartLayoutTarget } from "./runtime/restart";
 import { attackingProgress, offsideLineProgress } from "./runtime/offside";
 import {
   interceptionThreat,
@@ -300,10 +300,10 @@ const carrierDecision = (
       intent: "holdingBall", reason: "holdInHands", ballAction: { kind: "none" },
     };
   }
-  if (isKickoffTaker(state, player.profile.id)) {
-    // Regra 8: quem cobra a saída não pode tocar a bola duas vezes, então o primeiro toque é
-    // obrigatoriamente um passe — não existe sair conduzindo a própria saída. Chute a gol é
-    // legal de saída, mas do meio de campo nunca é a jogada: nem entra na comparação.
+  if (isRestartTaker(state, player.profile.id)) {
+    // Regra 8: quem cobra o reinício não pode tocar a bola duas vezes, então o primeiro toque é
+    // obrigatoriamente um passe — não existe sair conduzindo a própria cobrança. Vale para toda
+    // bola parada (saída, lateral, escanteio, tiro de meta, tiro livre).
     const kick = choosePass(player, teammates, opponents, state);
     if (kick) {
       return {
@@ -700,6 +700,25 @@ export const decideAll = (state: MatchState): Map<string, AgentDecision> => {
       : null;
     const ownGoal = goalCenter(team, true);
     for (const player of teammates) {
+      // Bola parada: enquanto a bola está parada no ponto e o cobrador caminha, todos vão para o
+      // desenho do reinício (a fonte de incumbência com prioridade sobre a cognição normal, até o
+      // goleiro do tiro de meta). Cai fora no instante em que o cobrador assume a posse — daí ele
+      // segue no fluxo normal (carrierDecision) e cobra com um passe.
+      if (state.restart && !state.restart.ballInPlay && state.ball.controllerId !== player.profile.id) {
+        // O cobrador trota direto até a bola (intent "sprinting" corre sem desacelerar perto do
+        // alvo, senão ele engatinharia o último trecho e estouraria o teto de preparo). Os demais
+        // apenas se reposicionam.
+        const isTaker = player.profile.id === state.restart.takerId;
+        decisions.set(player.profile.id, {
+          movementTarget: restartLayoutTarget(player, state),
+          burst: false,
+          posture: player.team === state.restart.team ? "inPossession" : "outOfPossession",
+          intent: isTaker ? "sprinting" : "covering",
+          reason: "recoverShape",
+          ballAction: { kind: "none" },
+        });
+        continue;
+      }
       const keeperReaction = player.profile.position === "goalkeeper" && actualController?.profile.id !== player.profile.id
         ? goalkeeperDecision(player, state)
         : null;
@@ -848,7 +867,7 @@ export const planAll = (state: MatchState): Map<string, PlayerPlan> => {
       controllerId: state.ball.controllerId,
       ballActorId: activeBallPlayerId(state),
       collectivePlanStartedAt: state.tactics[player.team].collectivePlan?.startedAt ?? 0,
-      duringRestart: state.kickoffTimer > 0,
+      duringRestart: state.restart !== null,
     } satisfies PlayerPlan];
   }));
 };

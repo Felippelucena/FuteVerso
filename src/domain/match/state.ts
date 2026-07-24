@@ -105,8 +105,13 @@ export function createMatchState(config: MatchConfig): MatchState {
     cognitiveEvents: [],
     elapsed: 0,
     half: 1,
-    kickoffTimer: 1.1,
-    kickoff: taker ? { team: openingTeam, takerId: taker.profile.id, ballInPlay: false } : null,
+    restart: taker
+      ? {
+        kind: "kickoff", team: openingTeam, takerId: taker.profile.id,
+        spot: { ...kickoffBall }, facing: { x: openingTeam === "blue" ? 1 : -1, y: 0 },
+        startedAt: 0, ballInPlay: false,
+      }
+      : null,
     ballControlTeam: null,
     possessionTeam: null,
     possessionCandidateTeam: null,
@@ -138,6 +143,7 @@ export function createMatchState(config: MatchConfig): MatchState {
     nextAnalyticsSample: 0,
     nextCognitionAt: 0,
     finished: false,
+    stoppage: { accrued: 0, awaitingEnd: false, pendingSince: null, announced: null, attackerAtOpen: null },
   };
 }
 

@@ -11,7 +11,14 @@ const format = (event: MatchEvent) => formatMatchEvent(event, REFERENCE_PLAYERS,
 describe("formatMatchEvent", () => {
   it("formata o ciclo da partida", () => {
     expect(format({ id: 1, time: 0, type: "match-started" })).toBe("Partida iniciada");
-    expect(format({ id: 2, time: 600, type: "match-finished" })).toBe("Fim de partida");
+    expect(format({ id: 2, time: 600, type: "match-finished", addedTime: 0 })).toBe("Fim de partida");
+    expect(format({ id: 3, time: 622, type: "match-finished", addedTime: 22 })).toBe("Fim de partida (+00:22)");
+    expect(format({ id: 4, time: 305, type: "half-ended", half: 1, addedTime: 5 })).toBe("Fim do 1º tempo (+00:05)");
+  });
+
+  it("formata a placa de acréscimos", () => {
+    expect(format({ id: 5, time: 300, type: "added-time-signalled", half: 1, seconds: 22, final: false })).toBe("Acréscimos: +00:22");
+    expect(format({ id: 6, time: 600, type: "added-time-signalled", half: 2, seconds: 18, final: true })).toBe("Acréscimos finais: +00:18");
   });
 
   it("formata ações com os nomes do elenco", () => {

@@ -11,7 +11,7 @@ import {
   registerLooseBall,
 } from "../runtime/control";
 import { signedMatchNoise } from "../runtime/random";
-import { kickoffForbidsTouch } from "../runtime/kickoff";
+import { restartForbidsTouch } from "../runtime/restart";
 import { emitCognitiveEvent, relevantPlayersNear } from "../runtime/cognitive-events";
 import { executeBallAction } from "./ball-system";
 import { resolveContact } from "./contact-resolution";
@@ -225,9 +225,9 @@ export const updatePossession = (state: MatchState, dt: number): void => {
       && player.kickCooldown < 0.12
       && player.controlCooldown <= 0
       && player.reactionTimer <= 0
-      // Regra 8: bola parada na marca central é só de quem cobra; depois da cobrança, é de
-      // qualquer um menos ele.
-      && !kickoffForbidsTouch(state, player.profile.id)
+      // Regra 8: bola parada no ponto não se disputa (o cobrador a recebe por entrega); depois da
+      // cobrança, é de qualquer um menos ele.
+      && !restartForbidsTouch(state, player.profile.id)
       && !isEvadedDefender(state, player))
     .sort((a, b) => a.score - b.score || a.gap - b.gap || a.player.profile.id.localeCompare(b.player.profile.id));
   const claim = candidates[0];

@@ -171,7 +171,6 @@ describe("Lei 11 — infração e reinício", () => {
     // Simula a chegada de um escanteio: o motor marca a isenção do próximo passe.
     state.offsideExemptRestart = true;
     startOpenPlay(state);
-    state.kickoff = null;
     clearField(state);
     const passer = blue(state, "centerMid");
     const runner = blue(state, "striker");

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { referenceMatchConfig } from "./__fixtures__/reference-match";
-import { FIELD, FIXED_STEP, HALF_DURATION, MATCH_DURATION, MATCH_HALVES } from "./config";
+import { FIELD, FIXED_STEP, HALF_DURATION, MATCH_DURATION, MATCH_HALVES, STOPPAGE } from "./config";
 import { createMatchState, stepMatch } from "./index";
 import type { MatchState } from "./model";
 import { attackDirection } from "./runtime/formation-geometry";
@@ -24,15 +24,15 @@ describe("regra 8 — pontapé de saída", () => {
 
     expect(state.ball.position).toEqual({ x: FIELD.width / 2, y: FIELD.height / 2 });
     expect(state.ball.velocity).toEqual({ x: 0, y: 0 });
-    expect(state.kickoff).toMatchObject({ team: "blue", ballInPlay: false });
-    const taker = state.players.find((player) => player.profile.id === state.kickoff?.takerId)!;
+    expect(state.restart).toMatchObject({ kind: "kickoff", team: "blue", ballInPlay: false });
+    const taker = state.players.find((player) => player.profile.id === state.restart?.takerId)!;
     expect(taker.team).toBe("blue");
     expect(taker.profile.position).not.toBe("goalkeeper");
   });
 
   it("mantém os dois times no próprio campo e o adversário fora do círculo central", () => {
     const state = createState();
-    const kickoffTeam = state.kickoff!.team;
+    const kickoffTeam = state.restart!.team;
 
     for (const player of state.players) {
       // O corpo inteiro fica no próprio campo: quem cobra pode encostar na linha do meio.
@@ -45,11 +45,12 @@ describe("regra 8 — pontapé de saída", () => {
 
   it("faz do primeiro toque um passe, nunca uma condução do próprio cobrador", () => {
     const state = createState();
-    const takerId = state.kickoff!.takerId;
+    const takerId = state.restart!.takerId;
 
-    stepUntil(state, (current) => current.kickoff?.ballInPlay === true, 6);
+    // O cobrador caminha até a marca e, cumprido o preparo, cobra: o primeiro toque é o passe.
+    stepUntil(state, (current) => current.restart?.ballInPlay === true, 8);
 
-    expect(state.kickoff?.ballInPlay).toBe(true);
+    expect(state.restart?.ballInPlay).toBe(true);
     expect(state.ball.lastTouchPlayerId).toBe(takerId);
     // Passe a caminho: a bola saiu do pé para um companheiro, não à frente para ele mesmo.
     expect(state.pendingPass?.passerId).toBe(takerId);
@@ -58,12 +59,12 @@ describe("regra 8 — pontapé de saída", () => {
 
   it("impede o cobrador de tocar a bola de novo antes de outro jogador", () => {
     const state = createState();
-    const takerId = state.kickoff!.takerId;
-    stepUntil(state, (current) => current.kickoff?.ballInPlay === true, 6);
+    const takerId = state.restart!.takerId;
+    stepUntil(state, (current) => current.restart?.ballInPlay === true, 8);
 
     // Enquanto a restrição vale, a bola nunca volta ao domínio de quem cobrou.
-    stepUntil(state, (current) => current.kickoff === null, 8);
-    expect(state.kickoff).toBeNull();
+    stepUntil(state, (current) => current.restart === null, 10);
+    expect(state.restart).toBeNull();
     expect(state.ball.lastTouchPlayerId).not.toBe(takerId);
   });
 });
@@ -82,11 +83,12 @@ describe("regra 7 — dois tempos", () => {
 
     expect(state.half).toBe(2);
     expect(state.elapsed).toBeGreaterThanOrEqual(HALF_DURATION);
-    // O relógio atravessa o intervalo: não zera, como numa partida de verdade.
-    expect(state.elapsed).toBeLessThan(HALF_DURATION + 1);
+    // O relógio atravessa o intervalo: não zera. Termina o 1º tempo no nominal + acréscimo,
+    // limitado pelo teto absoluto (graceCeiling).
+    expect(state.elapsed).toBeLessThan(HALF_DURATION + STOPPAGE.graceCeiling + 1);
     expect(state.finished).toBe(false);
-    // Regra 8: quem não cobrou a saída do 1º tempo cobra a do 2º.
-    expect(state.kickoff).toMatchObject({ team: "coral", ballInPlay: false });
+    // Regra 7: quem não cobrou a saída do 1º tempo cobra a do 2º.
+    expect(state.restart).toMatchObject({ kind: "kickoff", team: "coral", ballInPlay: false });
     expect(state.ball.position).toEqual({ x: FIELD.width / 2, y: FIELD.height / 2 });
     expect(state.events.map((event) => event.type)).toEqual(
       expect.arrayContaining(["half-ended", "half-started"]),
@@ -96,10 +98,12 @@ describe("regra 7 — dois tempos", () => {
   it("só encerra a partida depois do último tempo", () => {
     const state = createState();
 
-    stepUntil(state, (current) => current.finished, MATCH_DURATION + 1);
+    stepUntil(state, (current) => current.finished, MATCH_DURATION + STOPPAGE.graceCeiling + 2);
 
     expect(state.finished).toBe(true);
     expect(state.half).toBe(MATCH_HALVES);
-    expect(state.elapsed).toBe(MATCH_DURATION);
+    // Termina no nominal + acréscimo, entre o fim nominal e o teto absoluto (fim com contexto).
+    expect(state.elapsed).toBeGreaterThanOrEqual(MATCH_DURATION);
+    expect(state.elapsed).toBeLessThanOrEqual(MATCH_DURATION + STOPPAGE.graceCeiling + FIXED_STEP);
   }, 120_000);
 });

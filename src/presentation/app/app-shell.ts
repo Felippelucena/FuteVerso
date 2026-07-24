@@ -1,7 +1,7 @@
 import type { MatchState } from "../../domain/match";
 import { matchScreenTemplate, matchSettingsTemplate } from "../match/match-screen";
 import { playerDialogTemplate, playersScreenTemplate } from "../players/players-screen";
-import { formatClock, type TeamNames } from "./labels";
+import { formatMatchClock, type TeamNames } from "./labels";
 import { hydrateIcons } from "./icons";
 
 export type AppView = "match" | "players";
@@ -66,8 +66,10 @@ export class AppShell {
   renderMatchHeader(state: MatchState, paused: boolean): void {
     this.find("#score-blue").textContent = String(state.stats.blue.goals);
     this.find("#score-coral").textContent = String(state.stats.coral.goals);
-    this.find("#match-time").textContent = formatClock(state.elapsed);
-    this.find("#match-state").textContent = state.finished ? "ENCERRADA" : `${state.half}º TEMPO`;
+    this.find("#match-time").textContent = formatMatchClock(state);
+    this.find("#match-state").textContent = state.finished
+      ? "ENCERRADA"
+      : state.stoppage.awaitingEnd ? "ACRÉSCIMOS" : `${state.half}º TEMPO`;
     this.find(".simulation-status span:last-child").textContent = paused ? "SIMULAÇÃO PAUSADA" : "SIMULAÇÃO ATIVA";
     this.find(".live-dot").classList.toggle("is-paused", paused);
   }

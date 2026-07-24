@@ -1,6 +1,9 @@
 import type { MatchEvent } from "../../domain/match/model";
 import type { PlayerProfile } from "../../domain/roster/model";
-import type { TeamNames } from "../app/labels";
+import { formatClock, type TeamNames } from "../app/labels";
+
+/** Sufixo de acréscimo cumprido, ex.: " (+00:22)". Omitido quando não houve acréscimo. */
+const addedTimeSuffix = (seconds: number): string => (seconds >= 0.5 ? ` (+${formatClock(seconds)})` : "");
 
 export const formatMatchEvent = (
   event: MatchEvent,
@@ -9,9 +12,12 @@ export const formatMatchEvent = (
 ): string => {
   const label = (team: keyof TeamNames): string => teamNames[team];
   if (event.type === "match-started") return "Partida iniciada";
-  if (event.type === "match-finished") return "Fim de partida";
-  if (event.type === "half-ended") return `Fim do ${event.half}º tempo`;
+  if (event.type === "match-finished") return `Fim de partida${addedTimeSuffix(event.addedTime)}`;
+  if (event.type === "half-ended") return `Fim do ${event.half}º tempo${addedTimeSuffix(event.addedTime)}`;
   if (event.type === "half-started") return `Início do ${event.half}º tempo — saída de ${label(event.kickoffTeam)}`;
+  if (event.type === "added-time-signalled") {
+    return `${event.final ? "Acréscimos finais" : "Acréscimos"}: +${formatClock(event.seconds)}`;
+  }
   if (event.type === "restart-awarded") {
     const restart = event.restartKind === "throwIn" ? "Lateral"
       : event.restartKind === "corner" ? "Escanteio"

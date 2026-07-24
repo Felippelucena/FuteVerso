@@ -545,6 +545,8 @@ export interface HalfStartedEvent extends MatchEventBase {
 export interface HalfEndedEvent extends MatchEventBase {
   type: "half-ended";
   half: number;
+  /** Acréscimo cumprido: segundos além do fim nominal do tempo quando o apito soou. */
+  addedTime: number;
 }
 
 export interface SaveMadeEvent extends MatchEventBase {
@@ -584,6 +586,19 @@ export interface GoalScoredEvent extends MatchEventBase {
 
 export interface MatchFinishedEvent extends MatchEventBase {
   type: "match-finished";
+  /** Acréscimo cumprido: segundos além do fim nominal da partida quando o apito final soou. */
+  addedTime: number;
+}
+
+/**
+ * Placar de acréscimos: quantos segundos o quarto árbitro anunciou ao esgotar o tempo nominal.
+ * `final` distingue o fim do último tempo (fim de jogo) do intervalo.
+ */
+export interface AddedTimeSignalledEvent extends MatchEventBase {
+  type: "added-time-signalled";
+  half: number;
+  seconds: number;
+  final: boolean;
 }
 
 export type MatchEvent =
@@ -595,26 +610,58 @@ export type MatchEvent =
   | RestartAwardedEvent
   | OffsideCalledEvent
   | GoalScoredEvent
+  | AddedTimeSignalledEvent
   | MatchFinishedEvent;
 
 type WithoutEventMetadata<T> = T extends MatchEvent ? Omit<T, "id" | "time"> : never;
 export type MatchEventData = WithoutEventMetadata<MatchEvent>;
 
 /**
- * Regra 8 — pontapé de saída. Enquanto existe, a saída ainda não se resolveu e duas restrições
- * do regulamento estão de pé:
- *
- * - antes de a bola entrar em jogo (`ballInPlay` falso), só quem cobra pode tocá-la;
- * - depois de cobrada, quem cobrou não pode tocá-la de novo até outro jogador tocar.
- *
- * A segunda é o que obriga o primeiro toque a ser um passe: o cobrador não pode sair driblando
- * a própria bola. O estado morre no instante em que qualquer outro jogador toca a bola.
+ * Tipos de bola parada. `kickoff` é a saída de bola (início de tempo, pós-gol); os demais são os
+ * reinícios com a bola saindo pela linha, mais o tiro livre indireto do impedimento.
  */
-export interface KickoffState {
+export type RestartKind = "kickoff" | "throwIn" | "corner" | "goalKick" | "freeKick";
+
+/**
+ * Bola parada em andamento — a cobrança caminhada, não um teleporte. Enquanto existe, valem as
+ * restrições da Regra 8:
+ *
+ * - antes de a bola entrar em jogo (`ballInPlay` falso), ela fica parada no ponto e ninguém a
+ *   disputa: o cobrador ainda está caminhando até ela;
+ * - depois de cobrada, quem cobrou não pode tocá-la de novo até outro jogador tocar — é isto que
+ *   obriga o primeiro toque a ser um passe. O estado morre quando qualquer outro jogador toca.
+ */
+export interface RestartState {
+  kind: RestartKind;
+  /** Time que cobra o reinício. */
   team: Team;
+  /** Quem cobra: goleiro no tiro de meta, cobrador mais avançado na saída, mais próximo nos demais. */
   takerId: string;
-  /** Falso até o cobrador chutar: a bola está parada na marca central e ninguém mais a disputa. */
+  /** Onde a bola é posta e fica parada até a cobrança. */
+  spot: Vec2;
+  /** Direção para onde o cobrador olha; orienta a bola no pé quando a posse é entregue. */
+  facing: Vec2;
+  /** `state.elapsed` no início da sequência: base do tempo mínimo de preparo e da trava anti-deadlock. */
+  startedAt: number;
+  /** Falso enquanto a bola está parada e o cobrador caminha; verdadeiro quando ele assume a posse. */
   ballInPlay: boolean;
+}
+
+/**
+ * Acréscimos do tempo em curso. `accrued` soma o tempo de bola morta; quando o tempo nominal mais
+ * o acréscimo se esgota, `awaitingEnd` liga e o apito espera a próxima bola morta ou o fim do lance.
+ */
+export interface StoppageState {
+  /** Segundos de bola morta acumulados no tempo atual (a serem devolvidos como acréscimo). */
+  accrued: number;
+  /** Tempo nominal + acréscimo esgotado: o apito aguarda um momento de bola morta / fim de lance. */
+  awaitingEnd: boolean;
+  /** `state.elapsed` quando a janela de acréscimo abriu (base do teto absoluto). */
+  pendingSince: number | null;
+  /** Acréscimo anunciado (o que foi ao placar) quando a janela abriu. */
+  announced: number | null;
+  /** Quem atacava quando a janela abriu: se perder a posse com clareza, o lance se desfez. */
+  attackerAtOpen: Team | null;
 }
 
 /**
@@ -654,9 +701,8 @@ export interface MatchState {
   elapsed: number;
   /** Tempo em curso, de 1 a `MATCH_HALVES`. O relógio (`elapsed`) não zera entre eles. */
   half: number;
-  kickoffTimer: number;
-  /** Saída de bola pendente, ou nula quando a bola já rola sem restrição da Regra 8. */
-  kickoff: KickoffState | null;
+  /** Bola parada em andamento (cobrança caminhada), ou nula em jogo corrido. Unifica a antiga saída de bola. */
+  restart: RestartState | null;
   ballControlTeam: Team | null;
   possessionTeam: Team | null;
   possessionCandidateTeam: Team | null;
@@ -692,4 +738,5 @@ export interface MatchState {
   nextAnalyticsSample: number;
   nextCognitionAt: number;
   finished: boolean;
+  stoppage: StoppageState;
 }

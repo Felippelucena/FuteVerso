@@ -16,20 +16,35 @@ describe("ciclo de vida da partida", () => {
     expect(state).toEqual(before);
   });
 
-  it("mantém física e cognição bloqueadas durante o kickoff", () => {
+  it("na bola parada a bola fica presa no ponto e os jogadores caminham (sem teleporte)", () => {
     const state = createState();
-    state.kickoffTimer = 0.5;
-    state.nextCognitionAt = 0;
-    const positions = state.players.map((player) => ({ ...player.position }));
-    const ball = structuredClone(state.ball);
+    // O estado inicial já é uma saída de bola: bola parada no ponto, ainda a cobrar.
+    expect(state.restart).not.toBeNull();
+    expect(state.restart?.ballInPlay).toBe(false);
+    const spot = { ...state.restart!.spot };
 
-    stepMatch(state, FIXED_STEP);
+    // Empurra um jogador que não é o cobrador para longe: ele deve CAMINHAR de volta, não saltar.
+    const mover = state.players.find(
+      (player) => player.team === "blue"
+        && player.profile.position !== "goalkeeper"
+        && player.profile.id !== state.restart!.takerId,
+    )!;
+    mover.position = { x: FIELD.width * 0.82, y: FIELD.height * 0.2 };
+    let previous = { ...mover.position };
+    let maxStep = 0;
 
-    expect(state.kickoffTimer).toBeCloseTo(0.5 - FIXED_STEP, 10);
-    expect(state.contestedSeconds).toBeCloseTo(FIXED_STEP, 10);
-    expect(state.players.map((player) => player.position)).toEqual(positions);
-    expect(state.players.every((player) => player.plan === null)).toBe(true);
-    expect(state.ball).toEqual(ball);
+    // Meio segundo: ainda antes do preparo mínimo, então a bola segue parada o tempo todo.
+    for (let tick = 0; tick < 60; tick += 1) {
+      stepMatch(state, FIXED_STEP);
+      expect(state.restart?.ballInPlay).toBe(false);
+      expect(state.ball.position).toEqual(spot);
+      expect(state.ball.velocity).toEqual({ x: 0, y: 0 });
+      maxStep = Math.max(maxStep, Math.hypot(mover.position.x - previous.x, mover.position.y - previous.y));
+      previous = { ...mover.position };
+    }
+    // Caminha de verdade, mas o passo por tick é de quem corre — jamais um salto (teleporte).
+    expect(maxStep).toBeGreaterThan(0);
+    expect(maxStep).toBeLessThan(FIELD.width * 0.02);
   });
 
   it("expira um passe pendente após quatro segundos", () => {

@@ -60,19 +60,22 @@ Cada tela consulta elementos apenas dentro do próprio container. Elementos glob
 
 ## Pipeline da partida
 
-`engine.ts` apenas coordena o tick, nesta ordem: lifecycle (relógio e intervalo), analytics, gate de impedimento (congela e reinicia), kickoff, posse preliminar, tática preliminar, cognição, movimento, colisões, limites do campo, ação controlada, física da bola, posse definitiva, colisão com a bola, tática definitiva, expiração de passe, restrição da saída de bola e encerramento.
+`engine.ts` apenas coordena o tick, nesta ordem: lifecycle (relógio, acréscimos e intervalo), analytics, gate de impedimento (congela e reinicia), posse preliminar, tática preliminar, cognição, movimento, colisões, limites do campo, avanço da bola parada (entrega a posse ao cobrador quando ele chega ao ponto), ação controlada, física da bola, posse definitiva, colisão com a bola, tática definitiva, expiração de passe, restrição do reinício e encerramento.
+
+A bola parada não é uma parada como o impedimento: é uma **fase viva restrita**. Em vez de congelar e teleportar (o antigo `setupKickoff`/`restartPlay`), o motor põe a bola no ponto, deixa os jogadores caminharem até o desenho do reinício e só entrega a posse — e o jogo volta a correr — quando o cobrador chega. Toda a mecânica vive em `runtime/restart`; `ball` e `lifecycle` só a disparam.
 
 Os sistemas ficam em `domain/match/systems`:
 
-- lifecycle controla relógio, tempos (Regra 7: dois de `HALF_DURATION`, com nova saída de bola no intervalo), kickoff, efeitos temporários e encerramento;
-- runtime/kickoff guarda as restrições da Regra 8 — bola parada na marca central até o primeiro toque, e o cobrador impedido de tocá-la de novo antes de outro jogador, que é o que obriga o primeiro toque a ser um passe;
+- lifecycle controla relógio, tempos (Regra 7: dois de `HALF_DURATION`, com nova saída de bola no intervalo), acréscimos (o tempo de bola morta volta como tempo adicional) e o encerramento com contexto (o apito espera a próxima bola morta ou o fim do lance);
+- runtime/restart guarda toda a bola parada: escolhe o cobrador, põe a bola no ponto, dá o alvo de caminhada de cada um (a fonte de incumbência do reinício), entrega a posse quando o cobrador chega e mantém a Regra 8 (bola parada até o primeiro toque, sem toque duplo do cobrador — o que obriga o primeiro toque a ser um passe);
+- runtime/kickoff guarda só a agenda dos tempos (quem cobra a saída de cada tempo, qual é o último); runtime/dead-ball responde "a bola está morta?", o predicado que a bola parada e os acréscimos compartilham;
 - runtime/offside guarda a geometria pura da Lei 11 (linha do penúltimo adversário, quem está impedido no instante do passe). A aplicação se reparte: ball-system arma a vigilância no passe, possession-system apita quando um vigiado toca a bola, lifecycle congela a jogada (a "bandeira") e reinicia com tiro livre indireto. O passador evita receptores impedidos (ai.ts/choosePass) — é esse o pente que deixa o impedimento "de vez em quando" em vez de a cada passe;
 - analytics acumula mapas e métricas espaciais;
 - cognition renova e resolve planos da IA;
 - movement atualiza deslocamento, energia e limites;
 - collision resolve contatos entre entidades;
 - possession controla disputa, domínio e confirmação da posse;
-- ball executa ações, trajetória, gols e reinícios;
+- ball executa ações, trajetória e gols, e detecta a saída de bola (delegando o reinício a `runtime/restart`);
 - tactics mantém a fase e um plano coletivo persistente com corredor, risco, bloco, gatilho de pressão e a incumbência de cada um dos onze (ver "Cadeia de decisão");
 - runtime/prediction projeta bola e jogadores em horizontes curtos, sem avançar nem alterar o estado real da partida;
 - tactics mede forma e fases coletivas.
@@ -156,8 +159,10 @@ demanda): sobreposição das faixas, adversários dentro da própria faixa e def
 e o próprio gol.
 
 Ligar um botão novo do plano tático significa mudar **como a incumbência é escolhida**, não
-passar mais um booleano por dentro de `ai.ts`. Jogadas ensaiadas entram, quando existirem
-reinícios de jogo, como uma fonte de incumbência com prioridade sobre a normal.
+passar mais um booleano por dentro de `ai.ts`. Os reinícios de jogo já usam esse gancho:
+`restartLayoutTarget` (`runtime/restart`) é uma fonte de incumbência com prioridade sobre a
+normal, injetada no topo de `decideAll` enquanto a bola está parada. Jogadas ensaiadas entram
+por aí, refinando esse alvo por tipo de cobrança.
 
 ## Evolução planejada
 

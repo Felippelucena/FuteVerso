@@ -64,11 +64,11 @@ describe("caracterizacao deterministica", () => {
       short: hashFingerprint(actual.short),
       long: hashFingerprint(actual.long),
     };
-    // Re-baseline: a Lei 11 (impedimento) entrou em campo. O teto de avanço da forma afrouxou
-    // (OFFSIDE.runMarginProgress) para os corredores atacarem as costas da linha; o passador
-    // passou a evitar receptores impedidos (choosePass) e o motor apita impedimento de verdade,
-    // congelando a jogada e reiniciando com tiro livre. Muda geometria, decisão e desfecho.
-    expect(hashes).toEqual({ short: "4b5a220f", long: "e390e639" });
+    // Re-baseline: a bola parada deixou de teleportar. Todo reinício virou uma fase viva restrita —
+    // a bola fica no ponto, o cobrador caminha até ela e só então a jogada volta (runtime/restart),
+    // com acréscimos e fim-com-contexto no relógio. Some o congelamento do kickoff (e um saque de
+    // RNG do antigo jitter de espera), muda a ordem do tick e o desfecho de cada saída de bola.
+    expect(hashes).toEqual({ short: "11a2161f", long: "1f3db313" });
     // Timeout explícito: com 22 jogadores em campo a simulação custa ~2,4× o que custava no
     // 5x5, e o padrão de 5s estourava quando a suíte roda em paralelo.
   }, 60_000);
