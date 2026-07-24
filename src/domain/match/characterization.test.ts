@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildMatchConfig } from "../../application/match/build-match-config";
-import { createDefaultProfile } from "../../application/profile/create-default-profile";
+import { referenceMatchConfig } from "./__fixtures__/reference-match";
 import { createMatchState, stepMatch } from "./index";
 import type { MatchState } from "./model";
 
@@ -50,7 +49,7 @@ const fingerprint = (state: MatchState) => ({
 });
 
 const simulate = (seed: number, seconds: number) => {
-  const state = createMatchState(buildMatchConfig(createDefaultProfile(), seed));
+  const state = createMatchState(referenceMatchConfig(seed));
   for (let tick = 0; tick < seconds * 120; tick += 1) stepMatch(state, 1 / 120);
   return fingerprint(state);
 };

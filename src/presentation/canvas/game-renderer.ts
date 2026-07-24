@@ -238,7 +238,7 @@ export class GameRenderer {
     ctx.font = `700 ${Math.max(9, radius * 0.86)}px ui-sans-serif, system-ui`;
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
-    ctx.fillText(String(player.profile.number), x, y - radius * 0.05);
+    ctx.fillText(String(player.shirtNumber), x, y - radius * 0.05);
     ctx.restore();
   }
 

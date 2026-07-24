@@ -1,14 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { buildMatchConfig } from "../../application/match/build-match-config";
-import { createDefaultProfile } from "../../application/profile/create-default-profile";
+import { referenceMatchConfig } from "./__fixtures__/reference-match";
 import { PASS_VARIANTS, choosePass, decideAll } from "./ai";
 import { FIELD, PHYSICS } from "./config";
 import { createMatchState, stepMatch } from "./index";
 import { executeBallAction } from "./systems/ball-system";
-import type { GameProfile } from "../roster/model";
 import { distance, length } from "../shared/math";
 
-const createTestMatch = (profile: GameProfile = createDefaultProfile(), seed?: number) => createMatchState(buildMatchConfig(profile, seed));
+const createTestMatch = (seed?: number) => createMatchState(referenceMatchConfig(seed));
 
 describe("ações e física da bola", () => {
   it("expõe as oito combinações de passe", () => {
@@ -18,9 +16,9 @@ describe("ações e física da bola", () => {
 
   it("dimensiona a força do toque e a duração do pique pela distância pretendida", () => {
     const performKnockOn = (targetDistance: number) => {
-      const state = createTestMatch(createDefaultProfile(), 812);
+      const state = createTestMatch(812);
       state.kickoffTimer = 0;
-      const attacker = state.players.find((player) => player.team === "blue" && player.profile.position === "midfielder")!;
+      const attacker = state.players.find((player) => player.team === "blue" && player.profile.position === "centerMid")!;
       attacker.position = { x: FIELD.width * 0.35, y: FIELD.height / 2 };
       attacker.velocity = { x: 0, y: 0 };
       attacker.profile.skills.control = 88;
@@ -50,7 +48,7 @@ describe("ações e física da bola", () => {
   });
 
   it("limita o reposicionamento da bola em uma mudanca de 180 graus", () => {
-    const state = createTestMatch(createDefaultProfile(), 1245296397);
+    const state = createTestMatch(1245296397);
     state.kickoffTimer = 0;
     const holder = state.players.find((player) => player.team === "coral" && player.profile.position === "centerBack")!;
     holder.position = { x: FIELD.width / 2, y: FIELD.height / 2 };
@@ -79,10 +77,10 @@ describe("ações e física da bola", () => {
   });
 
   it("prefere o rasteiro sob pressão moderada e rejeita o aéreo sem vantagem", () => {
-    const state = createTestMatch(createDefaultProfile(), 404);
+    const state = createTestMatch(404);
     state.kickoffTimer = 0;
-    const passer = state.players.find((player) => player.team === "blue" && player.profile.position === "midfielder")!;
-    const receiver = state.players.find((player) => player.team === passer.team && player.profile.position === "forward")!;
+    const passer = state.players.find((player) => player.team === "blue" && player.profile.position === "centerMid")!;
+    const receiver = state.players.find((player) => player.team === passer.team && player.profile.position === "striker")!;
     passer.position = { x: 38, y: 30 };
     receiver.position = { x: 59, y: 30 };
     receiver.velocity = { x: 2, y: 0 };
@@ -98,10 +96,10 @@ describe("ações e física da bola", () => {
   });
 
   it("usa o aéreo quando o corredor rasteiro está bloqueado e a queda está livre", () => {
-    const state = createTestMatch(createDefaultProfile(), 405);
+    const state = createTestMatch(405);
     state.kickoffTimer = 0;
-    const passer = state.players.find((player) => player.team === "blue" && player.profile.position === "midfielder")!;
-    const receiver = state.players.find((player) => player.team === passer.team && player.profile.position === "forward")!;
+    const passer = state.players.find((player) => player.team === "blue" && player.profile.position === "centerMid")!;
+    const receiver = state.players.find((player) => player.team === passer.team && player.profile.position === "striker")!;
     passer.position = { x: 32, y: 30 };
     receiver.position = { x: 72, y: 30 };
     receiver.velocity = { x: 1, y: 0 };
@@ -117,10 +115,10 @@ describe("ações e física da bola", () => {
   });
 
   it("mantem a bola dominada ao conduzir e mudar de direcao", () => {
-    const state = createTestMatch(createDefaultProfile(), 8801);
+    const state = createTestMatch(8801);
     state.kickoffTimer = 0;
     state.elapsed = 10;
-    const holder = state.players.find((player) => player.team === "blue" && player.profile.position === "midfielder")!;
+    const holder = state.players.find((player) => player.team === "blue" && player.profile.position === "centerMid")!;
     holder.position = { x: FIELD.width * 0.4, y: FIELD.height / 2 };
     holder.facing = { x: 1, y: 0 };
     state.ball.position = { x: holder.position.x + holder.radius + state.ball.radius + 0.15, y: holder.position.y };
@@ -139,7 +137,7 @@ describe("ações e física da bola", () => {
   });
 
   it("faz a bola aerea quicar e perder energia ao aterrissar", () => {
-    const state = createTestMatch(createDefaultProfile(), 73);
+    const state = createTestMatch(73);
     state.kickoffTimer = 0;
     state.ball.controllerId = null;
     state.ball.position = { x: FIELD.width / 2, y: FIELD.height / 2 };
@@ -157,7 +155,7 @@ describe("ações e física da bola", () => {
   });
 
   it("faz uma finalizacao viajar claramente mais rapido que um passe longo", () => {
-    const shotState = createTestMatch(createDefaultProfile(), 515);
+    const shotState = createTestMatch(515);
     shotState.kickoffTimer = 0;
     const shooter = shotState.players.find((player) => player.team === "blue" && player.profile.role === "finisher")!;
     shooter.position = { x: FIELD.width / 2, y: FIELD.height / 2 };
@@ -173,7 +171,7 @@ describe("ações e física da bola", () => {
     });
     const shotSpeed = length(shotState.ball.velocity);
 
-    const passState = createTestMatch(createDefaultProfile(), 515);
+    const passState = createTestMatch(515);
     passState.kickoffTimer = 0;
     const passer = passState.players.find((player) => player.profile.id === shooter.profile.id)!;
     const receiver = passState.players.find((player) => player.team === passer.team && player !== passer)!;
@@ -201,10 +199,10 @@ describe("ações e física da bola", () => {
   });
 
   it("faz a finta vencedora passar pelo defensor sem permitir resposta imediata", () => {
-    const state = createTestMatch(createDefaultProfile(), 2026);
+    const state = createTestMatch(2026);
     state.kickoffTimer = 0;
     state.elapsed = 20;
-    const attacker = state.players.find((player) => player.team === "blue" && player.profile.position === "midfielder")!;
+    const attacker = state.players.find((player) => player.team === "blue" && player.profile.position === "centerMid")!;
     const defender = state.players.find((player) => player.team === "coral" && player.profile.position === "centerBack")!;
     attacker.position = { x: FIELD.width * 0.42, y: FIELD.height / 2 };
     attacker.velocity = { x: 2, y: 0 };
@@ -247,10 +245,10 @@ describe("ações e física da bola", () => {
   });
 
   it("nao permite finta antes de o jogador estabilizar a posse", () => {
-    const state = createTestMatch(createDefaultProfile(), 77);
+    const state = createTestMatch(77);
     state.kickoffTimer = 0;
     state.elapsed = 12;
-    const attacker = state.players.find((player) => player.team === "blue" && player.profile.position === "midfielder")!;
+    const attacker = state.players.find((player) => player.team === "blue" && player.profile.position === "centerMid")!;
     const defender = state.players.find((player) => player.team === "coral" && player.profile.position === "centerBack")!;
     attacker.position = { x: FIELD.width * 0.4, y: FIELD.height / 2 };
     attacker.profile.skills.control = 100;

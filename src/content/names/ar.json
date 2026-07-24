@@ -1,0 +1,28 @@
+{
+  "country": "AR",
+  "firstNames": [
+    "Agustín", "Alejandro", "Ángel", "Bautista", "Benjamín", "Bruno", "Cristian", "Damián",
+    "Diego", "Emiliano", "Enzo", "Ezequiel", "Facundo", "Federico", "Franco", "Gonzalo",
+    "Guido", "Gustavo", "Hernán", "Ignacio", "Javier", "Joaquín", "Juan", "Julián",
+    "Lautaro", "Leandro", "Lisandro", "Lucas", "Marcos", "Mariano", "Martín", "Matías",
+    "Maximiliano", "Nahuel", "Nicolás", "Pablo", "Ramiro", "Rodrigo", "Santiago", "Sebastián",
+    "Thiago", "Tomás", "Valentín", "Walter"
+  ],
+  "lastNames": [
+    "Acuña", "Aguirre", "Álvarez", "Benítez", "Cabrera", "Cáceres", "Cardozo", "Castillo",
+    "Correa", "Domínguez", "Escobar", "Fernández", "Figueroa", "Franco", "Gallardo", "Giménez",
+    "Godoy", "Gómez", "González", "Herrera", "Ibarra", "Insúa", "Juárez", "Ledesma",
+    "López", "Luna", "Maldonado", "Martínez", "Medina", "Molina", "Moreno", "Núñez",
+    "Ojeda", "Ortega", "Paredes", "Peralta", "Pérez", "Quiroga", "Ramírez", "Rojas",
+    "Romero", "Sánchez", "Sosa", "Suárez", "Torres", "Vargas", "Vázquez", "Zárate"
+  ],
+  "clubNames": {
+    "cities": [
+      "Avellaneda", "Bahía Blanca", "Córdoba", "Corrientes", "La Plata", "Mar del Plata",
+      "Mendoza", "Neuquén", "Paraná", "Posadas", "Rosario", "Salta", "San Juan",
+      "Santa Fe", "Tucumán"
+    ],
+    "prefixes": ["Club Atlético", "Racing", "Deportivo", "Club Social y Deportivo", "Unión", "Estudiantes de"],
+    "suffixes": ["FC", "CA", "Juniors", "Central"]
+  }
+}

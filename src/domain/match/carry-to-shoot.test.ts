@@ -1,17 +1,16 @@
 import { describe, expect, it } from "vitest";
-import { buildMatchConfig } from "../../application/match/build-match-config";
-import { createDefaultProfile } from "../../application/profile/create-default-profile";
+import { referenceMatchConfig } from "./__fixtures__/reference-match";
 import { decideAll } from "./ai";
 import { FIELD } from "./config";
 import { createMatchState } from "./index";
 import { evaluateShotOpportunity } from "./runtime/shot-opportunity";
 
-const createTestMatch = (seed = 3) => createMatchState(buildMatchConfig(createDefaultProfile(), seed));
+const createTestMatch = (seed = 3) => createMatchState(referenceMatchConfig(seed));
 
 describe("lookahead condução→finalização (Item 3)", () => {
   it("avalia o chute a partir de uma posição futura: mais perto e livre supera a atual bloqueada", () => {
     const state = createTestMatch();
-    const shooter = state.players.find((p) => p.team === "blue" && p.profile.position === "forward")!;
+    const shooter = state.players.find((p) => p.team === "blue" && p.profile.position === "striker")!;
     const blocker = state.players.find((p) => p.team === "coral" && p.profile.position === "centerBack")!;
     const keeper = state.players.find((p) => p.team === "coral" && p.profile.position === "goalkeeper")!;
     shooter.profile.skills.kickPower = 75;
@@ -39,8 +38,8 @@ describe("lookahead condução→finalização (Item 3)", () => {
     const state = createTestMatch(11);
     state.kickoffTimer = 0;
     state.elapsed = 8;
-    const carrier = state.players.find((p) => p.team === "coral" && p.profile.position === "midfielder")!;
-    const outlet = state.players.find((p) => p.team === "coral" && p.profile.position === "forward")!;
+    const carrier = state.players.find((p) => p.team === "coral" && p.profile.position === "centerMid")!;
+    const outlet = state.players.find((p) => p.team === "coral" && p.profile.position === "striker")!;
     // coral ataca -x (gol em x=0); portador é a ponta de lança
     carrier.position = { x: FIELD.width * 0.28, y: FIELD.height / 2 };
     carrier.velocity = { x: -2, y: 0 };

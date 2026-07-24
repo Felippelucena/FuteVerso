@@ -1,9 +1,9 @@
 import type { PlayerMemory, PlayerProfile } from "../roster/model";
+import type { AttackChannel, BuildUpStyle, DefensiveBlock, PressTrigger } from "../tactics/vocabulary";
 import type { Team, Vec2 } from "../shared/model";
 
 export type { Team, Vec2 } from "../shared/model";
 export type {
-  Lineup,
   PlayerCareerStats,
   PlayerMemory,
   PlayerMentalAttributes,
@@ -13,12 +13,17 @@ export type {
   PlayerRole,
   PlayerSkills,
 } from "../roster/model";
+// O vocabulário tático é declarado por domain/tactics, que é quem oferece essas opções ao
+// treinador; o motor as consome e reexporta para manter sua superfície pública intacta.
+export type { AttackChannel, BuildUpStyle, DefensiveBlock, PressTrigger } from "../tactics/vocabulary";
 
 export interface MatchParticipant {
   team: Team;
   lineupIndex: number;
   profile: PlayerProfile;
   memory: PlayerMemory;
+  /** Camisa vestida nesta partida. Vem do contrato, não do jogador. */
+  shirtNumber: number;
   /**
    * Estamina longa com que o atleta entra em campo (0..1). No jogo rápido é sempre 1;
    * em modos com progressão diária (carreira/roguelike) carrega o desgaste do dia.
@@ -36,10 +41,6 @@ export type TeamPosture = "inPossession" | "outOfPossession";
 export type InPossessionPhase = "buildUp" | "progression" | "finalThird" | "counterAttack";
 export type OutOfPossessionPhase = "highPress" | "midBlock" | "lowBlock" | "counterPress" | "recovery";
 export type TacticalPhase = InPossessionPhase | OutOfPossessionPhase;
-export type AttackChannel = "left" | "center" | "right";
-export type BuildUpStyle = "short" | "balanced" | "direct";
-export type DefensiveBlock = "high" | "mid" | "low";
-export type PressTrigger = "looseBall" | "counterPress" | "touchline" | "compact";
 export type PassPurpose = "feet" | "throughBall" | "cross" | "cutback" | "switch" | "layoff";
 export type ShotTechnique = "placed" | "power" | "volley" | "header" | "redirect";
 export type GoalkeeperAction = "standingSave" | "lowDive" | "highDive" | "verticalJump" | "aerialClaim" | "punch";
@@ -102,6 +103,7 @@ export interface PlayerRuntime {
   memory: PlayerMemory;
   team: Team;
   lineupIndex: number;
+  shirtNumber: number;
   position: Vec2;
   /** Posição-base na formação (âncora fixa do jogador), calculada uma vez na criação da partida. */
   homeAnchor: Vec2;

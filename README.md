@@ -17,7 +17,7 @@ Todos os modos usam o mesmo simulador de partida.
 
 | Modo | Descrição | Estado |
 | --- | --- | --- |
-| **Jogo rápido** | Escolhe dois times, edita escalação e tática, roda a partida. | Simulador pronto; falta estruturar em torno de um menu inicial. |
+| **Jogo rápido** | Escolhe dois times, edita escalação e tática, roda a partida. | Clubes, contratos e plano tático existem; falta o menu inicial e o editor. |
 | **Carreira de técnico** | No estilo Brasfoot: gerencia um clube ao longo das temporadas. | Planejado. |
 | **Roguelike** | Monta um time e vê até onde ele vai; cada vitória melhora o elenco. | Planejado. |
 
@@ -49,19 +49,33 @@ O que o simulador entrega hoje:
 - Semente editável e persistente para reproduzir uma partida ou gerar variações.
 - Relatório tático com precisão de passe, finalizações, recuperações e forma;
   linha do tempo com retrocesso, pausa, reinício e velocidades de 0.5x a 8x.
-- Gerenciamento de jogadores e escalações persistido em `localStorage`.
+- Catálogo de clubes, jogadores e contratos gerado por semente e persistido em
+  IndexedDB.
+
+## Conteúdo editável
+
+O jogo nasce com um catálogo gerado por semente: clubes com identidade e
+reputação, elencos de 22 jogadores cobrindo todas as posições, contratos ligando
+os dois e um plano tático padrão por clube.
+
+- **Doze posições** (GOL, ZAG, LD, LE, VOL, MC, MD, ME, MEI, PD, PE, ATA), com
+  posições secundárias e penalidade para quem joga fora de posição.
+- **Contrato** é a única fonte da verdade do elenco: camisa, salário e validade
+  pertencem ao vínculo, não ao jogador. Sem contrato ativo, agente livre.
+- **Plano tático** sobre uma grade de 7 x 5 com 29 slots, cinco eixos de
+  mentalidade, estilo de saída, bloco defensivo, gatilhos de pressão e
+  instruções por jogador.
+- **Nomes por país** em `src/content/names/`: um JSON por país que você acrescenta
+  sem tocar em código. País sem lista toma nomes emprestados dos demais.
 
 ## Próximos passos
 
-O simulador está pronto; o foco imediato é **estruturar a partida rápida como um
-modo de jogo de verdade**:
-
-- **Menu inicial** com dois botões: **Jogo Rápido** e **Editor**.
-- **Editor de jogadores** (já existe uma tela de elenco) e um novo
-  **editor de clubes**.
-- **Contratos** ligando jogadores a clubes.
-- **Clube de início** com **elenco** e **plano tático padrão** — escalação,
-  reservas, postura e demais ajustes.
+1. **Motor em 11x11** — o plano escala onze, a simulação ainda coloca cinco em
+   campo. Exige recalibrar pressão, cobertura e espaçamento.
+2. **Ajustes táticos no motor** — ligar mentalidade, saída, bloco, gatilhos e
+   instruções ao comportamento, que hoje é totalmente emergente.
+3. **Interface em React** com menu inicial, Jogo Rápido e a tela de partida.
+4. **Editores** de jogadores e de clubes, com o campo tático de arrastar e soltar.
 
 Carreira de técnico e roguelike vêm depois, reaproveitando esse mesmo editor e o
 simulador.
@@ -86,10 +100,10 @@ npm run build
 Monólito modular: as dependências apontam sempre para o domínio, nunca no sentido
 contrário.
 
-- `src/domain`: regras de elenco e partida, IA e sistemas determinísticos de simulação.
-- `src/application`: sessão, coordenação do jogo, casos de uso e portas externas.
-- `src/content`: catálogo embutido de jogadores e escalações — futura fonte do editor de conteúdo.
-- `src/infrastructure`: persistência versionada e adapters de armazenamento.
+- `src/domain`: jogadores, clubes, contratos, plano tático, mundo e o motor da partida.
+- `src/application`: sessão, boot do mundo, casos de uso e portas externas.
+- `src/content`: listas de nomes por país e os geradores de jogador, elenco, clube e catálogo.
+- `src/infrastructure`: adapters de armazenamento (IndexedDB e volátil).
 - `src/presentation`: shell, telas DOM, loop do navegador, Canvas e view models.
 - `src/main.ts`: composition root que apenas instancia e conecta os módulos.
 
@@ -99,7 +113,6 @@ e as APIs públicas estão em [`docs/architecture.md`](docs/architecture.md); o
 roteiro de regressão visual e funcional, em
 [`docs/ui-characterization.md`](docs/ui-characterization.md).
 
-O armazenamento implementa a porta `SaveRepository`, permitindo trocar por
-IndexedDB quando replays e históricos maiores forem adicionados. Conteúdo editável
-deverá produzir catálogos compatíveis com os mesmos tipos usados pelo conteúdo
-embutido, sem acoplar essas funcionalidades ao motor ou ao armazenamento concreto.
+O armazenamento implementa a porta assíncrona `WorldRepository`. O adapter padrão
+usa IndexedDB com uma store por entidade e o versionamento nativo do banco; sem
+IndexedDB disponível, um repositório volátil mantém o jogo rodando sem persistir.

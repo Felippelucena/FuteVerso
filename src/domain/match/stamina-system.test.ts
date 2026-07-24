@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildMatchConfig } from "../../application/match/build-match-config";
-import { createDefaultProfile } from "../../application/profile/create-default-profile";
+import { referenceMatchConfig } from "./__fixtures__/reference-match";
 import { createMatchState, stepMatch } from "./index";
 import { FIELD } from "./config";
 import { length } from "../shared/math";
@@ -10,8 +9,8 @@ const DT = 1 / 120;
 // Vão útil de gol a gol no campo atual (com as margens que o jogo usa).
 const GOAL_TO_GOAL = FIELD.width - 10;
 
-const outfield = (state = createMatchState(buildMatchConfig(createDefaultProfile()))) =>
-  state.players.find((player) => player.team === "blue" && player.profile.position === "forward")!;
+const outfield = (state = createMatchState(referenceMatchConfig())) =>
+  state.players.find((player) => player.team === "blue" && player.profile.position === "striker")!;
 
 describe("estamina volátil (piques)", () => {
   it("gasta ~60% da volátil ao atravessar o campo em disparada", () => {
@@ -62,7 +61,7 @@ describe("estamina longa (fôlego de partida)", () => {
     const finals: number[] = [];
     let maxIncrease = 0;
     for (const seed of [11, 27, 43]) {
-      const state = createMatchState(buildMatchConfig(createDefaultProfile(), seed));
+      const state = createMatchState(referenceMatchConfig(seed));
       const previous = new Map(state.players.map((player) => [player.profile.id, player.stamina]));
       while (!state.finished) {
         stepMatch(state, DT);
@@ -90,7 +89,7 @@ describe("estamina longa (fôlego de partida)", () => {
   }, 120_000);
 
   it("começa cheia por padrão (jogo rápido) e respeita o startingStamina do participante", () => {
-    const config = buildMatchConfig(createDefaultProfile());
+    const config = referenceMatchConfig();
     const quick = createMatchState(config);
     expect(quick.players.every((player) => player.stamina === 1)).toBe(true);
 

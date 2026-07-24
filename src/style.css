@@ -1759,3 +1759,36 @@ body,
     padding: 16px;
   }
 }
+
+/* Tela de carregamento: o mundo vem do IndexedDB antes de qualquer coisa aparecer. */
+.boot-screen {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 18px;
+  min-height: 100dvh;
+  padding: 32px;
+  text-align: center;
+  color: var(--muted, #8ea3ae);
+}
+
+.boot-screen .brand-mark {
+  animation: boot-pulse 1.4s ease-in-out infinite;
+}
+
+.boot-screen pre {
+  max-width: min(680px, 100%);
+  overflow-x: auto;
+  font-size: 12px;
+  text-align: left;
+}
+
+@keyframes boot-pulse {
+  0%, 100% { opacity: .45; transform: scale(.94); }
+  50% { opacity: 1; transform: scale(1); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .boot-screen .brand-mark { animation: none; }
+}

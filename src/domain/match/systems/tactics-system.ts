@@ -5,6 +5,7 @@ import type {
   BuildUpStyle,
   DefensiveBlock,
   MatchState,
+  PlayerPosition,
   PlayerRuntime,
   PressTrigger,
   TacticalPhase,
@@ -15,6 +16,10 @@ import type {
 } from "../model";
 import { activeBallPlayerId } from "../runtime/control";
 import { predictPlayerPosition, predictedSpaceAt, predictionHorizon } from "../runtime/prediction";
+
+// Quem sobe pela lateral quando o time ataca por um corredor: os dois laterais, que é o
+// papel clássico do overlap.
+const OVERLAP_POSITIONS: readonly PlayerPosition[] = ["rightBack", "leftBack"];
 
 export const TACTICAL_PHASES: TacticalPhase[] = [
   "buildUp", "progression", "finalThird", "counterAttack",
@@ -188,7 +193,7 @@ const chooseOverlapFullBack = (
   const phase = state.tactics[team].phase;
   if (phase !== "progression" && phase !== "finalThird" && phase !== "counterAttack") return null;
   const corridor = channelY(attackChannel);
-  const eligible = outfield.filter((player) => player.profile.position === "fullBack"
+  const eligible = outfield.filter((player) => OVERLAP_POSITIONS.includes(player.profile.position)
     && player.profile.id !== safetyId
     && player.sprintEnergy > 0.4
     && Math.abs(player.position.y - corridor) < FIELD.height * 0.5);

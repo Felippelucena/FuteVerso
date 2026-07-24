@@ -6,7 +6,7 @@ import type { PlayerRuntime } from "../../domain/match/model";
 import { goalkeeperQuality } from "../../domain/match/systems/goalkeeper-system";
 import type { Team } from "../../domain/shared/model";
 import type { GameRenderer } from "../canvas/game-renderer";
-import { DRIBBLE_RANGE_REASON_LABELS, DRIBBLE_TOUCH_LABELS, escapeHtml, formatClock, INTENT_LABELS, PACE_LABELS, PASS_PURPOSE_LABELS, percentage, PHASE_LABELS, POSITION_LABELS, REASON_LABELS, ROLE_LABELS, SHOT_TECHNIQUE_LABELS, teamLabel } from "../app/labels";
+import { DRIBBLE_RANGE_REASON_LABELS, DRIBBLE_TOUCH_LABELS, escapeHtml, formatClock, INTENT_LABELS, PACE_LABELS, PASS_PURPOSE_LABELS, percentage, PHASE_LABELS, POSITION_LABELS, REASON_LABELS, ROLE_LABELS, SHOT_TECHNIQUE_LABELS, type TeamNames } from "../app/labels";
 import { hydrateIcons } from "../app/icons";
 import { formatMatchEvent } from "./format-match-event";
 import { createContestMetric, createMatchHeaderViewModel, createMatchSummary } from "./match-view-model";
@@ -49,9 +49,9 @@ export const matchScreenTemplate = (): string => `
         <span class="timeline-clock"><span id="timeline-view">0:00</span> / <span id="timeline-live">0:00</span></span>
       </div>
       <div class="match-strip">
-        <div><span>POSSE NILO</span><strong id="possession-blue">50%</strong></div>
+        <div><span>POSSE <em id="possession-name-blue">CASA</em></span><strong id="possession-blue">50%</strong></div>
         <div class="possession-track"><span id="possession-fill"></span></div>
-        <div><span>POSSE MAYA</span><strong id="possession-coral">50%</strong></div>
+        <div><span>POSSE <em id="possession-name-coral">VISITANTE</em></span><strong id="possession-coral">50%</strong></div>
       </div>
     </div>
     <aside class="inspector" aria-label="Painel da partida">
@@ -70,8 +70,8 @@ export const matchScreenTemplate = (): string => `
       <section id="inspector-analysis" class="inspector-panel analysis-section" role="tabpanel" data-inspector-panel="analysis" hidden aria-label="Análise tática da partida">
         <div class="analysis-heading"><div><span class="eyebrow">TÁTICA</span><strong id="analysis-title">Relatório ao vivo</strong></div><span id="contest-metric">Disputa 0%</span></div>
         <div class="phase-grid">
-          <div class="phase-card phase-card--blue"><small>NILO</small><strong id="phase-blue">Bloco médio</strong><span id="shape-blue">Largura 0 · Prof. 0</span><canvas id="tactical-map-blue" width="128" height="72" aria-label="Mapa de calor e rede de passes do Nilo"></canvas></div>
-          <div class="phase-card phase-card--coral"><small>MAYA</small><strong id="phase-coral">Bloco médio</strong><span id="shape-coral">Largura 0 · Prof. 0</span><canvas id="tactical-map-coral" width="128" height="72" aria-label="Mapa de calor e rede de passes do Maya"></canvas></div>
+          <div class="phase-card phase-card--blue"><small id="phase-name-blue">CASA</small><strong id="phase-blue">Bloco médio</strong><span id="shape-blue">Largura 0 · Prof. 0</span><canvas id="tactical-map-blue" width="128" height="72" aria-label="Mapa de calor e rede de passes do time da casa"></canvas></div>
+          <div class="phase-card phase-card--coral"><small id="phase-name-coral">VISITANTE</small><strong id="phase-coral">Bloco médio</strong><span id="shape-coral">Largura 0 · Prof. 0</span><canvas id="tactical-map-coral" width="128" height="72" aria-label="Mapa de calor e rede de passes do time visitante"></canvas></div>
         </div>
         <div class="analysis-table" id="analysis-table"></div>
         <p id="match-summary" class="match-summary">A análise será atualizada conforme a partida evolui.</p>
@@ -86,6 +86,13 @@ export const matchSettingsTemplate = (): string => `
   <dialog id="match-settings-dialog" class="settings-dialog">
     <form method="dialog">
       <div class="dialog-heading"><div><span class="eyebrow">PARTIDA</span><h2>Configurações</h2></div><button class="icon-button" value="cancel" aria-label="Fechar configurações" title="Fechar"><i data-lucide="x"></i></button></div>
+      <div class="settings-group">
+        <div><strong>Times em campo</strong><p>Trocar de clube reinicia a partida com o plano padrão de cada um.</p></div>
+        <div class="seed-control seed-control--dialog" aria-label="Clubes da partida">
+          <select id="settings-club-blue" aria-label="Clube da casa"></select>
+          <select id="settings-club-coral" aria-label="Clube visitante"></select>
+        </div>
+      </div>
       <div class="settings-group">
         <div><strong>Semente da partida</strong><p>Use o mesmo número para reproduzir uma simulação.</p></div>
         <div class="seed-control seed-control--dialog" aria-label="Semente da partida">
@@ -110,7 +117,7 @@ export class MatchScreen {
     private readonly settingsDialog: HTMLDialogElement,
     private readonly application: GameApplication,
     private readonly renderer: GameRenderer,
-    private readonly renderHeader: (state: MatchState, paused: boolean) => void,
+    private readonly renderHeader: (state: MatchState, paused: boolean, teamNames: TeamNames) => void,
   ) {
     this.selectedPlayerId = application.state.players[0]?.profile.id ?? "";
     this.bindEvents();
@@ -120,10 +127,19 @@ export class MatchScreen {
     return this.find<HTMLCanvasElement>("#game-canvas");
   }
 
+  /** Sigla dos clubes em campo. Recalculada a cada leitura porque a partida pode trocar de times. */
+  private get teamNames(): TeamNames {
+    return {
+      blue: this.application.clubOf("blue").shortName,
+      coral: this.application.clubOf("coral").shortName,
+    };
+  }
+
   render(): void {
     const state = this.application.state;
-    const header = createMatchHeaderViewModel(state);
-    this.renderHeader(state, this.application.match.paused);
+    const header = createMatchHeaderViewModel(state, this.teamNames);
+    this.renderHeader(state, this.application.match.paused, this.teamNames);
+    this.renderTeamNames();
     this.find("#possession-label").textContent = header.possessionLabel;
     this.find("#possession-blue").textContent = `${header.bluePossession}%`;
     this.find("#possession-coral").textContent = `${header.coralPossession}%`;
@@ -134,12 +150,20 @@ export class MatchScreen {
     this.find<HTMLButtonElement>("#pause-button").disabled = state.finished;
     this.find<HTMLOListElement>("#event-list").innerHTML = state.events.map((event) => {
       const team = "team" in event ? event.team : null;
-      return `<li class="event-item ${team ? `event-item--${team}` : ""}"><time>${formatClock(event.time)}</time><span>${escapeHtml(formatMatchEvent(event, this.application.profile.players))}</span></li>`;
+      return `<li class="event-item ${team ? `event-item--${team}` : ""}"><time>${formatClock(event.time)}</time><span>${escapeHtml(formatMatchEvent(event, this.application.world.players, this.teamNames))}</span></li>`;
     }).join("");
   }
 
   resize(): void {
     this.renderer.resize();
+  }
+
+  private renderTeamNames(): void {
+    const names = this.teamNames;
+    for (const team of ["blue", "coral"] as const) {
+      this.find(`#possession-name-${team}`).textContent = names[team];
+      this.find(`#phase-name-${team}`).textContent = names[team];
+    }
   }
 
   private renderTimeline(): void {
@@ -167,7 +191,7 @@ export class MatchScreen {
     pauseButton.addEventListener("click", () => {
       this.application.match.togglePaused();
       this.renderPauseButton();
-      this.renderHeader(this.application.state, this.application.match.paused);
+      this.renderHeader(this.application.state, this.application.match.paused, this.teamNames);
     });
     this.find("#reset-button").addEventListener("click", () => {
       this.application.restartMatch();
@@ -201,13 +225,44 @@ export class MatchScreen {
     this.bindSettings();
   }
 
+  private renderClubSelectors(): void {
+    const clubs = [...this.application.world.clubs].sort((first, second) => first.name.localeCompare(second.name));
+    for (const team of ["blue", "coral"] as const) {
+      const select = this.settingsFind<HTMLSelectElement>(`#settings-club-${team}`);
+      const current = this.application.setup[team].clubId;
+      select.innerHTML = clubs
+        .map((club) => `<option value="${club.id}" ${club.id === current ? "selected" : ""}>${escapeHtml(club.name)}</option>`)
+        .join("");
+    }
+  }
+
+  private bindClubSelectors(): void {
+    for (const team of ["blue", "coral"] as const) {
+      this.settingsFind<HTMLSelectElement>(`#settings-club-${team}`).addEventListener("change", () => {
+        const blue = this.settingsFind<HTMLSelectElement>("#settings-club-blue").value;
+        const coral = this.settingsFind<HTMLSelectElement>("#settings-club-coral").value;
+        // Dois clubes iguais não têm elenco para os dois lados; o outro lado cede a vez.
+        const opponents = this.application.world.clubs.filter(({ id }) => id !== (team === "blue" ? blue : coral));
+        const resolved = blue === coral ? opponents[0]?.id ?? coral : team === "blue" ? coral : blue;
+        const result = team === "blue"
+          ? this.application.selectClubs(blue, resolved)
+          : this.application.selectClubs(resolved, coral);
+        if (result.ok) this.resetSelection();
+        this.renderClubSelectors();
+        this.render();
+      });
+    }
+  }
+
   private bindSettings(): void {
+    this.renderClubSelectors();
+    this.bindClubSelectors();
     const seedInput = this.settingsFind<HTMLInputElement>("#settings-seed-input");
-    seedInput.value = String(this.application.profile.settings.randomSeed);
+    seedInput.value = String(this.application.world.settings.randomSeed);
     const applySeed = (): void => {
       const parsed = Number(seedInput.value);
       if (!Number.isFinite(parsed)) {
-        seedInput.value = String(this.application.profile.settings.randomSeed);
+        seedInput.value = String(this.application.world.settings.randomSeed);
         return;
       }
       seedInput.value = String(this.application.setSeed(parsed));
@@ -219,14 +274,15 @@ export class MatchScreen {
     this.settingsFind("#settings-random-seed").addEventListener("click", () => {
       const values = new Uint32Array(1);
       crypto.getRandomValues(values);
-      const currentSeed = this.application.profile.settings.randomSeed;
+      const currentSeed = this.application.world.settings.randomSeed;
       seedInput.value = String(values[0] === currentSeed ? (values[0] + 1) >>> 0 : values[0]);
       applySeed();
     });
     for (const button of this.root.querySelectorAll<HTMLButtonElement>("[data-open-match-settings]")) {
       button.addEventListener("click", () => {
-        seedInput.value = String(this.application.profile.settings.randomSeed);
+        seedInput.value = String(this.application.world.settings.randomSeed);
         this.settingsFind<HTMLInputElement>("#learning-toggle").checked = this.application.state.learningEnabled;
+        this.renderClubSelectors();
         this.settingsDialog.showModal();
       });
     }
@@ -270,10 +326,10 @@ export class MatchScreen {
   private renderMatchRoster(): void {
     const state = this.application.state;
     this.find("#match-roster").innerHTML = (["blue", "coral"] as const).map((team) => `
-      <div class="roster-team"><span class="roster-team-name roster-team-name--${team}">${teamLabel(team)}</span>
+      <div class="roster-team"><span class="roster-team-name roster-team-name--${team}">${escapeHtml(this.teamNames[team])}</span>
         ${state.players.filter((player) => player.team === team).map((player) => `
           <button type="button" class="roster-player ${this.selectedPlayerId === player.profile.id ? "is-selected" : ""}" data-inspect-player="${player.profile.id}">
-            <span class="shirt shirt--${team}">${player.profile.number}</span><span><strong>${escapeHtml(player.profile.name)}</strong><small>${POSITION_LABELS[player.profile.position]} · ${intentLabel(state, player)}</small></span>${staminaMeter(player)}
+            <span class="shirt shirt--${team}">${player.shirtNumber}</span><span><strong>${escapeHtml(player.profile.name)}</strong><small>${POSITION_LABELS[player.profile.position]} · ${intentLabel(state, player)}</small></span>${staminaMeter(player)}
           </button>`).join("")}
       </div>`).join("");
     const selected = state.players.find((player) => player.profile.id === this.selectedPlayerId) ?? state.players[0];
@@ -407,10 +463,10 @@ export class MatchScreen {
       ["Largura média", Math.round(this.averageShape("blue", "widthIntegral")), Math.round(this.averageShape("coral", "widthIntegral"))],
       ["Compactação média", Math.round(this.averageShape("blue", "compactnessIntegral")), Math.round(this.averageShape("coral", "compactnessIntegral"))],
     ];
-    this.find("#analysis-table").innerHTML = `<div class="analysis-row analysis-row--head"><span>MÉTRICA</span><strong>NILO</strong><strong>MAYA</strong></div>${rows.map(([label, blueValue, coralValue]) => `<div class="analysis-row"><span>${label}</span><strong>${blueValue}</strong><strong>${coralValue}</strong></div>`).join("")}`;
+    this.find("#analysis-table").innerHTML = `<div class="analysis-row analysis-row--head"><span>MÉTRICA</span><strong>${escapeHtml(this.teamNames.blue)}</strong><strong>${escapeHtml(this.teamNames.coral)}</strong></div>${rows.map(([label, blueValue, coralValue]) => `<div class="analysis-row"><span>${label}</span><strong>${blueValue}</strong><strong>${coralValue}</strong></div>`).join("")}`;
     this.find("#contest-metric").textContent = createContestMetric(state);
     this.find("#analysis-title").textContent = state.finished ? "Relatório final" : "Relatório ao vivo";
-    this.find("#match-summary").textContent = createMatchSummary(state);
+    this.find("#match-summary").textContent = createMatchSummary(state, this.teamNames);
   }
 
   private find<T extends HTMLElement>(selector: string): T {

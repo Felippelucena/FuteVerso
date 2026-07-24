@@ -1,6 +1,16 @@
-import type { Team } from "../shared/model";
+import type { CountryCode } from "../shared/model";
 
-export type PlayerPosition = "goalkeeper" | "centerBack" | "fullBack" | "midfielder" | "forward";
+// Doze posições cobrindo a grade tática. As siglas em português (GOL, ZAG, VOL, MEI, ATA...)
+// ficam em presentation/app/labels.ts; o domínio usa identificadores em inglês como o resto
+// do código. A linha e o lado natural de cada posição estão em positions.ts.
+export type PlayerPosition =
+  | "goalkeeper"
+  | "centerBack" | "rightBack" | "leftBack"
+  | "defensiveMid" | "centerMid" | "rightMid" | "leftMid" | "attackingMid"
+  | "rightWing" | "leftWing" | "striker";
+
+// Posição diz onde o jogador atua; função diz como ele decide. Os dois eixos são
+// independentes: um centerMid pode ser playmaker ou defender.
 export type PlayerRole = "finisher" | "playmaker" | "defender";
 
 export interface PlayerSkills {
@@ -31,8 +41,11 @@ export interface PlayerMentalAttributes {
 export interface PlayerProfile {
   id: string;
   name: string;
-  number: number;
+  nationality: CountryCode;
+  birthYear: number;
   position: PlayerPosition;
+  // Posições em que o jogador atua sem penalidade de improviso, além da principal.
+  secondaryPositions: PlayerPosition[];
   role: PlayerRole;
   skills: PlayerSkills;
   mental: PlayerMentalAttributes;
@@ -63,22 +76,4 @@ export interface PlayerMemory {
   version: number;
   policy: PlayerPolicy;
   stats: PlayerCareerStats;
-}
-
-export interface Lineup {
-  goalkeeperId: string;
-  // Jogadores de linha do time (sem o goleiro). O tamanho define o formato da partida:
-  // 4 para o 5x5 atual, e no futuro outros valores (ex.: 10 para 11x11). Ambos os times
-  // precisam ter o mesmo número — ver validateLineups.
-  fieldPlayerIds: string[];
-}
-
-export interface GameProfile {
-  players: PlayerProfile[];
-  lineups: Record<Team, Lineup>;
-  memories: Record<string, PlayerMemory>;
-  settings: {
-    learningEnabled: boolean;
-    randomSeed: number;
-  };
 }

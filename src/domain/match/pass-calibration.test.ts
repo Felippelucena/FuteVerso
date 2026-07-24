@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildMatchConfig } from "../../application/match/build-match-config";
-import { createDefaultProfile } from "../../application/profile/create-default-profile";
+import { referenceMatchConfig } from "./__fixtures__/reference-match";
 import { createMatchState, stepMatch } from "./index";
 import { FIELD } from "./config";
 import type { PendingPass } from "./model";
@@ -17,8 +16,8 @@ describe("calibracao deterministica da partida", () => {
     const buckets = new Map<string, Bucket>();
     const touches = { short: 0, medium: 0, long: 0 };
     const energy = {
-      midfielder: { sum: 0, samples: 0, belowHalf: 0, atFloor: 0 },
-      forward: { sum: 0, samples: 0, belowHalf: 0, atFloor: 0 },
+      centerMid: { sum: 0, samples: 0, belowHalf: 0, atFloor: 0 },
+      striker: { sum: 0, samples: 0, belowHalf: 0, atFloor: 0 },
     };
     let clearRunwaySamples = 0;
     let carryingWithClearRunway = 0;
@@ -35,7 +34,7 @@ describe("calibracao deterministica da partida", () => {
     let decisiveClearChances = 0;
     const activeClearChances = new Map<string, { startedAt: number; expiresAt: number }>();
     for (let seed = 1; seed <= 12; seed += 1) {
-      const state = createMatchState(buildMatchConfig(createDefaultProfile(), 7000 + seed));
+      const state = createMatchState(referenceMatchConfig(7000 + seed));
       let tracked: PendingPass | null = null;
       let trackedFirstTimeShots = 0;
       let nextWorkloadSample = 0;
@@ -129,7 +128,7 @@ describe("calibracao deterministica da partida", () => {
             }
           }
           for (const player of state.players) {
-            if (player.profile.position !== "midfielder" && player.profile.position !== "forward") continue;
+            if (player.profile.position !== "centerMid" && player.profile.position !== "striker") continue;
             const role = energy[player.profile.position];
             role.sum += player.sprintEnergy;
             role.samples += 1;
@@ -221,14 +220,14 @@ describe("calibracao deterministica da partida", () => {
     expect(touchReport.distribution.long).toBeGreaterThanOrEqual(0.1);
     expect(touchReport.distribution.long).toBeLessThanOrEqual(0.25);
     expect(touchReport.carryWithClearRunway).toBeLessThanOrEqual(0.5);
-    expect(touchReport.energy.midfielder.average).toBeGreaterThanOrEqual(0.6);
-    expect(touchReport.energy.midfielder.average).toBeLessThanOrEqual(0.85);
-    expect(touchReport.energy.forward.average).toBeGreaterThanOrEqual(0.58);
-    expect(touchReport.energy.forward.average).toBeLessThanOrEqual(0.82);
-    expect(touchReport.energy.midfielder.belowHalf).toBeLessThan(0.25);
-    expect(touchReport.energy.forward.belowHalf).toBeLessThan(0.25);
-    expect(touchReport.energy.midfielder.atFloor).toBeLessThan(0.05);
-    expect(touchReport.energy.forward.atFloor).toBeLessThan(0.05);
+    expect(touchReport.energy.centerMid.average).toBeGreaterThanOrEqual(0.6);
+    expect(touchReport.energy.centerMid.average).toBeLessThanOrEqual(0.85);
+    expect(touchReport.energy.striker.average).toBeGreaterThanOrEqual(0.58);
+    expect(touchReport.energy.striker.average).toBeLessThanOrEqual(0.82);
+    expect(touchReport.energy.centerMid.belowHalf).toBeLessThan(0.25);
+    expect(touchReport.energy.striker.belowHalf).toBeLessThan(0.25);
+    expect(touchReport.energy.centerMid.atFloor).toBeLessThan(0.05);
+    expect(touchReport.energy.striker.atFloor).toBeLessThan(0.05);
     expect(attackReport.directCrossRate).toBeGreaterThanOrEqual(0.15);
     expect(attackReport.directCrossRate).toBeLessThanOrEqual(0.35);
     expect(attackReport.longShotRate).toBeGreaterThanOrEqual(0.1);

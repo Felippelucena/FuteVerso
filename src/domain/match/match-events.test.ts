@@ -1,11 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { buildMatchConfig } from "../../application/match/build-match-config";
-import { createDefaultProfile } from "../../application/profile/create-default-profile";
+import { referenceMatchConfig } from "./__fixtures__/reference-match";
 import { FIELD, FIXED_STEP, MATCH_DURATION } from "./config";
 import { createMatchState, stepMatch } from "./index";
 import { executeBallAction } from "./systems/ball-system";
 
-const createState = (seed = 123) => createMatchState(buildMatchConfig(createDefaultProfile(), seed));
+const createState = (seed = 123) => createMatchState(referenceMatchConfig(seed));
 
 describe("eventos estruturados do motor", () => {
   it("inicia e encerra a partida com eventos tipados", () => {

@@ -1,0 +1,28 @@
+{
+  "country": "PT",
+  "firstNames": [
+    "Afonso", "André", "António", "Bernardo", "Bruno", "Cristiano", "Daniel", "Diogo",
+    "Duarte", "Eduardo", "Fábio", "Filipe", "Francisco", "Gonçalo", "Guilherme", "Gustavo",
+    "Hélder", "Henrique", "Hugo", "Ivo", "João", "Joaquim", "José", "Luís",
+    "Manuel", "Marco", "Mário", "Martim", "Miguel", "Nuno", "Paulo", "Pedro",
+    "Rafael", "Renato", "Ricardo", "Rodrigo", "Rúben", "Salvador", "Sérgio", "Simão",
+    "Tiago", "Tomás", "Vasco", "Vítor"
+  ],
+  "lastNames": [
+    "Abreu", "Almeida", "Alves", "Amorim", "Antunes", "Araújo", "Baptista", "Barbosa",
+    "Cardoso", "Carvalho", "Coentrão", "Correia", "Costa", "Cunha", "Domingues", "Esteves",
+    "Faria", "Ferreira", "Fonseca", "Freitas", "Gaspar", "Gomes", "Gonçalves", "Guedes",
+    "Henriques", "Leal", "Lopes", "Loureiro", "Machado", "Marques", "Martins", "Matos",
+    "Meireles", "Mendes", "Monteiro", "Moutinho", "Neto", "Neves", "Nogueira", "Oliveira",
+    "Pacheco", "Pereira", "Pinto", "Ramos", "Reis", "Ribeiro", "Rocha", "Sampaio",
+    "Santos", "Silva", "Simões", "Soares", "Sousa", "Teixeira", "Valente", "Veloso"
+  ],
+  "clubNames": {
+    "cities": [
+      "Aveiro", "Braga", "Coimbra", "Faro", "Funchal", "Guimarães", "Leiria", "Portimão",
+      "Setúbal", "Viseu"
+    ],
+    "prefixes": ["Sporting Clube de", "Clube Desportivo", "Grupo Desportivo", "Associação Académica de", "União Desportiva"],
+    "suffixes": ["FC", "SC", "AC"]
+  }
+}

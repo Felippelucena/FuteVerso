@@ -1,10 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { buildMatchConfig } from "../../application/match/build-match-config";
-import { createDefaultProfile } from "../../application/profile/create-default-profile";
+import { referenceMatchConfig } from "./__fixtures__/reference-match";
 import { FIXED_STEP } from "./config";
 import { createMatchState, stepMatch } from "./index";
 
-const createState = () => createMatchState(buildMatchConfig(createDefaultProfile(), 2026));
+const createState = () => createMatchState(referenceMatchConfig(2026));
 
 describe("ciclo de vida da partida", () => {
   it("não altera uma partida finalizada", () => {

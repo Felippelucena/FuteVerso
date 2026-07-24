@@ -1,13 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { buildMatchConfig } from "../../application/match/build-match-config";
-import { createDefaultProfile } from "../../application/profile/create-default-profile";
+import { referenceMatchConfig } from "./__fixtures__/reference-match";
 import { formationAnchor } from "./ai";
 import { FIELD } from "./config";
 import { createMatchState } from "./index";
-import type { GameProfile } from "../roster/model";
-import { validateLineups } from "../roster/rules";
 
-const createTestMatch = (profile: GameProfile = createDefaultProfile(), seed?: number) => createMatchState(buildMatchConfig(profile, seed));
+const createTestMatch = (seed?: number) => createMatchState(referenceMatchConfig(seed));
 
 describe("estado inicial e escalações", () => {
   it("usa campo e gol escalados", () => {
@@ -18,9 +15,7 @@ describe("estado inicial e escalações", () => {
   });
 
   it("cria dez titulares com um goleiro por time", () => {
-    const save = createDefaultProfile();
-    const state = createTestMatch(save);
-    expect(validateLineups(save.players, save.lineups)).toBe(true);
+    const state = createTestMatch();
     expect(state.players).toHaveLength(10);
     for (const team of ["blue", "coral"] as const) {
       expect(state.players.filter((player) => player.team === team && player.profile.position === "goalkeeper")).toHaveLength(1);
@@ -28,14 +23,17 @@ describe("estado inicial e escalações", () => {
     }
   });
 
-  it("recusa um jogador repetido nas duas equipes", () => {
-    const save = createDefaultProfile();
-    save.lineups.coral.fieldPlayerIds[0] = save.lineups.blue.fieldPlayerIds[0];
-    expect(validateLineups(save.players, save.lineups)).toBe(false);
+  it("veste cada titular com a camisa vinda do participante", () => {
+    const config = referenceMatchConfig();
+    const state = createMatchState(config);
+    for (const participant of config.participants) {
+      const runtime = state.players.find((player) => player.profile.id === participant.profile.id)!;
+      expect(runtime.shirtNumber).toBe(participant.shirtNumber);
+    }
   });
 
   it("faz posição e função alterarem a âncora", () => {
-    const state = createTestMatch(createDefaultProfile());
+    const state = createTestMatch();
     const defender = state.players.find((player) => player.profile.position === "centerBack")!;
     const teammates = state.players.filter((player) => player.team === defender.team);
     const original = formationAnchor(defender, teammates);

@@ -1,11 +1,15 @@
 import { describe, expect, it } from "vitest";
 import { createMatchState, stepMatch } from "../../domain/match";
 import { FIXED_STEP } from "../../domain/match/config";
-import { createDefaultProfile } from "../profile/create-default-profile";
+import { createTestSetup, createTestWorld } from "../__fixtures__/test-world";
 import { buildMatchConfig } from "./build-match-config";
 import { MatchSession, SIMULATION_SPEEDS } from "./match-session";
 
-const createSession = (seed = 2026): MatchSession => new MatchSession(buildMatchConfig(createDefaultProfile(), seed));
+const testWorld = createTestWorld();
+
+const createConfig = (seed = 2026) => buildMatchConfig(testWorld, createTestSetup(testWorld), seed);
+
+const createSession = (seed = 2026): MatchSession => new MatchSession(createConfig(seed));
 
 const advanceToStep = (session: MatchSession, target: number): void => {
   while (session.liveStep < target && !session.state.finished) session.advance(0.1);
@@ -61,7 +65,7 @@ describe("MatchSession", () => {
     session.advance(0.004);
     session.setPaused(true);
 
-    session.restart(buildMatchConfig(createDefaultProfile(), 99));
+    session.restart(createConfig(99));
     session.setPaused(false);
 
     expect(session.speed).toBe(2);
@@ -80,11 +84,11 @@ describe("MatchSession", () => {
 describe("MatchSession linha do tempo", () => {
   it("reconstrói um instante do passado de forma determinística", () => {
     const seed = 2026;
-    const session = new MatchSession(buildMatchConfig(createDefaultProfile(), seed));
+    const session = new MatchSession(createConfig(seed));
     advanceToStep(session, 600); // cruza os keyframes em 240 e 480
 
     // Referência independente: mesma configuração simulada do zero até o passo 250.
-    const reference = createMatchState(buildMatchConfig(createDefaultProfile(), seed));
+    const reference = createMatchState(createConfig(seed));
     for (let step = 0; step < 250; step += 1) stepMatch(reference, FIXED_STEP);
 
     session.seek(250);
@@ -110,7 +114,7 @@ describe("MatchSession linha do tempo", () => {
     expect(session.scrubbing).toBe(true);
 
     // O quadro reproduzido bate com a simulação determinística até o mesmo passo.
-    const reference = createMatchState(buildMatchConfig(createDefaultProfile(), 7));
+    const reference = createMatchState(createConfig(7));
     for (let step = 0; step < 120 + steps; step += 1) stepMatch(reference, FIXED_STEP);
     expect(session.state).toEqual(reference);
   });
@@ -181,7 +185,7 @@ describe("MatchSession linha do tempo", () => {
     advanceToStep(session, 480);
     session.seek(100);
 
-    session.restart(buildMatchConfig(createDefaultProfile(), 7));
+    session.restart(createConfig(7));
 
     expect(session.liveStep).toBe(0);
     expect(session.viewStep).toBe(0);

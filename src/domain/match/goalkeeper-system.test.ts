@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildMatchConfig } from "../../application/match/build-match-config";
-import { createDefaultProfile } from "../../application/profile/create-default-profile";
+import { referenceMatchConfig } from "./__fixtures__/reference-match";
 import { FIELD, FIXED_STEP, GOALKEEPING } from "./config";
 import { stepMatch } from "./engine";
 import type { GoalkeeperAttempt, MatchState, PlayerRuntime, Vec2 } from "./model";
@@ -10,7 +9,7 @@ import { updatePossession } from "./systems/possession-system";
 import { goalkeeperReachRadius, updateGoalkeeperAnticipation } from "./systems/goalkeeper-system";
 
 const createState = (seed = 55) => {
-  const state = createMatchState(buildMatchConfig(createDefaultProfile(), seed));
+  const state = createMatchState(referenceMatchConfig(seed));
   state.kickoffTimer = 0;
   state.events = [];
   return state;

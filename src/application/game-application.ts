@@ -1,132 +1,175 @@
+import type { Club } from "../domain/club/model";
+import { squadOf } from "../domain/contract/queries";
 import { extractPlayerMemories, type MatchState } from "../domain/match";
-import type { GameProfile, PlayerProfile } from "../domain/roster/model";
-import { createMemory, isValidProfile, validateLineups } from "../domain/roster/rules";
+import type { PlayerProfile } from "../domain/roster/model";
+import { createMemory, isValidProfile } from "../domain/roster/rules";
 import type { Team } from "../domain/shared/model";
-import { buildMatchConfig } from "./match/build-match-config";
+import type { TeamTacticalPlan } from "../domain/tactics/model";
+import { inspectPlan } from "../domain/tactics/rules";
+import type { World } from "../domain/world/model";
+import { repairWorld } from "../domain/world/rules";
+import { buildMatchConfig, type MatchSetup } from "./match/build-match-config";
 import { MatchSession } from "./match/match-session";
-import type { SaveRepository } from "./ports/save-repository";
-import { updateProfileMemories } from "./profile/update-profile-memories";
+import type { WorldRepository } from "./ports/world-repository";
 
-export type LineupSlot = "goalkeeper" | number;
-export type ProfileCommandError = "invalid-lineup" | "invalid-player" | "player-in-lineup" | "player-not-found";
-export type ProfileCommandResult = { ok: true } | { ok: false; reason: ProfileCommandError };
+export type CommandError = "invalid-player" | "player-not-found" | "club-not-found" | "invalid-plan";
+export type CommandResult = { ok: true } | { ok: false; reason: CommandError };
 
 const clone = <T>(value: T): T => structuredClone(value);
 
+/** Escolhe dois clubes distintos para a partida de abertura. */
+const defaultSetup = (world: World): MatchSetup => {
+  const [home, away] = world.clubs;
+  if (!home || !away) throw new Error("O catálogo precisa de pelo menos dois clubes.");
+  return {
+    blue: { clubId: home.id, plan: clone(home.defaultPlan) },
+    coral: { clubId: away.id, plan: clone(away.defaultPlan) },
+  };
+};
+
 export class GameApplication {
-  private currentProfile: GameProfile;
+  private currentWorld: World;
+  private currentSetup: MatchSetup;
   readonly match: MatchSession;
 
-  constructor(private readonly repository: SaveRepository) {
-    this.currentProfile = repository.load();
-    this.match = new MatchSession(buildMatchConfig(this.currentProfile));
+  constructor(world: World, private readonly repository: WorldRepository) {
+    this.currentWorld = world;
+    this.currentSetup = defaultSetup(world);
+    this.match = new MatchSession(buildMatchConfig(this.currentWorld, this.currentSetup));
   }
 
-  get profile(): GameProfile {
-    return this.currentProfile;
+  get world(): World {
+    return this.currentWorld;
+  }
+
+  get setup(): MatchSetup {
+    return this.currentSetup;
   }
 
   get state(): MatchState {
     return this.match.state;
   }
 
+  clubOf(team: Team): Club {
+    return this.currentWorld.clubs.find(({ id }) => id === this.currentSetup[team].clubId)!;
+  }
+
+  squadOfClub(clubId: string): PlayerProfile[] {
+    return squadOf(this.currentWorld.players, this.currentWorld.contracts, clubId);
+  }
+
   persistMatchProgress(): void {
     // Sempre persiste a fronteira ao vivo, mesmo que a linha do tempo esteja rebobinada.
     const liveState = this.match.liveState;
-    this.currentProfile = updateProfileMemories(this.currentProfile, extractPlayerMemories(liveState));
-    this.currentProfile.settings.learningEnabled = liveState.learningEnabled;
-    this.repository.save(this.currentProfile);
+    for (const memory of extractPlayerMemories(liveState)) {
+      this.currentWorld.memories[memory.playerId] = clone(memory);
+    }
+    this.currentWorld.settings.learningEnabled = liveState.learningEnabled;
+    // Autosave não bloqueia o loop de animação; falha de gravação não pode parar a partida.
+    void this.repository.saveProgress(this.currentWorld).catch(() => undefined);
   }
 
   restartMatch(): void {
     this.persistMatchProgress();
-    this.match.restart(buildMatchConfig(this.currentProfile));
+    this.match.restart(buildMatchConfig(this.currentWorld, this.currentSetup));
+  }
+
+  /** Troca os clubes em campo. A partida só recebe o elenco novo ao reiniciar. */
+  selectClubs(blueClubId: string, coralClubId: string): CommandResult {
+    const blue = this.currentWorld.clubs.find(({ id }) => id === blueClubId);
+    const coral = this.currentWorld.clubs.find(({ id }) => id === coralClubId);
+    if (!blue || !coral) return { ok: false, reason: "club-not-found" };
+    const setup: MatchSetup = {
+      blue: { clubId: blue.id, plan: clone(blue.defaultPlan) },
+      coral: { clubId: coral.id, plan: clone(coral.defaultPlan) },
+    };
+    if (this.planIssues(setup.blue.plan, blue.id) || this.planIssues(setup.coral.plan, coral.id)) {
+      return { ok: false, reason: "invalid-plan" };
+    }
+    this.currentSetup = setup;
+    this.match.restart(buildMatchConfig(this.currentWorld, this.currentSetup));
+    return { ok: true };
   }
 
   setSeed(seed: number): number {
-    if (!Number.isFinite(seed)) return this.currentProfile.settings.randomSeed;
+    if (!Number.isFinite(seed)) return this.currentWorld.settings.randomSeed;
     const normalized = Math.min(0xffff_ffff, Math.max(0, Math.trunc(seed)));
     this.persistMatchProgress();
-    this.currentProfile.settings.randomSeed = normalized;
-    this.repository.save(this.currentProfile);
-    this.match.restart(buildMatchConfig(this.currentProfile));
+    this.currentWorld.settings.randomSeed = normalized;
+    void this.repository.saveProgress(this.currentWorld).catch(() => undefined);
+    this.match.restart(buildMatchConfig(this.currentWorld, this.currentSetup));
     return normalized;
   }
 
   setLearningEnabled(enabled: boolean): void {
     this.match.setLearningEnabled(enabled);
-    this.currentProfile.settings.learningEnabled = enabled;
+    this.currentWorld.settings.learningEnabled = enabled;
     this.persistMatchProgress();
   }
 
   resetLearning(): void {
-    this.currentProfile.memories = Object.fromEntries(
-      this.currentProfile.players.map((player) => [player.id, createMemory(player)]),
+    this.currentWorld.memories = Object.fromEntries(
+      this.currentWorld.players.map((player) => [player.id, createMemory(player)]),
     );
-    this.repository.save(this.currentProfile);
-    this.match.restart(buildMatchConfig(this.currentProfile));
+    void this.repository.save(this.currentWorld).catch(() => undefined);
+    this.match.restart(buildMatchConfig(this.currentWorld, this.currentSetup));
   }
 
-  changeLineup(team: Team, slot: LineupSlot, playerId: string): ProfileCommandResult {
-    const nextLineups = clone(this.currentProfile.lineups);
-    const replacedId = slot === "goalkeeper"
-      ? nextLineups[team].goalkeeperId
-      : nextLineups[team].fieldPlayerIds[slot];
-
-    for (const otherTeam of ["blue", "coral"] as const) {
-      if (nextLineups[otherTeam].goalkeeperId === playerId) nextLineups[otherTeam].goalkeeperId = replacedId;
-      const otherIndex = nextLineups[otherTeam].fieldPlayerIds.indexOf(playerId);
-      if (otherIndex >= 0) nextLineups[otherTeam].fieldPlayerIds[otherIndex] = replacedId;
-    }
-    if (slot === "goalkeeper") nextLineups[team].goalkeeperId = playerId;
-    else nextLineups[team].fieldPlayerIds[slot] = playerId;
-
-    if (!validateLineups(this.currentProfile.players, nextLineups)) return { ok: false, reason: "invalid-lineup" };
-    this.currentProfile.lineups = nextLineups;
-    this.repository.save(this.currentProfile);
-    return { ok: true };
-  }
-
-  upsertPlayer(player: PlayerProfile): ProfileCommandResult {
+  upsertPlayer(player: PlayerProfile): CommandResult {
     if (!isValidProfile(player)) return { ok: false, reason: "invalid-player" };
     const nextPlayer = clone(player);
-    const previousPlayer = this.currentProfile.players.find(({ id }) => id === nextPlayer.id);
-    const nextPlayers = previousPlayer
-      ? this.currentProfile.players.map((candidate) => candidate.id === nextPlayer.id ? nextPlayer : candidate)
-      : [...this.currentProfile.players, nextPlayer];
-    if (!validateLineups(nextPlayers, this.currentProfile.lineups)) return { ok: false, reason: "invalid-lineup" };
+    const previous = this.currentWorld.players.find(({ id }) => id === nextPlayer.id);
+    this.currentWorld.players = previous
+      ? this.currentWorld.players.map((candidate) => candidate.id === nextPlayer.id ? nextPlayer : candidate)
+      : [...this.currentWorld.players, nextPlayer];
 
-    this.currentProfile.players = nextPlayers;
-    if (!this.currentProfile.memories[nextPlayer.id]) {
-      this.currentProfile.memories[nextPlayer.id] = createMemory(nextPlayer);
-    } else if (previousPlayer && (
-      previousPlayer.role !== nextPlayer.role
-      || JSON.stringify(previousPlayer.mental) !== JSON.stringify(nextPlayer.mental)
+    if (!this.currentWorld.memories[nextPlayer.id]) {
+      this.currentWorld.memories[nextPlayer.id] = createMemory(nextPlayer);
+    } else if (previous && (
+      previous.role !== nextPlayer.role
+      || JSON.stringify(previous.mental) !== JSON.stringify(nextPlayer.mental)
     )) {
-      const previousMemory = this.currentProfile.memories[nextPlayer.id];
+      // Função ou personalidade mudaram: a política inicial é recalculada, mas a carreira
+      // acumulada continua valendo.
+      const previousMemory = this.currentWorld.memories[nextPlayer.id];
       const recalibrated = createMemory(nextPlayer);
       recalibrated.stats = { ...previousMemory.stats };
       recalibrated.version = previousMemory.version + 1;
-      this.currentProfile.memories[nextPlayer.id] = recalibrated;
+      this.currentWorld.memories[nextPlayer.id] = recalibrated;
     }
-    this.repository.save(this.currentProfile);
+    this.commitWorld();
     return { ok: true };
   }
 
-  deletePlayer(playerId: string): ProfileCommandResult {
-    const playerExists = this.currentProfile.players.some(({ id }) => id === playerId);
-    if (!playerExists) return { ok: false, reason: "player-not-found" };
-    if (this.usedPlayerIds().includes(playerId)) return { ok: false, reason: "player-in-lineup" };
-    this.currentProfile.players = this.currentProfile.players.filter(({ id }) => id !== playerId);
-    delete this.currentProfile.memories[playerId];
-    this.repository.save(this.currentProfile);
+  deletePlayer(playerId: string): CommandResult {
+    if (!this.currentWorld.players.some(({ id }) => id === playerId)) {
+      return { ok: false, reason: "player-not-found" };
+    }
+    this.currentWorld.players = this.currentWorld.players.filter(({ id }) => id !== playerId);
+    this.currentWorld.contracts = this.currentWorld.contracts.filter((contract) => contract.playerId !== playerId);
+    delete this.currentWorld.memories[playerId];
+    // repairWorld recompõe as escalações que perderam o jogador — inclusive a dos clubes em
+    // campo, que só entra em vigor no próximo reinício.
+    this.commitWorld();
     return { ok: true };
   }
 
-  private usedPlayerIds(): string[] {
-    return (["blue", "coral"] as const).flatMap((team) => [
-      this.currentProfile.lineups[team].goalkeeperId,
-      ...this.currentProfile.lineups[team].fieldPlayerIds,
-    ]);
+  private planIssues(plan: TeamTacticalPlan, clubId: string): boolean {
+    return inspectPlan(plan, this.squadOfClub(clubId)).length > 0;
+  }
+
+  private commitWorld(): void {
+    this.currentWorld = repairWorld(this.currentWorld);
+    this.currentSetup = this.refreshedSetup();
+    void this.repository.save(this.currentWorld).catch(() => undefined);
+  }
+
+  /** Após uma edição, recarrega os planos em campo a partir dos clubes já reparados. */
+  private refreshedSetup(): MatchSetup {
+    const rebuild = (team: Team) => {
+      const club = this.currentWorld.clubs.find(({ id }) => id === this.currentSetup[team].clubId);
+      return club ? { clubId: club.id, plan: clone(club.defaultPlan) } : this.currentSetup[team];
+    };
+    return { blue: rebuild("blue"), coral: rebuild("coral") };
   }
 }

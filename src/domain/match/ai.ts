@@ -1,6 +1,6 @@
 import { COGNITION, CONDUCT, DEFENSE, DUEL, FIELD, PHYSICS, TACTICS } from "./config";
 import { add, clamp, distance, dot, normalize, scale, subtract } from "../shared/math";
-import type { AgentDecision, BallAction, DecisionReason, DribbleStyle, MatchState, PlanTarget, PlayerPlan, PlayerRuntime, Team, Vec2 } from "./model";
+import type { AgentDecision, BallAction, DecisionReason, DribbleStyle, MatchState, PlanTarget, PlayerPlan, PlayerPosition, PlayerRuntime, Team, Vec2 } from "./model";
 import { activeBallPlayerId } from "./runtime/control";
 import {
   interceptionThreat,
@@ -70,6 +70,24 @@ const decisionNoise = (player: PlayerRuntime, state: MatchState, salt: number): 
   return normalized * (1 - player.profile.mental.decisionMaking / 100) * 0.34;
 };
 
+// Profundidade da âncora por posição, em percentual da largura do campo a partir do próprio
+// gol. Enquanto a escalação não vier do plano tático, é isto que espalha o time no eixo x;
+// na fase do plano tático a coluna do slot passa a mandar (ver domain/tactics/slots.ts).
+const POSITION_DEPTH: Record<PlayerPosition, number> = {
+  goalkeeper: 6,
+  centerBack: 22,
+  rightBack: 29,
+  leftBack: 29,
+  defensiveMid: 33,
+  centerMid: 38,
+  rightMid: 38,
+  leftMid: 38,
+  attackingMid: 42,
+  rightWing: 45,
+  leftWing: 45,
+  striker: 47,
+};
+
 // Âncora de formação: profundidade (x) pela posição, faixa lateral (y) pela ordem do jogador
 // entre os companheiros de linha. `teammates` deve conter o time inteiro (com goleiro) para
 // que o total de jogadores de linha seja conhecido — assim o espalhamento se adapta ao formato.
@@ -78,10 +96,7 @@ export const formationAnchor = (player: PlayerRuntime, teammates: PlayerRuntime[
   const mirroredX = (blueX: number): number => direction > 0 ? blueX : FIELD.width - blueX;
   if (player.profile.position === "goalkeeper") return { x: mirroredX(fieldX(6)), y: FIELD.height / 2 };
   const roleAdvance = fieldX(player.profile.role === "finisher" ? 4 : player.profile.role === "defender" ? -3 : 0);
-  const depth = player.profile.position === "centerBack" ? 22
-    : player.profile.position === "fullBack" ? 29
-    : player.profile.position === "midfielder" ? 38
-    : 47; // forward
+  const depth = POSITION_DEPTH[player.profile.position];
   const outfield = teammates
     .filter((mate) => mate.profile.position !== "goalkeeper")
     .sort((first, second) => first.lineupIndex - second.lineupIndex);

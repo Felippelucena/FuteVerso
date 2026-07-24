@@ -33,6 +33,7 @@ const makePlayer = (participant: MatchParticipant): PlayerRuntime => {
     memory,
     team,
     lineupIndex,
+    shirtNumber: participant.shirtNumber,
     position: { x: 0, y: 0 },
     homeAnchor: { x: 0, y: 0 },
     velocity: { x: 0, y: 0 },

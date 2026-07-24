@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildMatchConfig } from "../../application/match/build-match-config";
-import { createDefaultProfile } from "../../application/profile/create-default-profile";
+import { referenceMatchConfig } from "./__fixtures__/reference-match";
 import { decideAll } from "./ai";
 import { FIELD } from "./config";
 import { createMatchState } from "./index";
@@ -12,13 +11,13 @@ import { updateCognition } from "./systems/cognition-system";
 import { updatePossession } from "./systems/possession-system";
 import { updateTacticalContext } from "./systems/tactics-system";
 
-const createTestMatch = (seed = 7401) => createMatchState(buildMatchConfig(createDefaultProfile(), seed));
+const createTestMatch = (seed = 7401) => createMatchState(referenceMatchConfig(seed));
 
 describe("ataque contextual e eventos cognitivos", () => {
   it("distingue cruzamento, cutback, profundidade e inversao pela geometria", () => {
     const state = createTestMatch();
-    const passer = state.players.find((player) => player.team === "blue" && player.profile.position === "midfielder")!;
-    const receiver = state.players.find((player) => player.team === "blue" && player.profile.position === "forward")!;
+    const passer = state.players.find((player) => player.team === "blue" && player.profile.position === "centerMid")!;
+    const receiver = state.players.find((player) => player.team === "blue" && player.profile.position === "striker")!;
     passer.position = { x: FIELD.width * 0.72, y: FIELD.height * 0.12 };
     receiver.position = { x: FIELD.width * 0.86, y: FIELD.height * 0.5 };
     expect(classifyPassPurpose(passer, receiver, receiver.position, "air", "space")).toBe("cross");
@@ -34,8 +33,8 @@ describe("ataque contextual e eventos cognitivos", () => {
     const state = createTestMatch(7402);
     state.kickoffTimer = 0;
     state.elapsed = 12;
-    const passer = state.players.find((player) => player.team === "blue" && player.profile.position === "midfielder")!;
-    const receiver = state.players.find((player) => player.team === "blue" && player.profile.position === "forward")!;
+    const passer = state.players.find((player) => player.team === "blue" && player.profile.position === "centerMid")!;
+    const receiver = state.players.find((player) => player.team === "blue" && player.profile.position === "striker")!;
     state.ball.controllerId = passer.profile.id;
     state.ball.position = { ...passer.position };
     state.ball.controlStartedAt = 10;
@@ -61,7 +60,7 @@ describe("ataque contextual e eventos cognitivos", () => {
     const state = createTestMatch(7410);
     state.kickoffTimer = 0;
     state.elapsed = 8;
-    const receiver = state.players.find((player) => player.team === "blue" && player.profile.position === "forward")!;
+    const receiver = state.players.find((player) => player.team === "blue" && player.profile.position === "striker")!;
     const interceptor = state.players.find((player) => player.team === "coral" && player.profile.position === "centerBack")!;
     receiver.position = { x: FIELD.width * 0.55, y: FIELD.height / 2 };
     interceptor.position = { x: receiver.position.x + 5, y: receiver.position.y };
@@ -80,8 +79,8 @@ describe("ataque contextual e eventos cognitivos", () => {
     const state = createTestMatch(7403);
     state.kickoffTimer = 0;
     state.elapsed = 20;
-    const passer = state.players.find((player) => player.team === "blue" && player.profile.position === "midfielder")!;
-    const receiver = state.players.find((player) => player.team === "blue" && player.profile.position === "forward")!;
+    const passer = state.players.find((player) => player.team === "blue" && player.profile.position === "centerMid")!;
+    const receiver = state.players.find((player) => player.team === "blue" && player.profile.position === "striker")!;
     receiver.position = { x: FIELD.width * 0.82, y: FIELD.height / 2 };
     receiver.profile.skills.finishing = 100;
     receiver.profile.skills.control = 100;
@@ -115,7 +114,7 @@ describe("ataque contextual e eventos cognitivos", () => {
     const state = createTestMatch(7404);
     state.kickoffTimer = 0;
     state.elapsed = 30;
-    const carrier = state.players.find((player) => player.team === "blue" && player.profile.position === "forward")!;
+    const carrier = state.players.find((player) => player.team === "blue" && player.profile.position === "striker")!;
     carrier.position = { x: FIELD.width * 0.88, y: FIELD.height / 2 };
     state.ball.position = { ...carrier.position };
     state.ball.controllerId = carrier.profile.id;
@@ -135,7 +134,7 @@ describe("ataque contextual e eventos cognitivos", () => {
     const state = createTestMatch(7405);
     state.kickoffTimer = 0;
     state.elapsed = 40;
-    const carrier = state.players.find((player) => player.team === "blue" && player.profile.position === "forward")!;
+    const carrier = state.players.find((player) => player.team === "blue" && player.profile.position === "striker")!;
     carrier.position = { x: FIELD.width * 0.24, y: FIELD.height / 2 };
     carrier.objective = "aggressiveBreak";
     carrier.objectiveExpiresAt = 42;
@@ -157,7 +156,7 @@ describe("ataque contextual e eventos cognitivos", () => {
 
   it("habilita chute distante pela potencia sem liberar o jogador fraco", () => {
     const state = createTestMatch(7406);
-    const shooter = state.players.find((player) => player.team === "blue" && player.profile.position === "forward")!;
+    const shooter = state.players.find((player) => player.team === "blue" && player.profile.position === "striker")!;
     shooter.position = { x: FIELD.width - FIELD.width * 0.33, y: FIELD.height / 2 };
     const opponents = state.players.filter((player) => player.team !== shooter.team);
     opponents.filter((player) => player.profile.position !== "goalkeeper")

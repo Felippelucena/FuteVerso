@@ -1,120 +1,153 @@
-import { describe, expect, it } from "vitest";
-import type { GameProfile, PlayerProfile } from "../domain/roster/model";
-import type { SaveRepository } from "./ports/save-repository";
-import { createDefaultProfile } from "./profile/create-default-profile";
+import { beforeEach, describe, expect, it } from "vitest";
+import { squadOf } from "../domain/contract/queries";
+import type { PlayerProfile } from "../domain/roster/model";
+import { TEAM_SIZE } from "../domain/tactics/model";
+import { inspectPlan } from "../domain/tactics/rules";
+import { MemoryWorldRepository } from "../infrastructure/persistence/memory-world-repository";
+import { createTestWorld } from "./__fixtures__/test-world";
 import { GameApplication } from "./game-application";
 
-class MemoryRepository implements SaveRepository {
-  readonly saved: GameProfile[] = [];
+const createApplication = (clubCount = 3) => {
+  const world = createTestWorld(clubCount);
+  const repository = new MemoryWorldRepository(world);
+  return { application: new GameApplication(world, repository), repository };
+};
 
-  constructor(private source: GameProfile = createDefaultProfile()) {}
-
-  load(): GameProfile {
-    return structuredClone(this.source);
-  }
-
-  save(profile: GameProfile): void {
-    this.source = structuredClone(profile);
-    this.saved.push(structuredClone(profile));
-  }
-}
-
-const reservePlayer = (id = "reserve"): PlayerProfile => ({
-  ...structuredClone(createDefaultProfile().players.find(({ id: playerId }) => playerId === "nilo-mid")!),
-  id,
-  name: "Reserva",
-  number: 18,
+const newPlayer = (overrides: Partial<PlayerProfile> = {}): PlayerProfile => ({
+  id: "novo-jogador",
+  name: "Testinho",
+  nationality: "BR",
+  birthYear: 2002,
+  position: "centerMid",
+  secondaryPositions: [],
+  role: "playmaker",
+  skills: {
+    acceleration: 70, sprintSpeed: 70, burst: 70, stamina: 70, control: 70,
+    passing: 70, vision: 70, finishing: 60, defending: 60, kickPower: 70, goalkeeping: 20,
+  },
+  mental: {
+    decisionMaking: 70, anticipation: 70, composure: 70, aggression: 60,
+    teamwork: 70, creativity: 65, intensity: 70, adaptability: 70,
+  },
+  ...overrides,
 });
 
 describe("GameApplication", () => {
-  it("carrega o perfil e cria uma partida isolada", () => {
-    const repository = new MemoryRepository();
-    const application = new GameApplication(repository);
+  let context: ReturnType<typeof createApplication>;
 
-    application.profile.players[0].name = "Perfil";
-
-    expect(application.state.players[0].profile.name).toBe("Caio");
+  beforeEach(() => {
+    context = createApplication();
   });
 
-  it("persiste memorias e configuracao de aprendizado", () => {
-    const repository = new MemoryRepository();
-    const application = new GameApplication(repository);
-    application.state.players[0].memory.stats.goals = 3;
-    application.state.learningEnabled = false;
-
-    application.persistMatchProgress();
-
-    expect(repository.saved.at(-1)?.memories["nilo-gk"].stats.goals).toBe(3);
-    expect(repository.saved.at(-1)?.settings.learningEnabled).toBe(false);
+  it("abre a partida com os dois primeiros clubes do catálogo", () => {
+    const { application } = context;
+    expect(application.clubOf("blue").id).toBe(application.world.clubs[0].id);
+    expect(application.clubOf("coral").id).toBe(application.world.clubs[1].id);
+    expect(application.state.players).toHaveLength(10);
   });
 
-  it("normaliza a seed, salva o progresso e reinicia", () => {
-    const repository = new MemoryRepository();
-    const application = new GameApplication(repository);
-    application.state.players[0].memory.stats.goals = 2;
+  it("troca os clubes em campo e reinicia a partida", () => {
+    const { application } = context;
+    const third = application.world.clubs[2];
 
-    expect(application.setSeed(0x1_0000_0005)).toBe(0xffff_ffff);
-
-    expect(application.profile.settings.randomSeed).toBe(0xffff_ffff);
-    expect(application.state.randomSeed).toBe(0xffff_ffff);
-    expect(application.profile.memories["nilo-gk"].stats.goals).toBe(2);
-  });
-
-  it("altera aprendizado e restaura as memorias sem mudar controles da sessao", () => {
-    const application = new GameApplication(new MemoryRepository());
-    application.match.setSpeed(4);
-    application.match.setPaused(true);
-    application.state.players[0].memory.stats.goals = 9;
-
-    application.setLearningEnabled(false);
-    application.resetLearning();
-
-    expect(application.profile.settings.learningEnabled).toBe(false);
-    expect(application.profile.memories["nilo-gk"].stats.goals).toBe(0);
-    expect(application.match.speed).toBe(4);
-    expect(application.match.paused).toBe(true);
-  });
-
-  it("troca jogadores entre escalacoes e mantem a partida atual intacta", () => {
-    const application = new GameApplication(new MemoryRepository());
-    const previousCurrentPlayer = application.state.players[1].profile.id;
-
-    const result = application.changeLineup("blue", 0, "maya-cb");
+    const result = application.selectClubs(third.id, application.world.clubs[0].id);
 
     expect(result).toEqual({ ok: true });
-    expect(application.profile.lineups.blue.fieldPlayerIds[0]).toBe("maya-cb");
-    expect(application.profile.lineups.coral.fieldPlayerIds[0]).toBe("nilo-cb");
-    expect(application.state.players[1].profile.id).toBe(previousCurrentPlayer);
+    expect(application.clubOf("blue").id).toBe(third.id);
+    expect(application.state.elapsed).toBe(0);
+    const inPlay = new Set(application.state.players.map((player) => player.profile.id));
+    expect(squadOf(application.world.players, application.world.contracts, third.id)
+      .some((player) => inPlay.has(player.id))).toBe(true);
   });
 
-  it("rejeita uma troca de escalacao invalida", () => {
-    const application = new GameApplication(new MemoryRepository());
-
-    expect(application.changeLineup("blue", 0, "nilo-gk")).toEqual({ ok: false, reason: "invalid-lineup" });
-    expect(application.profile.lineups.blue.fieldPlayerIds[0]).toBe("nilo-cb");
+  it("recusa clube inexistente", () => {
+    expect(context.application.selectClubs("nao-existe", context.application.world.clubs[1].id))
+      .toEqual({ ok: false, reason: "club-not-found" });
   });
 
-  it("cria e recalibra jogadores preservando estatisticas", () => {
-    const application = new GameApplication(new MemoryRepository());
-    const reserve = reservePlayer();
-    expect(application.upsertPlayer(reserve)).toEqual({ ok: true });
-    expect(application.profile.memories.reserve).toBeDefined();
+  it("cria jogador como agente livre e mantém as escalações válidas", () => {
+    const { application } = context;
+    const before = application.world.players.length;
 
-    application.profile.memories.reserve.stats.goals = 4;
-    const edited = { ...reserve, role: "finisher" as const };
-    expect(application.upsertPlayer(edited)).toEqual({ ok: true });
+    expect(application.upsertPlayer(newPlayer())).toEqual({ ok: true });
 
-    expect(application.profile.memories.reserve.stats.goals).toBe(4);
-    expect(application.profile.memories.reserve.version).toBe(2);
+    expect(application.world.players).toHaveLength(before + 1);
+    expect(application.world.contracts.some(({ playerId }) => playerId === "novo-jogador")).toBe(false);
+    expect(application.world.memories["novo-jogador"]).toBeDefined();
   });
 
-  it("impede excluir atleta escalado e remove uma reserva", () => {
-    const application = new GameApplication(new MemoryRepository());
-    application.upsertPlayer(reservePlayer());
+  it("rejeita jogador com atributo fora da escala", () => {
+    const invalid = newPlayer();
+    invalid.skills.passing = 140;
+    expect(context.application.upsertPlayer(invalid)).toEqual({ ok: false, reason: "invalid-player" });
+  });
 
-    expect(application.deletePlayer("nilo-gk")).toEqual({ ok: false, reason: "player-in-lineup" });
-    expect(application.deletePlayer("reserve")).toEqual({ ok: true });
-    expect(application.profile.players.some(({ id }) => id === "reserve")).toBe(false);
-    expect(application.profile.memories.reserve).toBeUndefined();
+  it("preserva a carreira e recalibra a política quando a função muda", () => {
+    const { application } = context;
+    const target = application.world.players.find((player) => player.position === "centerMid")!;
+    application.world.memories[target.id].stats.goals = 7;
+
+    application.upsertPlayer({ ...target, role: target.role === "playmaker" ? "defender" : "playmaker" });
+
+    const memory = application.world.memories[target.id];
+    expect(memory.stats.goals).toBe(7);
+    expect(memory.version).toBe(2);
+  });
+
+  it("exclui jogador escalado e recompõe a escalação do clube", () => {
+    const { application } = context;
+    const club = application.world.clubs[0];
+    const starter = club.defaultPlan.assignments[3].playerId;
+
+    expect(application.deletePlayer(starter)).toEqual({ ok: true });
+
+    const updated = application.world.clubs.find(({ id }) => id === club.id)!;
+    expect(application.world.players.some(({ id }) => id === starter)).toBe(false);
+    expect(application.world.contracts.some(({ playerId }) => playerId === starter)).toBe(false);
+    expect(updated.defaultPlan.assignments).toHaveLength(TEAM_SIZE);
+    expect(updated.defaultPlan.assignments.some((assignment) => assignment.playerId === starter)).toBe(false);
+    expect(inspectPlan(updated.defaultPlan, squadOf(application.world.players, application.world.contracts, club.id))).toEqual([]);
+  });
+
+  it("recusa excluir jogador inexistente", () => {
+    expect(context.application.deletePlayer("fantasma")).toEqual({ ok: false, reason: "player-not-found" });
+  });
+
+  it("normaliza a semente e reinicia a partida", () => {
+    const { application } = context;
+    expect(application.setSeed(-5)).toBe(0);
+    expect(application.setSeed(12.9)).toBe(12);
+    expect(application.world.settings.randomSeed).toBe(12);
+    expect(application.state.elapsed).toBe(0);
+  });
+
+  it("persiste configuração sem perder o catálogo", async () => {
+    const { application, repository } = context;
+    application.setLearningEnabled(false);
+
+    const stored = await repository.load();
+    expect(stored?.settings.learningEnabled).toBe(false);
+    expect(stored?.clubs).toHaveLength(3);
+  });
+
+  it("restaura as memórias iniciais de todos os jogadores", () => {
+    const { application } = context;
+    const target = application.world.players[0].id;
+    application.world.memories[target].stats.goals = 4;
+
+    application.resetLearning();
+
+    expect(application.world.memories[target].stats.goals).toBe(0);
+    expect(Object.keys(application.world.memories)).toHaveLength(application.world.players.length);
+  });
+
+  it("entrega um estado de partida isolado do catálogo", () => {
+    const { application } = context;
+    const runtime = application.state.players[0];
+    const original = application.world.players.find(({ id }) => id === runtime.profile.id)!.name;
+
+    runtime.profile.name = "Mexido";
+
+    expect(application.world.players.find(({ id }) => id === runtime.profile.id)!.name).toBe(original);
   });
 });

@@ -5,9 +5,32 @@ import type { Team } from "../../domain/shared/model";
 export const POSITION_LABELS: Record<PlayerPosition, string> = {
   goalkeeper: "Goleiro",
   centerBack: "Zagueiro",
-  fullBack: "Lateral",
-  midfielder: "Meio-campo",
-  forward: "Atacante",
+  rightBack: "Lateral-direito",
+  leftBack: "Lateral-esquerdo",
+  defensiveMid: "Volante",
+  centerMid: "Meia-central",
+  rightMid: "Meia-direita",
+  leftMid: "Meia-esquerda",
+  attackingMid: "Meia-ofensivo",
+  rightWing: "Ponta-direita",
+  leftWing: "Ponta-esquerda",
+  striker: "Atacante",
+};
+
+/** Siglas do campo tático e das listagens compactas. */
+export const POSITION_SHORT_LABELS: Record<PlayerPosition, string> = {
+  goalkeeper: "GOL",
+  centerBack: "ZAG",
+  rightBack: "LD",
+  leftBack: "LE",
+  defensiveMid: "VOL",
+  centerMid: "MC",
+  rightMid: "MD",
+  leftMid: "ME",
+  attackingMid: "MEI",
+  rightWing: "PD",
+  leftWing: "PE",
+  striker: "ATA",
 };
 
 export const ROLE_LABELS: Record<PlayerRole, string> = {
@@ -123,7 +146,10 @@ export const escapeHtml = (value: string): string => value.replace(
   (character) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[character]!,
 );
 
-export const teamLabel = (team: Team): string => team === "blue" ? "NILO" : "MAYA";
+/** Nome de cada lado nesta partida. Vem dos clubes escolhidos, não do time do motor. */
+export type TeamNames = Record<Team, string>;
+
+export const teamLabel = (team: Team, names: TeamNames): string => names[team];
 
 export const formatClock = (seconds: number): string => (
   `${Math.floor(seconds / 60).toString().padStart(2, "0")}:${Math.floor(seconds % 60).toString().padStart(2, "0")}`

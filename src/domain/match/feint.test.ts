@@ -1,18 +1,17 @@
 import { describe, expect, it } from "vitest";
-import { buildMatchConfig } from "../../application/match/build-match-config";
-import { createDefaultProfile } from "../../application/profile/create-default-profile";
+import { referenceMatchConfig } from "./__fixtures__/reference-match";
 import { decideAll } from "./ai";
 import { FIELD } from "./config";
 import { createMatchState } from "./index";
 import { executeBallAction } from "./systems/ball-system";
 
-const createTestMatch = (seed = 1) => createMatchState(buildMatchConfig(createDefaultProfile(), seed));
+const createTestMatch = (seed = 1) => createMatchState(referenceMatchConfig(seed));
 
 describe("finta — raio de colisão e posse", () => {
   it("finta que falha NÃO faz o portador perder a posse", () => {
     const state = createTestMatch(1);
     state.kickoffTimer = 0;
-    const player = state.players.find((p) => p.team === "blue" && p.profile.position === "midfielder")!;
+    const player = state.players.find((p) => p.team === "blue" && p.profile.position === "centerMid")!;
     const defender = state.players.find((p) => p.team === "coral" && p.profile.position === "centerBack")!;
     player.position = { x: FIELD.width / 2, y: FIELD.height / 2 };
     player.facing = { x: 1, y: 0 };
@@ -37,7 +36,7 @@ describe("finta — raio de colisão e posse", () => {
     const state = createTestMatch(2);
     state.kickoffTimer = 0;
     state.elapsed = 10;
-    const carrier = state.players.find((p) => p.team === "blue" && p.profile.position === "midfielder")!;
+    const carrier = state.players.find((p) => p.team === "blue" && p.profile.position === "centerMid")!;
     const defender = state.players.find((p) => p.team === "coral" && p.profile.position === "centerBack")!;
     carrier.position = { x: FIELD.width * 0.5, y: FIELD.height / 2 };
     carrier.velocity = { x: 2, y: 0 };

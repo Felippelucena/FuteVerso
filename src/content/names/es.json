@@ -1,0 +1,29 @@
+{
+  "country": "ES",
+  "firstNames": [
+    "Adrián", "Aitor", "Álvaro", "Ander", "Andrés", "Ángel", "Antonio", "Asier",
+    "Borja", "Carlos", "César", "Daniel", "David", "Diego", "Enrique", "Fernando",
+    "Francisco", "Gerard", "Gonzalo", "Héctor", "Ignacio", "Iker", "Iñaki", "Isco",
+    "Javier", "Jorge", "José", "Juan", "Koke", "Luis", "Manuel", "Marc",
+    "Marco", "Mario", "Miguel", "Óscar", "Pablo", "Pau", "Pedro", "Rafael",
+    "Raúl", "Rodrigo", "Rubén", "Sergio", "Unai", "Víctor", "Xavi", "Yeray"
+  ],
+  "lastNames": [
+    "Alonso", "Álvarez", "Arias", "Ayala", "Blanco", "Cabrera", "Calvo", "Campos",
+    "Cano", "Carmona", "Castro", "Cortés", "Delgado", "Díaz", "Domínguez", "Duarte",
+    "Escudero", "Espinosa", "Fernández", "Ferrer", "Gallego", "Garcés", "García", "Gil",
+    "González", "Guerrero", "Gutiérrez", "Hernández", "Herrera", "Iglesias", "Jiménez", "Lara",
+    "López", "Lorenzo", "Marín", "Márquez", "Martín", "Martínez", "Méndez", "Molina",
+    "Morales", "Moreno", "Muñoz", "Navarro", "Ortega", "Ortiz", "Pastor", "Peña",
+    "Pérez", "Ramos", "Reyes", "Rivas", "Rodríguez", "Rubio", "Ruiz", "Sáez",
+    "Sánchez", "Santiago", "Serrano", "Soler", "Torres", "Vega", "Vidal", "Zamora"
+  ],
+  "clubNames": {
+    "cities": [
+      "Albacete", "Alicante", "Almería", "Burgos", "Cádiz", "Córdoba", "Gijón", "Granada",
+      "Huelva", "León", "Logroño", "Murcia", "Oviedo", "Salamanca", "Santander", "Zaragoza"
+    ],
+    "prefixes": ["Real", "Club Deportivo", "Atlético", "Unión Deportiva", "Racing de", "Sporting de"],
+    "suffixes": ["CF", "FC", "SD", "UD"]
+  }
+}

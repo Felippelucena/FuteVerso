@@ -1,15 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { buildMatchConfig } from "../../application/match/build-match-config";
-import { createDefaultProfile } from "../../application/profile/create-default-profile";
+import { referenceMatchConfig } from "./__fixtures__/reference-match";
 import { FIELD, PHYSICS } from "./config";
 import { createMatchState, stepMatch } from "./index";
-import type { GameProfile } from "../roster/model";
 
-const createTestMatch = (profile: GameProfile = createDefaultProfile(), seed?: number) => createMatchState(buildMatchConfig(profile, seed));
+const createTestMatch = (seed?: number) => createMatchState(referenceMatchConfig(seed));
 
 describe("colisões", () => {
   it("reflete a bola que encontra um jogador de frente", () => {
-    const state = createTestMatch(createDefaultProfile(), 91);
+    const state = createTestMatch(91);
     state.kickoffTimer = 0;
     state.ball.controllerId = null;
     const target = state.players[0];
@@ -33,7 +31,7 @@ describe("colisões", () => {
   });
 
   it("nao usa todo o raio visual do jogador como uma parede", () => {
-    const state = createTestMatch(createDefaultProfile(), 913);
+    const state = createTestMatch(913);
     state.kickoffTimer = 0;
     const target = state.players[0];
     target.position = { x: FIELD.width / 2, y: FIELD.height / 2 };

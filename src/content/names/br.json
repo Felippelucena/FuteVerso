@@ -1,0 +1,44 @@
+{
+  "country": "BR",
+  "firstNames": [
+    "Adriano", "Alan", "Alef", "Anderson", "André", "Arthur", "Augusto", "Baltazar",
+    "Benício", "Bento", "Bernardo", "Breno", "Bruno", "Caio", "Carlos", "Cauã",
+    "César", "Cleber", "Danilo", "Davi", "Diego", "Douglas", "Edson", "Eduardo",
+    "Elias", "Emerson", "Enzo", "Éverton", "Fabrício", "Felipe", "Fernando", "Gabriel",
+    "Geraldo", "Gilberto", "Guilherme", "Gustavo", "Heitor", "Henrique", "Hugo", "Igor",
+    "Ícaro", "Ismael", "Ítalo", "Iuri", "Jonas", "Juliano", "Kauê", "Leandro",
+    "Leonardo", "Lucas", "Luciano", "Luiz", "Marcelo", "Marcos", "Mateus", "Matheus",
+    "Maurício", "Miguel", "Murilo", "Natan", "Nélson", "Nicolas", "Otávio", "Pablo",
+    "Paulo", "Pedro", "Rafael", "Raul", "Renan", "Ricardo", "Roberto", "Rodrigo",
+    "Ronaldo", "Samuel", "Sérgio", "Thiago", "Théo", "Tomás", "Vinícius", "Vitor",
+    "Wagner", "Wallace", "Wesley", "Yago"
+  ],
+  "lastNames": [
+    "Albuquerque", "Almeida", "Alves", "Amaral", "Andrade", "Aragão", "Araújo", "Assunção",
+    "Azevedo", "Barbosa", "Barreto", "Barros", "Batista", "Bezerra", "Bittencourt", "Braga",
+    "Brandão", "Cabral", "Caetano", "Camargo", "Campos", "Cardoso", "Carvalho", "Castro",
+    "Cavalcanti", "Coelho", "Correia", "Costa", "Cunha", "Dantas", "Dias", "Duarte",
+    "Esteves", "Fagundes", "Faria", "Fernandes", "Ferreira", "Fonseca", "Franco", "Freitas",
+    "Furtado", "Gomes", "Gonçalves", "Guimarães", "Lacerda", "Lima", "Lopes", "Macedo",
+    "Machado", "Magalhães", "Maia", "Marques", "Martins", "Medeiros", "Melo", "Mendes",
+    "Menezes", "Miranda", "Monteiro", "Moraes", "Moreira", "Moura", "Nascimento", "Neves",
+    "Nogueira", "Nunes", "Oliveira", "Pacheco", "Paiva", "Peixoto", "Pereira", "Pinheiro",
+    "Pinto", "Queiroz", "Ramos", "Rangel", "Rezende", "Ribeiro", "Rocha", "Rodrigues",
+    "Sales", "Sampaio", "Santana", "Santos", "Saraiva", "Silva", "Silveira", "Siqueira",
+    "Soares", "Sousa", "Tavares", "Teixeira", "Torres", "Vasconcelos", "Vieira", "Xavier"
+  ],
+  "clubNames": {
+    "cities": [
+      "Aracaju", "Belém", "Belo Horizonte", "Blumenau", "Campinas", "Caxias", "Cuiabá",
+      "Curitiba", "Florianópolis", "Fortaleza", "Goiânia", "Ilhéus", "Joinville", "Juazeiro",
+      "Londrina", "Maceió", "Manaus", "Maringá", "Natal", "Niterói", "Olinda", "Petrópolis",
+      "Porto Alegre", "Recife", "Ribeirão", "Salvador", "Santarém", "Santos", "São Luís",
+      "Sorocaba", "Teresina", "Uberlândia", "Vitória", "Volta Redonda"
+    ],
+    "prefixes": [
+      "Atlético", "Clube Atlético", "Esporte Clube", "Grêmio", "Associação Atlética",
+      "Sport Club", "Sociedade Esportiva", "Clube de Regatas", "União", "Nacional"
+    ],
+    "suffixes": ["FC", "EC", "AC", "SC", "Futebol Clube", "Esporte Clube"]
+  }
+}

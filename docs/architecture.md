@@ -14,11 +14,15 @@ infrastructure ----------┴----------┘
 ```
 
 - `domain/shared`: tipos e operações sem dependência de outros módulos.
-- `domain/roster`: jogadores, atributos, memórias e regras de escalação.
+- `domain/roster`: jogadores, doze posições, atributos, memórias e nota geral.
+- `domain/club`: clubes, identidade visual e plano tático padrão.
+- `domain/contract`: vínculo jogador–clube e as consultas de elenco derivadas dele.
+- `domain/tactics`: grade de slots, plano tático, formações, encaixe de posição e escalação automática.
+- `domain/world`: agregado `World` (todo o conteúdo editável) e as regras que o mantêm coerente.
 - `domain/match`: estado, regras, IA, runtime compartilhado e sistemas determinísticos da partida.
-- `application`: sessão em execução, casos de uso do perfil e portas externas.
-- `content`: catálogo embutido; futuramente será uma das fontes do editor de conteúdo.
-- `infrastructure`: adapters de armazenamento e documentos versionados.
+- `application`: sessão em execução, boot do mundo, casos de uso e portas externas.
+- `content`: catálogo gerado — listas de nomes por país, países e geradores.
+- `infrastructure`: adapters de armazenamento (IndexedDB e volátil).
 - `presentation`: shell, telas DOM, loop do navegador, Canvas e formatação visual.
 - `main.ts`: composition root que instancia e conecta os módulos.
 
@@ -28,7 +32,9 @@ infrastructure ----------┴----------┘
 2. O motor recebe somente `MatchConfig`; ele não conhece o perfil salvo nem sua origem.
 3. `MatchSession` não conhece DOM, Canvas, relógio do navegador, storage ou repository.
 4. `presentation` depende de `application`, tipos do domínio e renderer, mas não importa `infrastructure`.
-5. `GameProfile` representa os dados usados pelo jogo. `SaveDocumentV2` representa o documento persistido.
+5. `World` representa todo o conteúdo editável do jogo; o repositório é quem sabe como gravá-lo.
+5a. Elenco nunca é armazenado: `Contract` é a única fonte da verdade e `squadOf` deriva o resto.
+5b. O vocabulário tático (`BuildUpStyle`, `DefensiveBlock`, `PressTrigger`, `AttackChannel`) é declarado por `domain/tactics` e reexportado por `domain/match/model`.
 6. Eventos de partida são dados estruturados. Somente presentation converte eventos em texto.
 7. Aleatoriedade da simulação vem da semente de `MatchState`; não usar `Math.random()` dentro do domínio.
 8. A ordem de execução e os valores do motor só mudam acompanhados de alteração explícita dos testes de caracterização.
@@ -38,7 +44,9 @@ infrastructure ----------┴----------┘
 
 `MatchSession` é o limite entre a simulação determinística e o tempo real. Ela possui o `MatchState`, pausa, velocidade e acumulador do fixed timestep. `advance(realDeltaSeconds)` limita o delta, aplica o multiplicador e executa no máximo 140 ticks por chamada.
 
-`GameApplication` coordena `GameProfile`, `MatchSession` e a porta `SaveRepository`. Ela carrega o perfil, cria snapshots de partida, persiste memórias e oferece os comandos de seed, aprendizado, escalação e CRUD de jogadores. Mudanças no perfil são salvas imediatamente, mas uma partida em andamento somente recebe o novo elenco quando reiniciada.
+`GameApplication` coordena `World`, `MatchSession` e a porta `WorldRepository`. Ela recebe o mundo já carregado por `bootstrapWorld`, monta a partida a partir de dois clubes e seus planos, persiste memórias e oferece os comandos de seed, aprendizado, escolha de clubes e CRUD de jogadores. Toda edição passa por `repairWorld`, então excluir um jogador escalado recompõe a escalação em vez de invalidá-la. Mudanças no catálogo são salvas imediatamente, mas uma partida em andamento só recebe o elenco novo quando reiniciada.
+
+`bootstrapWorld` é o único ponto que decide entre continuar e começar do zero: lê o repositório e, se estiver vazio, gera um catálogo com `generateCatalog` e o grava.
 
 ## Apresentação
 
@@ -84,8 +92,18 @@ Na camada application:
 - `GameApplication` expõe os comandos consumidos pela apresentação.
 - `SaveRepository` define a porta síncrona de persistência.
 
-O adapter atual usa `localStorage`, chave `futeverso.save` e schema 2. Saves gravados sob chaves antigas (`autoball.save`) são migrados para a chave atual no primeiro carregamento. Novas versões devem ser adicionadas ao registro sequencial de migrações.
+O adapter atual usa IndexedDB (banco `futeverso`), com uma store por entidade: `players`, `clubs`, `contracts`, `memories` e `settings`. O versionamento é o nativo do IndexedDB — subir `DATABASE_VERSION` dispara `onupgradeneeded`, que cria e migra stores; não há mais registro manual de migrações. `saveProgress` grava só memórias e configurações, para o autosave da partida não reescrever o catálogo inteiro. Sem IndexedDB disponível, `MemoryWorldRepository` mantém o jogo rodando sem persistir.
+
+## Conteúdo gerado
+
+`content/names/` guarda um JSON por país (`br.json`, `ar.json`...) com nomes e sobrenomes. O carregador usa `import.meta.glob`, então acrescentar um país é soltar o arquivo na pasta. País sem arquivo recebe nomes da união de todas as listas — a nacionalidade escolhida é preservada.
+
+Os geradores encadeiam `generatePlayer` → `generateSquad` → `generateClub` → `generateCatalog`, todos determinísticos por semente e usando o RNG próprio de `content/generators/random.ts`. O RNG da partida não serve aqui: ele muta a semente do `MatchState`.
+
+## Formato da partida
+
+O plano tático escala onze titulares, mas o motor ainda simula quatro jogadores de linha por time — a calibragem de pressão, cobertura e espaçamento foi feita nesse formato. `selectStarters` faz o recorte com forma de time (um defensor, dois meias, um atacante), e `ENGINE_FIELD_PLAYERS` é o único lugar a mudar quando a simulação virar 11x11.
 
 ## Evolução planejada
 
-Novas telas devem consumir comandos e consultas de application. Conteúdo editável deve produzir catálogos compatíveis com os mesmos tipos usados pelo conteúdo embutido. Os próximos marcos podem introduzir fluxo inicial, progressão e editor sem acoplar essas funcionalidades ao motor ou ao armazenamento concreto.
+Novas telas devem consumir comandos e consultas de application. Os próximos marcos são o motor em 11x11, os ajustes táticos ligados ao plano, a migração da interface para React e os editores de jogadores e clubes — nenhum deles deve acoplar o motor ao armazenamento concreto.

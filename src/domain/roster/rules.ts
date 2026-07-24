@@ -1,12 +1,12 @@
 import type {
-  Lineup,
   PlayerMentalAttributes,
   PlayerMemory,
+  PlayerPosition,
   PlayerProfile,
   PlayerSkills,
 } from "./model";
-import type { Team } from "../shared/model";
 import { createInitialPolicy } from "./personality";
+import { PLAYER_POSITIONS } from "./positions";
 
 export const createMemory = (profile: PlayerProfile): PlayerMemory => ({
   playerId: profile.id,
@@ -34,18 +34,33 @@ const mentalKeys: (keyof PlayerMentalAttributes)[] = [
   "teamwork", "creativity", "intensity", "adaptability",
 ];
 
+// Faixa aceita para o ano de nascimento. Larga de propósito: o editor permite conteúdo
+// histórico ou futuro, só barra valor absurdo vindo de save corrompido.
+export const BIRTH_YEAR_RANGE = { minimum: 1900, maximum: 2100 } as const;
+
+const isPosition = (value: unknown): value is PlayerPosition =>
+  typeof value === "string" && (PLAYER_POSITIONS as readonly string[]).includes(value);
+
 export const isValidProfile = (value: unknown): value is PlayerProfile => {
   if (!value || typeof value !== "object") return false;
   const profile = value as PlayerProfile;
-  const positions = ["goalkeeper", "centerBack", "fullBack", "midfielder", "forward"];
   const roles = ["finisher", "playmaker", "defender"];
   return typeof profile.id === "string"
     && typeof profile.name === "string"
     && profile.name.trim().length > 0
-    && Number.isInteger(profile.number)
-    && profile.number >= 1
-    && profile.number <= 99
-    && positions.includes(profile.position)
+    && typeof profile.nationality === "string"
+    && profile.nationality.length === 2
+    && Number.isInteger(profile.birthYear)
+    && profile.birthYear >= BIRTH_YEAR_RANGE.minimum
+    && profile.birthYear <= BIRTH_YEAR_RANGE.maximum
+    && isPosition(profile.position)
+    && Array.isArray(profile.secondaryPositions)
+    && profile.secondaryPositions.every(isPosition)
+    && !profile.secondaryPositions.includes(profile.position)
+    && new Set(profile.secondaryPositions).size === profile.secondaryPositions.length
+    // Goleiro não acumula posição de linha, e ninguém adota o gol como segunda posição:
+    // a troca é bloqueada na escalação, não penalizada.
+    && (profile.position === "goalkeeper" ? profile.secondaryPositions.length === 0 : !profile.secondaryPositions.includes("goalkeeper"))
     && roles.includes(profile.role)
     && (profile.position !== "goalkeeper" || profile.role === "defender")
     && !!profile.skills
@@ -54,21 +69,4 @@ export const isValidProfile = (value: unknown): value is PlayerProfile => {
     && mentalKeys.every((key) => isScore(profile.mental[key]));
 };
 
-export const validateLineups = (players: PlayerProfile[], lineups: Record<Team, Lineup>): boolean => {
-  const profiles = new Map(players.map((player) => [player.id, player]));
-  const allIds: string[] = [];
-  let fieldCount: number | null = null;
-  for (const team of ["blue", "coral"] as const) {
-    const lineup = lineups[team];
-    if (!lineup || lineup.fieldPlayerIds.length < 1) return false;
-    // Ambos os times precisam do mesmo número de jogadores de linha (4x4, 5x5, 11x11...).
-    if (fieldCount === null) fieldCount = lineup.fieldPlayerIds.length;
-    else if (lineup.fieldPlayerIds.length !== fieldCount) return false;
-    const goalkeeper = profiles.get(lineup.goalkeeperId);
-    if (!goalkeeper || goalkeeper.position !== "goalkeeper") return false;
-    if (lineup.fieldPlayerIds.some((id) => profiles.get(id)?.position === "goalkeeper" || !profiles.has(id))) return false;
-    allIds.push(lineup.goalkeeperId, ...lineup.fieldPlayerIds);
-  }
-  // Todos distintos: (goleiro + N de linha) por time, sem repetição entre as equipes.
-  return new Set(allIds).size === (fieldCount! + 1) * 2;
-};
+export const playerAge = (profile: PlayerProfile, currentYear: number): number => currentYear - profile.birthYear;

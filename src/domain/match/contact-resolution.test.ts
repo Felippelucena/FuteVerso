@@ -1,12 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { buildMatchConfig } from "../../application/match/build-match-config";
-import { createDefaultProfile } from "../../application/profile/create-default-profile";
+import { referenceMatchConfig } from "./__fixtures__/reference-match";
 import { FIELD } from "./config";
 import { createMatchState } from "./index";
 import { updatePossession } from "./systems/possession-system";
 import type { MatchState, PlayerRuntime } from "./model";
 
-const createTestMatch = (seed = 5) => createMatchState(buildMatchConfig(createDefaultProfile(), seed));
+const createTestMatch = (seed = 5) => createMatchState(referenceMatchConfig(seed));
 
 // Afasta os não-participantes do lance (e deixa espaço atrás do defensor livre).
 const park = (state: MatchState, keep: PlayerRuntime[]): void => {
@@ -22,7 +21,7 @@ describe("resolveContact — desfechos de contato (Item 2)", () => {
   it("roubo com agressividade controlada: defensor entra em velocidade, segue com a bola e assume a jogada", () => {
     const state = createTestMatch();
     state.kickoffTimer = 0;
-    const holder = state.players.find((p) => p.team === "blue" && p.profile.position === "midfielder")!;
+    const holder = state.players.find((p) => p.team === "blue" && p.profile.position === "centerMid")!;
     const challenger = state.players.find((p) => p.team === "coral" && p.profile.position === "centerBack")!;
     holder.position = { x: FIELD.width / 2, y: FIELD.height / 2 };
     holder.velocity = { x: 0, y: 0 };
@@ -52,7 +51,7 @@ describe("resolveContact — desfechos de contato (Item 2)", () => {
   it("desfecho neutro (pokeLoose): defensor parado ganha e a bola escapa solta, sem dono", () => {
     const state = createTestMatch();
     state.kickoffTimer = 0;
-    const holder = state.players.find((p) => p.team === "blue" && p.profile.position === "midfielder")!;
+    const holder = state.players.find((p) => p.team === "blue" && p.profile.position === "centerMid")!;
     const challenger = state.players.find((p) => p.team === "coral" && p.profile.position === "centerBack")!;
     holder.position = { x: FIELD.width / 2, y: FIELD.height / 2 };
     holder.profile.skills.control = 1;
@@ -78,7 +77,7 @@ describe("resolveContact — desfechos de contato (Item 2)", () => {
   it("balão por cima da dividida: atacante vence o contato com espaço atrás e ergue a bola baixa", () => {
     const state = createTestMatch();
     state.kickoffTimer = 0;
-    const holder = state.players.find((p) => p.team === "blue" && p.profile.position === "forward")!;
+    const holder = state.players.find((p) => p.team === "blue" && p.profile.position === "striker")!;
     const challenger = state.players.find((p) => p.team === "coral" && p.profile.position === "centerBack")!;
     holder.position = { x: FIELD.width * 0.6, y: FIELD.height / 2 };
     holder.velocity = { x: 4, y: 0 };

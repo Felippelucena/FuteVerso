@@ -1,7 +1,7 @@
 import type { MatchState } from "../../domain/match";
 import { matchScreenTemplate, matchSettingsTemplate } from "../match/match-screen";
 import { playerDialogTemplate, playersScreenTemplate } from "../players/players-screen";
-import { formatClock } from "./labels";
+import { formatClock, type TeamNames } from "./labels";
 import { hydrateIcons } from "./icons";
 
 export type AppView = "match" | "players";
@@ -19,14 +19,14 @@ export class AppShell {
         <header class="topbar">
           <div class="brand-lockup"><span class="brand-mark" aria-hidden="true"></span><div><h1>FuteVerso</h1><p>SIMULADOR de Futebol 2D</p></div></div>
           <section class="scoreboard" aria-label="Placar">
-            <div class="score-team score-team--blue"><span>NILO</span><strong id="score-blue">0</strong></div>
+            <div class="score-team score-team--blue"><span id="score-name-blue">CASA</span><strong id="score-blue">0</strong></div>
             <div class="match-clock"><span id="match-time">00:00</span><small id="match-state">EM CURSO</small></div>
-            <div class="score-team score-team--coral"><strong id="score-coral">0</strong><span>MAYA</span></div>
+            <div class="score-team score-team--coral"><strong id="score-coral">0</strong><span id="score-name-coral">VISITANTE</span></div>
           </section>
           <div class="simulation-status"><span class="live-dot"></span><span>SIMULAÇÃO ATIVA</span></div>
         </header>
         <nav class="view-tabs" aria-label="Áreas do simulador">
-          <button type="button" class="is-active" data-view="match">Partida</button>
+          <button type="button" class="is-active" data-view="match"><i data-lucide="goal"></i>Partida</button>
           <button type="button" data-view="players"><i data-lucide="users"></i>Jogadores</button>
         </nav>
         ${matchScreenTemplate()}
@@ -56,6 +56,11 @@ export class AppShell {
     this.matchRoot.hidden = view !== "match";
     this.playersRoot.hidden = view !== "players";
     this.viewChanged?.(view);
+  }
+
+  renderTeamNames(names: TeamNames): void {
+    this.find("#score-name-blue").textContent = names.blue;
+    this.find("#score-name-coral").textContent = names.coral;
   }
 
   renderMatchHeader(state: MatchState, paused: boolean): void {

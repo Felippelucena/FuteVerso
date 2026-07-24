@@ -1,17 +1,16 @@
 import { describe, expect, it } from "vitest";
-import { buildMatchConfig } from "../../application/match/build-match-config";
-import { createDefaultProfile } from "../../application/profile/create-default-profile";
+import { REFERENCE_PLAYERS, referenceMatchConfig } from "../match/__fixtures__/reference-match";
 import { decideAll, thinkingInterval } from "../match/ai";
 import { FIELD } from "../match/config";
 import { createMatchState } from "../match";
 import { createInitialPolicy, createMentalAttributes, policyLearningBounds } from "./personality";
 import { isValidProfile } from "./rules";
 
-const createTestMatch = (seed: number) => createMatchState(buildMatchConfig(createDefaultProfile(), seed));
+const createTestMatch = (seed: number) => createMatchState(referenceMatchConfig(seed));
 
 describe("personalidade dos jogadores", () => {
   it("faz perfis cerebrais e ousados partirem de preferencias diferentes", () => {
-    const profile = createDefaultProfile().players[2];
+    const profile = REFERENCE_PLAYERS[2];
     const cerebral = { ...profile, mental: createMentalAttributes("cerebral") };
     const bold = { ...profile, mental: createMentalAttributes("bold") };
 
@@ -39,7 +38,7 @@ describe("personalidade dos jogadores", () => {
     candidates[1].profile.mental = createMentalAttributes("intense");
     candidates[0].memory.policy.press = 0.6;
     candidates[1].memory.policy.press = 0.6;
-    const controller = state.players.find((player) => player.team === "coral" && player.profile.position === "midfielder")!;
+    const controller = state.players.find((player) => player.team === "coral" && player.profile.position === "centerMid")!;
     controller.position = { x: candidates[0].position.x + 8, y: candidates[0].position.y };
     state.ball.position = { ...controller.position };
     state.ball.controllerId = controller.profile.id;
@@ -53,7 +52,7 @@ describe("personalidade dos jogadores", () => {
   });
 
   it("da mais amplitude de aprendizado a jogadores adaptaveis", () => {
-    const profile = createDefaultProfile().players[2];
+    const profile = REFERENCE_PLAYERS[2];
     const low = { ...profile, mental: createMentalAttributes("balanced", { adaptability: 10 }) };
     const high = { ...profile, mental: createMentalAttributes("balanced", { adaptability: 95 }) };
     const lowBounds = policyLearningBounds(low, "pass");
@@ -63,7 +62,7 @@ describe("personalidade dos jogadores", () => {
   });
 
   it("rejeita atributos mentais fora da escala", () => {
-    const profile = structuredClone(createDefaultProfile().players[0]);
+    const profile = structuredClone(REFERENCE_PLAYERS[0]);
     profile.mental.composure = 101;
 
     expect(isValidProfile(profile)).toBe(false);

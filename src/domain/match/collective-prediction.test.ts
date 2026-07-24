@@ -1,19 +1,18 @@
 import { describe, expect, it } from "vitest";
-import { buildMatchConfig } from "../../application/match/build-match-config";
-import { createDefaultProfile } from "../../application/profile/create-default-profile";
+import { referenceMatchConfig } from "./__fixtures__/reference-match";
 import { FIELD } from "./config";
 import { createMatchState } from "./index";
 import { predictBallPosition, predictPlayerPosition } from "./runtime/prediction";
 import { updateTacticalContext } from "./systems/tactics-system";
 
-const createTestMatch = (seed = 2026) => createMatchState(buildMatchConfig(createDefaultProfile(), seed));
+const createTestMatch = (seed = 2026) => createMatchState(referenceMatchConfig(seed));
 
 describe("cerebro coletivo e previsao curta", () => {
   it("define papeis coletivos distintos e sustenta o plano entre atualizacoes", () => {
     const state = createTestMatch();
     state.kickoffTimer = 0;
     state.elapsed = 20;
-    const controller = state.players.find((player) => player.team === "blue" && player.profile.position === "midfielder")!;
+    const controller = state.players.find((player) => player.team === "blue" && player.profile.position === "centerMid")!;
     state.ball.controllerId = controller.profile.id;
     state.ball.position = { ...controller.position };
     state.possessionTeam = "blue";
@@ -36,7 +35,7 @@ describe("cerebro coletivo e previsao curta", () => {
   it("projeta deslocamentos de jogador e bola sem alterar o estado", () => {
     const state = createTestMatch(903);
     state.kickoffTimer = 0;
-    const runner = state.players.find((player) => player.team === "blue" && player.profile.position === "forward")!;
+    const runner = state.players.find((player) => player.team === "blue" && player.profile.position === "striker")!;
     runner.position = { x: FIELD.width * 0.4, y: FIELD.height / 2 };
     runner.velocity = { x: 12, y: -3 };
     state.ball.controllerId = null;

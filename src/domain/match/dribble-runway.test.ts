@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildMatchConfig } from "../../application/match/build-match-config";
-import { createDefaultProfile } from "../../application/profile/create-default-profile";
+import { referenceMatchConfig } from "./__fixtures__/reference-match";
 import { createMatchState } from "./index";
 import { chooseDribbleTouch, evaluateForwardRunway } from "./runtime/dribble-runway";
 import { executeBallAction } from "./systems/ball-system";
@@ -8,12 +7,12 @@ import { FIELD } from "./config";
 import { length } from "../shared/math";
 import type { DribbleTouchRange } from "./model";
 
-const createTestMatch = (seed = 5150) => createMatchState(buildMatchConfig(createDefaultProfile(), seed));
+const createTestMatch = (seed = 5150) => createMatchState(referenceMatchConfig(seed));
 
 const arrangeCarrier = () => {
   const state = createTestMatch();
   state.kickoffTimer = 0;
-  const carrier = state.players.find((player) => player.team === "blue" && player.profile.position === "midfielder")!;
+  const carrier = state.players.find((player) => player.team === "blue" && player.profile.position === "centerMid")!;
   carrier.position = { x: 55, y: FIELD.height / 2 };
   carrier.velocity = { x: 0, y: 0 };
   carrier.sprintEnergy = 1;

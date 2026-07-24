@@ -1,16 +1,14 @@
 import { describe, expect, it } from "vitest";
-import { buildMatchConfig } from "../../application/match/build-match-config";
-import { createDefaultProfile } from "../../application/profile/create-default-profile";
+import { referenceMatchConfig } from "./__fixtures__/reference-match";
 import { decideAll } from "./ai";
 import { FIELD, PHYSICS } from "./config";
 import { createMatchState, stepMatch } from "./index";
-import type { GameProfile } from "../roster/model";
 
-const createTestMatch = (profile: GameProfile = createDefaultProfile(), seed?: number) => createMatchState(buildMatchConfig(profile, seed));
+const createTestMatch = (seed?: number) => createMatchState(referenceMatchConfig(seed));
 
 describe("posse e domínio", () => {
   it("usa defesa e controle para decidir uma bola dividida", () => {
-    const state = createTestMatch(createDefaultProfile());
+    const state = createTestMatch();
     state.kickoffTimer = 0;
     state.ball.position = { x: FIELD.width / 2, y: FIELD.height / 2 };
     state.ball.velocity = { x: 0, y: 0 };
@@ -28,9 +26,9 @@ describe("posse e domínio", () => {
   });
 
   it("encerra contato prolongado com uma tentativa real de desarme", () => {
-    const state = createTestMatch(createDefaultProfile(), 42);
+    const state = createTestMatch(42);
     state.kickoffTimer = 0;
-    const holder = state.players.find((player) => player.team === "blue" && player.profile.position === "midfielder")!;
+    const holder = state.players.find((player) => player.team === "blue" && player.profile.position === "centerMid")!;
     const challenger = state.players.find((player) => player.team === "coral" && player.profile.position === "centerBack")!;
     holder.position = { x: FIELD.width / 2, y: FIELD.height / 2 };
     challenger.position = { x: holder.position.x + 4.8, y: holder.position.y };
@@ -51,9 +49,9 @@ describe("posse e domínio", () => {
   });
 
   it("deixa uma bola forte escapar de um jogador sem controle para domina-la", () => {
-    const state = createTestMatch(createDefaultProfile(), 812);
+    const state = createTestMatch(812);
     state.kickoffTimer = 0;
-    const receiver = state.players.find((player) => player.team === "blue" && player.profile.position === "midfielder")!;
+    const receiver = state.players.find((player) => player.team === "blue" && player.profile.position === "centerMid")!;
     receiver.position = { x: FIELD.width / 2, y: FIELD.height / 2 };
     receiver.velocity = { x: 0, y: 0 };
     receiver.facing = { x: 1, y: 0 };
@@ -75,9 +73,9 @@ describe("posse e domínio", () => {
   });
 
   it("transforma um passe dificil em toque pesado em vez de controle magnetico", () => {
-    const state = createTestMatch(createDefaultProfile(), 42);
+    const state = createTestMatch(42);
     state.kickoffTimer = 0;
-    const receiver = state.players.find((player) => player.team === "blue" && player.profile.position === "midfielder")!;
+    const receiver = state.players.find((player) => player.team === "blue" && player.profile.position === "centerMid")!;
     const passer = state.players.find((player) => player.team === "blue" && player !== receiver)!;
     receiver.position = { x: FIELD.width / 2, y: FIELD.height / 2 };
     receiver.velocity = { x: 0, y: 0 };
@@ -118,10 +116,10 @@ describe("posse e domínio", () => {
   });
 
   it("antecipa o corte quando um defensor se aproxima em velocidade", () => {
-    const state = createTestMatch(createDefaultProfile(), 78);
+    const state = createTestMatch(78);
     state.kickoffTimer = 0;
     state.elapsed = 12;
-    const attacker = state.players.find((player) => player.team === "blue" && player.profile.position === "midfielder")!;
+    const attacker = state.players.find((player) => player.team === "blue" && player.profile.position === "centerMid")!;
     const defender = state.players.find((player) => player.team === "coral" && player.profile.position === "centerBack")!;
     attacker.position = { x: FIELD.width * 0.4, y: FIELD.height / 2 };
     attacker.velocity = { x: 1, y: 0 };
@@ -148,11 +146,11 @@ describe("posse e domínio", () => {
   });
 
   it("resolve a chegada simultanea na bola antes de liberar qualquer finta", () => {
-    const state = createTestMatch(createDefaultProfile(), 144);
+    const state = createTestMatch(144);
     state.kickoffTimer = 0;
     state.elapsed = 10;
-    const blue = state.players.find((player) => player.team === "blue" && player.profile.position === "midfielder")!;
-    const coral = state.players.find((player) => player.team === "coral" && player.profile.position === "midfielder")!;
+    const blue = state.players.find((player) => player.team === "blue" && player.profile.position === "centerMid")!;
+    const coral = state.players.find((player) => player.team === "coral" && player.profile.position === "centerMid")!;
     const center = { x: FIELD.width / 2, y: FIELD.height / 2 };
     blue.position = { x: center.x - 3.1, y: center.y };
     blue.velocity = { x: 4, y: 0 };

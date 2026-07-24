@@ -1,18 +1,16 @@
 import { describe, expect, it } from "vitest";
-import { buildMatchConfig } from "../../application/match/build-match-config";
-import { createDefaultProfile } from "../../application/profile/create-default-profile";
+import { referenceMatchConfig } from "./__fixtures__/reference-match";
 import { FIELD, POSSESSION } from "./config";
 import { decideAll, planAll, resolvePlanDecision } from "./ai";
 import { createMatchState, stepMatch } from "./index";
-import type { GameProfile } from "../roster/model";
 import { distance } from "../shared/math";
 import { updateTacticalContext } from "./systems/tactics-system";
 
-const createTestMatch = (profile: GameProfile = createDefaultProfile(), seed?: number) => createMatchState(buildMatchConfig(profile, seed));
+const createTestMatch = (seed?: number) => createMatchState(referenceMatchConfig(seed));
 
 describe("qualidade coletiva da simulacao", () => {
   it("produz uma partida ativa sem colapso permanente em uma lateral", () => {
-    const state = createTestMatch(createDefaultProfile(), 98_765);
+    const state = createTestMatch(98_765);
     let narrowSnapshots = 0;
     let sampledSnapshots = 0;
     let worstTouchlineCrowd = 0;
@@ -95,7 +93,7 @@ describe("qualidade coletiva da simulacao", () => {
     const totals = { passes: 0, shots: 0, expressiveDribbles: 0 };
     const signatures = new Set<string>();
     for (let seed = 1; seed <= 8; seed += 1) {
-      const state = createTestMatch(createDefaultProfile(), seed * 997);
+      const state = createTestMatch(seed * 997);
       for (let tick = 0; tick < 90 * 120; tick += 1) stepMatch(state, 1 / 120);
       const passes = state.stats.blue.passes + state.stats.coral.passes;
       const shots = state.stats.blue.shots + state.stats.coral.shots;
@@ -114,7 +112,7 @@ describe("qualidade coletiva da simulacao", () => {
   }, 15_000);
 
   it("muda a fase e coordena funções ofensivas conforme o contexto", () => {
-    const state = createTestMatch(createDefaultProfile(), 456);
+    const state = createTestMatch(456);
     state.kickoffTimer = 0;
     const carrier = state.players.find((player) => player.team === "blue" && player.profile.role === "playmaker")!;
     carrier.position = { x: FIELD.width * 0.2, y: FIELD.height / 2 };
@@ -145,7 +143,7 @@ describe("qualidade coletiva da simulacao", () => {
   });
 
   it("faz o atacante arrancar para oferecer passe depois de uma retomada defensiva", () => {
-    const state = createTestMatch(createDefaultProfile(), 654);
+    const state = createTestMatch(654);
     state.kickoffTimer = 0;
     state.elapsed = 30;
     const carrier = state.players.find((player) => player.team === "blue" && player.profile.role === "defender" && player.profile.position !== "goalkeeper")!;
@@ -179,14 +177,14 @@ describe("qualidade coletiva da simulacao", () => {
   });
 
   it("confirma a troca de posse somente depois de controle sustentado", () => {
-    const state = createTestMatch(createDefaultProfile(), 3210);
+    const state = createTestMatch(3210);
     state.kickoffTimer = 0;
     state.elapsed = 20;
     state.possessionTeam = "blue";
     state.ballControlTeam = "blue";
     state.lastControlledTeam = "blue";
     state.controlChangedAt = 18;
-    const holder = state.players.find((player) => player.team === "coral" && player.profile.position === "midfielder")!;
+    const holder = state.players.find((player) => player.team === "coral" && player.profile.position === "centerMid")!;
     state.players.forEach((player, index) => {
       player.position = player === holder ? { x: FIELD.width / 2, y: FIELD.height / 2 } : { x: 8 + index * 18, y: 8 };
       player.velocity = { x: 0, y: 0 };
@@ -207,7 +205,7 @@ describe("qualidade coletiva da simulacao", () => {
   });
 
   it("mantem a posse confirmada durante um passe em transito", () => {
-    const state = createTestMatch(createDefaultProfile(), 411);
+    const state = createTestMatch(411);
     state.kickoffTimer = 0;
     state.elapsed = 12;
     state.possessionTeam = "blue";
@@ -232,11 +230,11 @@ describe("qualidade coletiva da simulacao", () => {
   });
 
   it("mantem um plano entre ciclos e o invalida quando o controlador muda", () => {
-    const state = createTestMatch(createDefaultProfile(), 701);
+    const state = createTestMatch(701);
     state.kickoffTimer = 0;
     state.elapsed = 8;
-    const blue = state.players.find((player) => player.team === "blue" && player.profile.position === "midfielder")!;
-    const coral = state.players.find((player) => player.team === "coral" && player.profile.position === "midfielder")!;
+    const blue = state.players.find((player) => player.team === "blue" && player.profile.position === "centerMid")!;
+    const coral = state.players.find((player) => player.team === "coral" && player.profile.position === "centerMid")!;
     blue.kickCooldown = 100;
     coral.kickCooldown = 100;
     state.ball.controllerId = blue.profile.id;
@@ -260,10 +258,10 @@ describe("qualidade coletiva da simulacao", () => {
   });
 
   it("mantem o objetivo de apoio e acompanha o portador sem recriar o plano", () => {
-    const state = createTestMatch(createDefaultProfile(), 1701);
+    const state = createTestMatch(1701);
     state.kickoffTimer = 0;
     state.elapsed = 18;
-    const controller = state.players.find((player) => player.team === "blue" && player.profile.position === "midfielder")!;
+    const controller = state.players.find((player) => player.team === "blue" && player.profile.position === "centerMid")!;
     const supporter = state.players.find((player) => player.team === "blue" && player !== controller && player.profile.position !== "goalkeeper")!;
     state.ball.controllerId = controller.profile.id;
     state.ball.position = { ...controller.position };
@@ -284,10 +282,10 @@ describe("qualidade coletiva da simulacao", () => {
   });
 
   it("acompanha um alvo marcado sem trocar o plano", () => {
-    const state = createTestMatch(createDefaultProfile(), 901);
+    const state = createTestMatch(901);
     state.kickoffTimer = 0;
     state.elapsed = 15;
-    const controller = state.players.find((player) => player.team === "coral" && player.profile.position === "midfielder")!;
+    const controller = state.players.find((player) => player.team === "coral" && player.profile.position === "centerMid")!;
     state.ball.controllerId = controller.profile.id;
     state.ball.position = { ...controller.position };
     state.possessionTeam = "coral";
@@ -319,7 +317,7 @@ describe("qualidade coletiva da simulacao", () => {
   });
 
   it("usa latch e cooldown nas entradas do terco final", () => {
-    const state = createTestMatch(createDefaultProfile(), 1001);
+    const state = createTestMatch(1001);
     state.kickoffTimer = 0;
     state.elapsed = 10;
     state.possessionTeam = "blue";
@@ -344,7 +342,7 @@ describe("qualidade coletiva da simulacao", () => {
   });
 
   it("aplica lateral para o adversario do ultimo toque", () => {
-    const state = createTestMatch(createDefaultProfile(), 123);
+    const state = createTestMatch(123);
     state.kickoffTimer = 0;
     state.ball.controllerId = null;
     state.ball.lastTouch = "blue";
@@ -359,7 +357,7 @@ describe("qualidade coletiva da simulacao", () => {
   });
 
   it("diferencia escanteio de tiro de meta pelo ultimo toque", () => {
-    const corner = createTestMatch(createDefaultProfile(), 321);
+    const corner = createTestMatch(321);
     corner.kickoffTimer = 0;
     corner.ball.controllerId = null;
     corner.ball.lastTouch = "coral";
@@ -367,7 +365,7 @@ describe("qualidade coletiva da simulacao", () => {
     corner.ball.velocity = { x: 0, y: 0 };
     stepMatch(corner, 1 / 120);
 
-    const goalKick = createTestMatch(createDefaultProfile(), 321);
+    const goalKick = createTestMatch(321);
     goalKick.kickoffTimer = 0;
     goalKick.ball.controllerId = null;
     goalKick.ball.lastTouch = "blue";
