@@ -1,6 +1,6 @@
 import { COGNITION, CONDUCT, DEFENSE, DUEL, FIELD, OFFSIDE, PHYSICS, TACTICS } from "./config";
 import { add, clamp, distance, dot, normalize, scale, subtract } from "../shared/math";
-import type { AgentDecision, AssignmentDuty, BallAction, DecisionReason, DribbleStyle, MatchState, PlanTarget, PlayerAssignment, PlayerPlan, PlayerRuntime, Team, Vec2 } from "./model";
+import type { AgentDecision, AssignmentDuty, BallAction, DecisionReason, DribbleStyle, MatchState, PlanTarget, PlayerAssignment, PlayerPlan, PlayerRuntime, Vec2 } from "./model";
 import { activeBallPlayerId } from "./runtime/control";
 import { isRestartTaker, restartLayoutTarget } from "./runtime/restart";
 import { attackingProgress, offsideLineProgress } from "./runtime/offside";
@@ -17,8 +17,8 @@ import { playerSkillSpeed } from "./runtime/player-metrics";
 import { chooseDribbleTouch, evaluateForwardRunway } from "./runtime/dribble-runway";
 import { classifyPassPurpose } from "./runtime/pass-purpose";
 import { evaluateShotOpportunity } from "./runtime/shot-opportunity";
-import { goalkeeperDecision } from "./systems/goalkeeper-system";
-import { assignedAnchor, assignmentOf, dutyHolders } from "./systems/assignment-system";
+import { goalkeeperDecision, goalkeeperMovementTarget } from "./systems/goalkeeper-system";
+import { assignedAnchor, assignmentOf, choosePresser, dutyHolders } from "./systems/assignment-system";
 import { attackDirection, formationAnchor, goalCenter } from "./runtime/formation-geometry";
 import { prepareReceptionAction } from "./runtime/reception-planning";
 
@@ -96,32 +96,6 @@ const nearestPlayer = (origin: Vec2, players: PlayerRuntime[]): PlayerRuntime | 
 
 const perceptionDepth = (player: PlayerRuntime, ballPosition: Vec2): number =>
   clamp((distance(player.position, ballPosition) - PERCEPTION.intervention) / (PERCEPTION.cooperation - PERCEPTION.intervention), 0, 1);
-
-const choosePresser = (team: Team, players: PlayerRuntime[], ballPosition: Vec2): PlayerRuntime => {
-  const ownGoal = goalCenter(team, true);
-  const score = (player: PlayerRuntime): number => {
-    const goalkeeperPenalty = player.profile.position === "goalkeeper" && distance(ballPosition, ownGoal) > fieldX(13)
-      ? fieldX(18)
-      : 0;
-    const mentalityBonus = (player.profile.mental.aggression + player.profile.mental.intensity) / 200 * fieldX(3.5)
-      + player.memory.policy.press * fieldX(1.5);
-    return distance(player.position, ballPosition) + goalkeeperPenalty - mentalityBonus;
-  };
-  return [...players].sort((a, b) => {
-    return score(a) - score(b);
-  })[0];
-};
-
-const goalkeeperTarget = (player: PlayerRuntime, state: MatchState): Vec2 => {
-  const direction = attackDirection(player.team);
-  const ownX = direction > 0 ? 0 : FIELD.width;
-  const ballDepth = direction > 0 ? state.ball.position.x : FIELD.width - state.ball.position.x;
-  const advance = clamp(fieldX(4) + ballDepth * 0.08, fieldX(4), FIELD.penaltyDepth - player.radius);
-  return {
-    x: ownX + direction * advance,
-    y: clamp(FIELD.height / 2 + (state.ball.position.y - FIELD.height / 2) * 0.42, FIELD.goalTop + 2, FIELD.goalBottom - 2),
-  };
-};
 
 export interface PassOption {
   action: Extract<BallAction, { kind: "pass" }>;
@@ -693,9 +667,11 @@ export const decideAll = (state: MatchState): Map<string, AgentDecision> => {
     // Quem pressiona vem do dever `press`: prioridade 0 é quem chega primeiro na bola,
     // prioridade 1 é o segundo que sai da linha para dividir.
     const pressers = dutyHolders(plan, "press");
+    // Sem plano coletivo (primeiro tick, cenário de teste), a mesma escolha do plano decide —
+    // uma fonte só para "quem vai na bola", e ela nunca escolhe o goleiro.
     const presser = teammates.find((player) => player.profile.id === pressers[0])
-      ?? choosePresser(team, teammates, state.ball.position);
-    const secondPresser = pressers[1] && pressers[1] !== presser.profile.id
+      ?? choosePresser(state, teammates.filter((player) => player.profile.position !== "goalkeeper"));
+    const secondPresser = pressers[1] && pressers[1] !== presser?.profile.id
       ? teammates.find((player) => player.profile.id === pressers[1]) ?? null
       : null;
     const ownGoal = goalCenter(team, true);
@@ -719,11 +695,11 @@ export const decideAll = (state: MatchState): Map<string, AgentDecision> => {
         });
         continue;
       }
-      const keeperReaction = player.profile.position === "goalkeeper" && actualController?.profile.id !== player.profile.id
-        ? goalkeeperDecision(player, state)
-        : null;
-      if (keeperReaction) {
-        decisions.set(player.profile.id, keeperReaction);
+      // O goleiro tem cérebro próprio (goalkeeper-system): a posição de guarda, a saída e a defesa
+      // saem todas de lá. Ele só entra no fluxo comum quando é ELE que vai jogar a bola — nas
+      // mãos, cobrando um reinício ou como destino de um passe.
+      if (player.profile.position === "goalkeeper" && controller?.profile.id !== player.profile.id) {
+        decisions.set(player.profile.id, goalkeeperDecision(player, state));
         continue;
       }
       if (controller?.profile.id === player.profile.id) {
@@ -754,25 +730,18 @@ export const decideAll = (state: MatchState): Map<string, AgentDecision> => {
         continue;
       }
       if (teamHasPossession && controller) {
-        const support = player.profile.position === "goalkeeper"
-          ? { target: goalkeeperTarget(player, state), reason: "protectGoal" as const, burst: false }
-          : supportTarget(player, controller, state);
+        const support = supportTarget(player, controller, state);
         decisions.set(player.profile.id, {
           movementTarget: support.target,
           burst: support.burst,
           posture: "inPossession",
-          intent: player.profile.position === "goalkeeper" ? "goalkeeping" : "supporting",
+          intent: "supporting",
           reason: support.reason,
           ballAction: { kind: "none" },
         });
         continue;
       }
-      if (player.profile.position === "goalkeeper") {
-        const target = presser.profile.id === player.profile.id ? state.ball.position : goalkeeperTarget(player, state);
-        decisions.set(player.profile.id, { movementTarget: target, burst: false, posture: "outOfPossession", intent: "goalkeeping", reason: "protectGoal", ballAction: { kind: "none" } });
-        continue;
-      }
-      if (presser.profile.id === player.profile.id) {
+      if (presser?.profile.id === player.profile.id) {
         const predictedPressSpeed = (8.5 + player.profile.skills.sprintSpeed * 0.06) * PHYSICS.runSpeedFactor;
         const pressHorizon = clamp(distance(player.position, state.ball.position) / Math.max(12, predictedPressSpeed), 0.18, 1.2);
         const prediction = predictBallPosition(state, pressHorizon);
@@ -814,7 +783,15 @@ export const decideAll = (state: MatchState): Map<string, AgentDecision> => {
   return decisions;
 };
 
+/** As intenções que só o goleiro produz. Todas resolvem o alvo pelo próprio sistema, a cada tick. */
+const GOALKEEPER_INTENTS: ReadonlySet<AgentDecision["intent"]> = new Set([
+  "goalkeeping", "preparingSave", "diving", "jumping", "claimingHighBall", "recoveringSave",
+]);
+
 const planTarget = (player: PlayerRuntime, decision: AgentDecision, state: MatchState): PlanTarget => {
+  // O alvo do goleiro é contínuo: a bola se move a cada tick, e o ajuste de pés tem que
+  // acompanhar a rota sem esperar o próximo pensamento. O plano guarda a referência, não o ponto.
+  if (GOALKEEPER_INTENTS.has(decision.intent)) return { kind: "goalkeeper" };
   if (state.ball.dribbleOwnerId === player.profile.id || state.pendingPass?.receiverId === player.profile.id) {
     return { kind: "ball", offset: subtract(decision.movementTarget, state.ball.position) };
   }
@@ -832,7 +809,6 @@ const planTarget = (player: PlayerRuntime, decision: AgentDecision, state: Match
       return { kind: "player", playerId: actor.profile.id, offset: subtract(decision.movementTarget, actor.position) };
     }
   }
-  if (decision.intent === "goalkeeping") return { kind: "goalkeeper" };
   return { kind: "point", position: { ...decision.movementTarget } };
 };
 
@@ -875,10 +851,12 @@ export const planAll = (state: MatchState): Map<string, PlayerPlan> => {
 export const resolvePlanDecision = (player: PlayerRuntime, state: MatchState): AgentDecision => {
   const plan = player.plan;
   if (!plan) {
+    const isGoalkeeper = player.profile.position === "goalkeeper";
     return {
-      movementTarget: player.homeAnchor, burst: false, posture: "outOfPossession",
-      intent: player.profile.position === "goalkeeper" ? "goalkeeping" : "covering",
-      reason: player.profile.position === "goalkeeper" ? "protectGoal" : "coverGoal", ballAction: { kind: "none" },
+      movementTarget: isGoalkeeper ? goalkeeperMovementTarget(player, state) : player.homeAnchor,
+      burst: false, posture: "outOfPossession",
+      intent: isGoalkeeper ? "goalkeeping" : "covering",
+      reason: isGoalkeeper ? "protectGoal" : "coverGoal", ballAction: { kind: "none" },
     };
   }
   let movementTarget: Vec2;
@@ -892,7 +870,7 @@ export const resolvePlanDecision = (player: PlayerRuntime, state: MatchState): A
     movementTarget = receptionTarget(state);
   } else if (plan.target.kind === "point") movementTarget = plan.target.position;
   else if (plan.target.kind === "ball") movementTarget = add(state.ball.position, plan.target.offset);
-  else if (plan.target.kind === "goalkeeper") movementTarget = goalkeeperTarget(player, state);
+  else if (plan.target.kind === "goalkeeper") movementTarget = goalkeeperMovementTarget(player, state);
   else {
     const targetPlayerId = plan.target.playerId;
     const targetPlayer = state.players.find((candidate) => candidate.profile.id === targetPlayerId);
@@ -900,8 +878,13 @@ export const resolvePlanDecision = (player: PlayerRuntime, state: MatchState): A
   }
   const controlsBall = state.ball.controllerId === player.profile.id;
   const ballAction = controlsBall ? plan.ballAction : { kind: "none" } as const;
+  // O desenho da bola parada é autoritativo e legitimamente sai das linhas: o cobrador do lateral
+  // e o do escanteio ficam do lado de fora (a faixa `runOff`, que o movimento já permite). Prender
+  // esse alvo à margem interna deixava o cobrador parado a alguns passos do ponto — ele nunca
+  // "chegava", e a cobrança só saía pela trava de tempo.
+  const duringDeadBall = state.restart !== null && !state.restart.ballInPlay;
   return {
-    movementTarget: clampToField(movementTarget, 3),
+    movementTarget: duringDeadBall ? movementTarget : clampToField(movementTarget, 3),
     burst: plan.burst,
     burstDuration: plan.burstDuration,
     posture: plan.posture,

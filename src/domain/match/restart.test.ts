@@ -1,11 +1,16 @@
 import { describe, expect, it } from "vitest";
-import { smallSidedMatchConfig, startOpenPlay } from "./__fixtures__/reference-match";
+import { distance } from "../shared/math";
+import { referenceMatchConfig, smallSidedMatchConfig, startOpenPlay } from "./__fixtures__/reference-match";
 import { FIELD, FIXED_STEP, RESTART } from "./config";
 import { createMatchState, stepMatch } from "./index";
+import { insidePenaltyArea } from "./runtime/formation-geometry";
 import { beginRestart } from "./runtime/restart";
 import type { MatchState, Team } from "./model";
 
 const createState = (seed = 7) => createMatchState(smallSidedMatchConfig(seed));
+
+/** Campo cheio: é com onze de cada lado que a área fica disputada de verdade. */
+const createFullState = (seed = 7) => createMatchState(referenceMatchConfig(seed));
 
 const stepUntil = (state: MatchState, done: (state: MatchState) => boolean, seconds: number): void => {
   for (let tick = 0; tick < seconds * 120 && !done(state); tick += 1) stepMatch(state, FIXED_STEP);
@@ -165,9 +170,66 @@ describe("bola parada — cobrança caminhada", () => {
     stepMatch(state, FIXED_STEP);
     expect(state.restart?.kind).toBe("corner");
     expect(state.restart?.takerId).toBe(winger.profile.id);
+    // Lei 17: a bola INTEIRA dentro do arco desenhado na quina, não a dois passos dele.
+    const corner = { x: FIELD.width, y: 0 };
+    expect(distance(state.restart!.spot, corner) + FIELD.ballRadius).toBeLessThanOrEqual(FIELD.cornerArcRadius);
     const delay = promotionDelay(state);
     expect(delay).toBeGreaterThanOrEqual(RESTART.minSetupSeconds - FIXED_STEP * 3);
     expect(delay).toBeLessThan(RESTART.maxSetupSeconds - 1);
+  });
+
+  it("tiro de meta: bola na pequena área e adversários fora da grande (Lei 16)", () => {
+    // No formato do jogo: com onze de cada lado a área tem corpo suficiente para a regra doer.
+    const state = createFullState();
+    startOpenPlay(state);
+    // Bola pela linha de fundo azul com o último toque coral: tiro de meta do azul.
+    state.ball.controllerId = null;
+    state.ball.dribbleOwnerId = null;
+    state.pendingPass = null;
+    state.ball.lastTouch = "coral";
+    state.ball.lastTouchPlayerId = null;
+    state.ball.velocity = { x: 0, y: 0 };
+    state.ball.height = 0;
+    state.ball.position = { x: -20, y: 8 };
+    // Adversários acampados dentro da área, como no bug: eles é que roubavam a cobrança.
+    for (const player of state.players.filter((entry) => entry.team === "coral")) {
+      player.position = { x: FIELD.penaltyDepth * 0.5, y: FIELD.height / 2 };
+    }
+    stepMatch(state, FIXED_STEP);
+    expect(state.restart?.kind).toBe("goalKick");
+
+    // Lei 16: a bola INTEIRA dentro da pequena área (a marca do pênalti é da Lei 14, e fica fora).
+    const spot = state.restart!.spot;
+    expect(spot.x + FIELD.ballRadius).toBeLessThanOrEqual(FIELD.goalAreaDepth);
+    expect(Math.abs(spot.y - FIELD.height / 2) + FIELD.ballRadius).toBeLessThanOrEqual(FIELD.goalAreaWidth / 2);
+
+    stepUntil(state, (current) => current.ball.controllerId === current.restart?.takerId, RESTART.maxSetupSeconds + 1);
+
+    // Cobrou, e não pela trava: os adversários saíram da área e o árbitro liberou.
+    expect(state.ball.controllerId).toBe(state.restart!.takerId);
+    expect(state.elapsed - state.restart!.startedAt).toBeLessThan(RESTART.maxSetupSeconds - 0.5);
+    for (const opponent of state.players.filter((entry) => entry.team === "coral")) {
+      expect(insidePenaltyArea("blue", opponent.position, true)).toBe(false);
+    }
+  });
+
+  it("tiro livre: adversários a 9,15 m da bola antes da cobrança (Lei 13)", () => {
+    const state = createState();
+    startOpenPlay(state);
+    const spot = { x: FIELD.width * 0.35, y: FIELD.height / 2 };
+    // O infrator do impedimento fica em cima da bola: é dali que ele tem de recuar.
+    const intruder = state.players.find(
+      (player) => player.team === "coral" && player.profile.position !== "goalkeeper",
+    )!;
+    intruder.position = { ...spot };
+    beginRestart(state, "freeKick", "blue", spot);
+
+    stepUntil(state, (current) => current.ball.controllerId === current.restart?.takerId, RESTART.maxSetupSeconds + 1);
+
+    expect(state.ball.controllerId).toBe(state.restart!.takerId);
+    for (const opponent of state.players.filter((entry) => entry.team === "coral")) {
+      expect(distance(opponent.position, spot)).toBeGreaterThanOrEqual(RESTART.opponentDistance - 0.5);
+    }
   });
 
   it("cobra dentro do limite mesmo com o cobrador cercado longe (trava anti-deadlock)", () => {

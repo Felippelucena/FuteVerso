@@ -61,7 +61,8 @@ export type TacticalPhase = InPossessionPhase | OutOfPossessionPhase;
 export type PassPurpose = "feet" | "throughBall" | "cross" | "cutback" | "switch" | "layoff";
 export type ShotTechnique = "placed" | "power" | "volley" | "header" | "redirect";
 export type GoalkeeperAction = "standingSave" | "lowDive" | "highDive" | "verticalJump" | "aerialClaim" | "punch";
-export type GoalkeeperSource = "shot" | "cross" | "loose";
+/** Origem da tentativa. Não é o rótulo do passe: é a régua do lance (mão na alta, pé na rasteira). */
+export type GoalkeeperSource = "shot" | "aerial" | "loose";
 export type SaveOutcome = "catch" | "parry" | "glance" | "miss";
 export type PlayerObjective = "aggressiveBreak" | null;
 export type PreparedReceptionKind = "shot" | "pass" | "control" | "redirect";

@@ -4,14 +4,13 @@ import type { AgentDecision, GoalkeeperAction, GoalkeeperAttempt, GoalkeeperSour
 import { clearDribbleOwner, registerControlledTeam, registerLooseBall } from "../runtime/control";
 import { emitCognitiveEvent, relevantPlayersNear } from "../runtime/cognitive-events";
 import { emitMatchEvent } from "../runtime/events";
+import { insidePenaltyArea } from "../runtime/formation-geometry";
+import { goalkeeperGuardPost } from "../runtime/goalkeeper-geometry";
 import { signedMatchNoise } from "../runtime/random";
 import { predictShotPoint, timeToX } from "../runtime/shot-trajectory";
 
-const ownsPenaltyArea = (goalkeeper: PlayerRuntime, point: Vec2): boolean => {
-  const insideDepth = goalkeeper.team === "blue" ? point.x <= FIELD.penaltyDepth : point.x >= FIELD.width - FIELD.penaltyDepth;
-  const top = (FIELD.height - FIELD.penaltyWidth) / 2;
-  return insideDepth && point.y >= top && point.y <= top + FIELD.penaltyWidth;
-};
+const ownsPenaltyArea = (goalkeeper: PlayerRuntime, point: Vec2): boolean =>
+  insidePenaltyArea(goalkeeper.team, point, true);
 
 /** Qualidade de base do goleiro (só skill/mental): o termo dominante da fórmula da defesa,
  *  disponível a qualquer momento — inclusive durante o voo, antes de haver contato. */
@@ -82,7 +81,7 @@ const describeAction = (
   height: number,
   punch: boolean,
 ): GoalkeeperAction => {
-  if (source === "cross") return punch ? "punch" : "aerialClaim";
+  if (source === "aerial") return punch ? "punch" : "aerialClaim";
   if (lateral < 1.2 && vertical <= 0.15) return "standingSave";
   if (vertical > lateral * 0.55) return "verticalJump";
   return height > 1.55 ? "highDive" : "lowDive";
@@ -114,56 +113,96 @@ const createAttempt = (
   resolvedAt: null,
 });
 
-const shotAttempt = (state: MatchState, goalkeeper: PlayerRuntime): GoalkeeperAttempt | null => {
-  const shot = state.activeShot;
-  if (!shot || shot.team === goalkeeper.team || !shot.onTarget) return null;
-  return createAttempt(state, goalkeeper, "shot", shot.id);
-};
-
-const crossAttempt = (state: MatchState, goalkeeper: PlayerRuntime): GoalkeeperAttempt | null => {
-  const pass = state.pendingPass;
-  if (!pass?.id || pass.team === goalkeeper.team || pass.purpose !== "cross" || pass.trajectory !== "air") return null;
-  if (!ownsPenaltyArea(goalkeeper, pass.landingPoint)) return null;
-  if (pass.expectedArrivalAt - state.elapsed <= 0.12) return null;
-  return createAttempt(state, goalkeeper, "cross", pass.id);
-};
-
 const nearestGap = (players: PlayerRuntime[], point: Vec2): number =>
   players.length === 0 ? Infinity : Math.min(...players.map((player) => distance(player.position, point)));
 
+/** A régua de uma reivindicação: em que faixa ela vive e quanto ele pode sair atrás. */
+interface ClaimRule {
+  minHeight: number;
+  maxHeight: number;
+  maxBallSpeed: number;
+  /** Quanto mais longe que o adversário mais próximo ele pode estar e ainda ir buscar. */
+  beatMargin: number;
+  /** Alcance em que um adversário conta como ameaça; sem ameaça, a bola fica para a defesa. */
+  threatRange: number;
+}
+
+/** Bola alta na área é da mão: vai buscar mesmo saindo atrás, e sem precisar de ameaça. */
+const AERIAL_CLAIM: ClaimRule = {
+  minHeight: GOALKEEPING.mediumHeight,
+  maxHeight: FIELD.goalHeight + 0.4,
+  maxBallSpeed: Infinity,
+  beatMargin: GOALKEEPING.aerialClaimBeatMargin,
+  threatRange: Infinity,
+};
+
+/** Bola rasteira é do pé: só sai quando alguém a ameaça e ele chega antes. */
+const GROUND_CLAIM: ClaimRule = {
+  minHeight: 0,
+  maxHeight: GOALKEEPING.mediumHeight,
+  maxBallSpeed: GOALKEEPING.looseClaimMaxBallSpeed,
+  beatMargin: GOALKEEPING.looseClaimBeatMargin,
+  threatRange: GOALKEEPING.looseClaimThreatRange,
+};
+
+const claimRuleOf = (source: GoalkeeperSource): ClaimRule => source === "aerial" ? AERIAL_CLAIM : GROUND_CLAIM;
+
 /**
- * Bola solta e perigosa dentro da própria área, mesmo sem ser um chute a gol: o goleiro sai
- * para recolher/mergulhar, mas só quando é ele quem chega primeiro — senão fica na linha.
+ * Existe na rota da bola um ponto dentro da minha área que eu alcanço antes do adversário mais
+ * próximo? É a **única** pergunta que faz o goleiro sair do gol, e a origem só escolhe a régua.
+ * Vale para cruzamento, lançamento, afastamento, sobra ou passe qualquer: o goleiro não precisa
+ * saber que rótulo o passe recebeu, só onde a bola vai passar e a que altura.
  */
-const looseAttempt = (state: MatchState, goalkeeper: PlayerRuntime): GoalkeeperAttempt | null => {
+const claimable = (state: MatchState, goalkeeper: PlayerRuntime, rule: ClaimRule): boolean => {
   const ball = state.ball;
-  if (ball.controllerId !== null) return null;
-  if (state.pendingPass?.team === goalkeeper.team) return null;
-  if (length(ball.velocity) > GOALKEEPING.looseClaimMaxBallSpeed) return null;
-  if (ball.height > GOALKEEPING.mediumHeight) return null;
-  const soon = predictShotPoint(ball.position, ball.velocity, ball.height, ball.verticalVelocity, 0.35);
-  const inBoxNow = ownsPenaltyArea(goalkeeper, ball.position);
-  const target = inBoxNow ? ball.position : soon.position;
-  if (!inBoxNow && !ownsPenaltyArea(goalkeeper, soon.position)) return null;
-  const keeperGap = distance(goalkeeper.position, target);
+  if (ball.controllerId !== null) return false;
+  // Lei 12: passe deliberado de companheiro não se pega com a mão — nem se disputa.
+  if (state.pendingPass?.team === goalkeeper.team) return false;
+  if (length(ball.velocity) > rule.maxBallSpeed) return false;
   const opponents = state.players.filter((player) => player.team !== goalkeeper.team);
-  const threatGap = nearestGap(opponents, target);
-  // Só sai quando há um adversário ameaçando a bola e ele chega antes (com uma margem). Bola
-  // solta inofensiva, sem adversário por perto, fica para os zagueiros — o goleiro segura a linha.
-  if (threatGap > GOALKEEPING.looseClaimThreatRange) return null;
-  if (keeperGap > threatGap + GOALKEEPING.looseClaimBeatMargin) return null;
-  return createAttempt(state, goalkeeper, "loose", 0);
+  for (let seconds = 0; seconds <= GOALKEEPING.maximumAttemptAge; seconds += GOALKEEPING.claimSearchStep) {
+    const predicted = predictShotPoint(ball.position, ball.velocity, ball.height, ball.verticalVelocity, seconds);
+    if (predicted.height < rule.minHeight || predicted.height > rule.maxHeight) continue;
+    if (!ownsPenaltyArea(goalkeeper, predicted.position)) continue;
+    const threatGap = nearestGap(opponents, predicted.position);
+    if (threatGap > rule.threatRange) continue;
+    if (distance(goalkeeper.position, predicted.position) > threatGap + rule.beatMargin) continue;
+    return true;
+  }
+  return false;
+};
+
+/**
+ * O que este goleiro tem para fazer agora, em ordem de prioridade: defender a meta vence tudo;
+ * depois a bola alta na área (a vantagem da mão); por último a rasteira que ele recolhe antes.
+ */
+const nextAttempt = (state: MatchState, goalkeeper: PlayerRuntime): GoalkeeperAttempt | null => {
+  const shot = state.activeShot;
+  if (shot && shot.team !== goalkeeper.team && shot.onTarget) return createAttempt(state, goalkeeper, "shot", shot.id);
+  if (claimable(state, goalkeeper, AERIAL_CLAIM)) {
+    return createAttempt(state, goalkeeper, "aerial", state.pendingPass?.id ?? 0);
+  }
+  if (claimable(state, goalkeeper, GROUND_CLAIM)) return createAttempt(state, goalkeeper, "loose", 0);
+  return null;
+};
+
+/** Até quando a bola ainda cruza a minha área — o tempo que resta para ir buscá-la. */
+const timeInsideOwnBox = (state: MatchState, goalkeeper: PlayerRuntime, horizon: number): number => {
+  let last = 0;
+  for (let seconds = GOALKEEPING.claimSearchStep; seconds <= horizon; seconds += GOALKEEPING.claimSearchStep) {
+    const predicted = predictShotPoint(
+      state.ball.position, state.ball.velocity, state.ball.height, state.ball.verticalVelocity, seconds,
+    );
+    if (ownsPenaltyArea(goalkeeper, predicted.position)) last = seconds;
+  }
+  return last;
 };
 
 /** How long until the ball is past the point where this keeper could still touch it. */
 const windowRemaining = (state: MatchState, goalkeeper: PlayerRuntime, attempt: GoalkeeperAttempt): number => {
-  if (attempt.source === "cross") {
-    return Math.max(0, (state.pendingPass?.expectedArrivalAt ?? state.elapsed) - state.elapsed);
-  }
-  if (attempt.source === "loose") {
-    // Bola lenta na área: o solver já descarta pontos fora da área/alcance, então basta uma
-    // janela curta para ele sair e recolher.
-    return Math.min(1.2, GOALKEEPING.maximumAttemptAge - (state.elapsed - attempt.startedAt));
+  if (attempt.source !== "shot") {
+    // A janela é o tempo em que a bola ainda passa pela minha área. Saiu (ou já saiu), acabou.
+    return timeInsideOwnBox(state, goalkeeper, Math.max(0, attempt.expiresAt - state.elapsed));
   }
   const behindGoalLine = goalkeeper.team === "blue" ? -FIELD.ballRadius : FIELD.width + FIELD.ballRadius;
   const crossing = timeToX(state.ball.position.x, state.ball.velocity.x, behindGoalLine);
@@ -216,7 +255,7 @@ const solveLaunch = (
     if (diveTime > seconds) continue;
     const vertical = verticalImpulseFor(predicted.height, seconds);
     if (vertical > ceiling) continue;
-    const nearbyOpponent = attempt.source === "cross" && state.players.some((player) => player.team !== goalkeeper.team
+    const nearbyOpponent = attempt.source === "aerial" && state.players.some((player) => player.team !== goalkeeper.team
       && distance(player.position, predicted.position) < goalkeeper.radius * 2.5);
     const solution: LaunchSolution = {
       point: predicted.position,
@@ -298,16 +337,47 @@ const updateLaunchDecision = (state: MatchState, goalkeeper: PlayerRuntime, atte
   launch(state, goalkeeper, attempt, solution.point, solution.height, solution.vertical, launchSpeed, solution.punch, false);
 };
 
+/** Ids que o lance carrega para a cognição: um chute tem shotId, uma aérea vinda de passe, passId. */
+const attemptShotId = (attempt: GoalkeeperAttempt): number | undefined =>
+  attempt.source === "shot" ? attempt.sourceId : undefined;
+const attemptPassId = (attempt: GoalkeeperAttempt): number | undefined =>
+  attempt.source === "aerial" && attempt.sourceId !== 0 ? attempt.sourceId : undefined;
+
 const finishMiss = (state: MatchState, goalkeeper: PlayerRuntime, attempt: GoalkeeperAttempt): void => {
   attempt.outcome = "miss";
   attempt.contactQuality = 0;
   attempt.resolvedAt = state.elapsed;
   goalkeeper.goalkeeperRecoveryUntil = state.elapsed + (attempt.launchedAt === null ? 0.18 : GOALKEEPING.diveRecovery * 0.75);
   emitCognitiveEvent(state, "saveResolved", [goalkeeper.profile.id], {
-    shotId: attempt.source === "shot" ? attempt.sourceId : undefined,
-    passId: attempt.source === "cross" ? attempt.sourceId : undefined,
+    shotId: attemptShotId(attempt),
+    passId: attemptPassId(attempt),
     saveOutcome: "miss",
   });
+};
+
+/**
+ * A bola deixou de ser dele: enquanto os pés estão no chão, uma reivindicação que outro vai
+ * alcançar primeiro é abandonada e ele volta ao gol. É o que impede uma saída começada por uma
+ * leitura otimista de virar uma corrida cega para fora da meta.
+ */
+const abandonedClaim = (state: MatchState, goalkeeper: PlayerRuntime, attempt: GoalkeeperAttempt): boolean =>
+  attempt.source !== "shot" && attempt.launchedAt === null
+  && !claimable(state, goalkeeper, claimRuleOf(attempt.source));
+
+/**
+ * Corpo no chão: a rota da bola ainda passa pelo alcance de onde ele caiu? É o que separa
+ * "defendeu deitado" — o mergulho pousa um instante antes de a bola chegar, e o corpo no caminho
+ * é a defesa — de "ficou no chão enquanto a bola morre longe", que encerra o lance.
+ */
+const stillWithinReach = (state: MatchState, goalkeeper: PlayerRuntime, attempt: GoalkeeperAttempt): boolean => {
+  const horizon = Math.max(0, attempt.expiresAt - state.elapsed);
+  for (let seconds = 0; seconds <= horizon; seconds += GOALKEEPING.launchSearchStep) {
+    const predicted = predictShotPoint(
+      state.ball.position, state.ball.velocity, state.ball.height, state.ball.verticalVelocity, seconds,
+    );
+    if (distance(predicted.position, goalkeeper.position) <= attempt.reachRadius) return true;
+  }
+  return false;
 };
 
 export const updateGoalkeeperAnticipation = (state: MatchState, dt: number = FIXED_STEP): void => {
@@ -317,9 +387,14 @@ export const updateGoalkeeperAnticipation = (state: MatchState, dt: number = FIX
   for (const goalkeeper of state.players.filter((player) => player.profile.position === "goalkeeper")) {
     const attempt = goalkeeper.goalkeeperAttempt;
     if (attempt && attempt.outcome === null) {
+      // Pousou e a bola já não passa por ele: o lance acabou — levanta e volta ao jogo em vez de
+      // ficar parado até a tentativa envelhecer.
       const landed = attempt.launchedAt !== null && !goalkeeperAirborne(attempt, state.elapsed);
-      if (state.elapsed > attempt.expiresAt || (landed && windowRemaining(state, goalkeeper, attempt) <= 0)) {
+      if (state.elapsed > attempt.expiresAt || (landed && !stillWithinReach(state, goalkeeper, attempt))) {
         finishMiss(state, goalkeeper, attempt);
+      } else if (abandonedClaim(state, goalkeeper, attempt)) {
+        goalkeeper.goalkeeperAttempt = null;
+        continue;
       } else {
         updateLaunchDecision(state, goalkeeper, attempt, dt);
         continue;
@@ -328,10 +403,10 @@ export const updateGoalkeeperAnticipation = (state: MatchState, dt: number = FIX
     if (goalkeeper.goalkeeperRecoveryUntil > state.elapsed) continue;
     if (attempt?.resolvedAt) {
       const sameShot = attempt.source === "shot" && state.activeShot?.id === attempt.sourceId;
-      const sameCross = attempt.source === "cross" && state.pendingPass?.id === attempt.sourceId;
-      if (sameShot || sameCross) continue;
+      const samePass = attemptPassId(attempt) !== undefined && state.pendingPass?.id === attempt.sourceId;
+      if (sameShot || samePass) continue;
     }
-    goalkeeper.goalkeeperAttempt = shotAttempt(state, goalkeeper) ?? crossAttempt(state, goalkeeper) ?? looseAttempt(state, goalkeeper);
+    goalkeeper.goalkeeperAttempt = nextAttempt(state, goalkeeper);
     if (goalkeeper.goalkeeperAttempt) {
       if (goalkeeper.goalkeeperAttempt.source === "shot") state.stats[goalkeeper.team].saveAttempts += 1;
       updateLaunchDecision(state, goalkeeper, goalkeeper.goalkeeperAttempt, dt);
@@ -339,38 +414,53 @@ export const updateGoalkeeperAnticipation = (state: MatchState, dt: number = FIX
   }
 };
 
-export const goalkeeperDecision = (goalkeeper: PlayerRuntime, state: MatchState): AgentDecision | null => {
+/**
+ * Onde o goleiro quer estar AGORA — a fonte única do alvo dele. Resolvida a cada tick (e não
+ * congelada no plano), porque a bola se move a cada tick: é isto que faz o ajuste de pés
+ * acompanhar a rota sem o goleiro precisar replanejar.
+ */
+export const goalkeeperMovementTarget = (goalkeeper: PlayerRuntime, state: MatchState): Vec2 => {
+  const attempt = goalkeeper.goalkeeperAttempt;
+  if (goalkeeper.goalkeeperRecoveryUntil > state.elapsed) return { ...goalkeeper.position };
+  if (!attempt || attempt.outcome !== null) return goalkeeperGuardPost(goalkeeper, state.ball.position);
+  if (state.elapsed < attempt.reactionReadyAt) return { ...attempt.origin };
+  // Comprometido: o sistema de movimento ignora o alvo enquanto o corpo voa.
+  if (attempt.launchedAt !== null) return { ...goalkeeper.position };
+  return { ...attempt.approachTarget };
+};
+
+/**
+ * A decisão do goleiro, sempre — a posição de guarda é tão decisão dele quanto o mergulho. Ele
+ * só cede a vez quando é ele que vai jogar a bola (nas mãos, cobrando, ou como destino de um
+ * passe), o que quem chama resolve antes de perguntar.
+ */
+export const goalkeeperDecision = (goalkeeper: PlayerRuntime, state: MatchState): AgentDecision => {
+  const movementTarget = goalkeeperMovementTarget(goalkeeper, state);
   if (goalkeeper.goalkeeperRecoveryUntil > state.elapsed) {
     return {
-      movementTarget: { ...goalkeeper.position }, burst: false, posture: "outOfPossession",
+      movementTarget, burst: false, posture: "outOfPossession",
       intent: "recoveringSave", reason: "recoverFromSave", ballAction: { kind: "none" },
     };
   }
   const attempt = goalkeeper.goalkeeperAttempt;
-  if (!attempt || attempt.outcome !== null) return null;
-  const reason = attempt.source === "cross" ? "attackCross" : attempt.source === "loose" ? "smotherLoose" : "reactToShot";
-  if (state.elapsed < attempt.reactionReadyAt) {
+  if (!attempt || attempt.outcome !== null) {
     return {
-      movementTarget: { ...attempt.origin }, burst: false, posture: "outOfPossession",
-      intent: "preparingSave", reason, ballAction: { kind: "none" },
+      movementTarget, burst: false, posture: "outOfPossession",
+      intent: "goalkeeping", reason: "protectGoal", ballAction: { kind: "none" },
     };
   }
+  const reason = attempt.source === "aerial" ? "attackCross" : attempt.source === "loose" ? "smotherLoose" : "reactToShot";
+  // Antes da reação e durante o ajuste de pés: uma corridinha comum, sem pique nem mágica.
   if (attempt.launchedAt === null) {
-    // Feet still on the ground: a short, ordinary shuffle across the line. No burst, no magic.
     return {
-      movementTarget: { ...attempt.approachTarget }, burst: false, posture: "outOfPossession",
+      movementTarget, burst: false, posture: "outOfPossession",
       intent: "preparingSave", reason, ballAction: { kind: "none" },
     };
   }
   const intent = attempt.action === "verticalJump" ? "jumping"
     : attempt.action === "aerialClaim" || attempt.action === "punch" ? "claimingHighBall"
       : attempt.action === "standingSave" ? "preparingSave" : "diving";
-  return {
-    // Committed. The movement system ignores this target while airborne; it is kept
-    // only so the intent reads coherently for observers.
-    movementTarget: { ...goalkeeper.position }, burst: false, posture: "outOfPossession",
-    intent, reason, ballAction: { kind: "none" },
-  };
+  return { movementTarget, burst: false, posture: "outOfPossession", intent, reason, ballAction: { kind: "none" } };
 };
 
 const closestSegmentPoint = (start: Vec2, end: Vec2, point: Vec2): { point: Vec2; amount: number } => {
@@ -395,8 +485,8 @@ const setAttemptResult = (
     ? (grounded ? GOALKEEPING.catchRecovery * 0.5 : GOALKEEPING.catchRecovery) + (1 - goalkeeperQuality(goalkeeper)) * 0.14
     : (grounded ? GOALKEEPING.diveRecovery * 0.45 : GOALKEEPING.diveRecovery) + (1 - goalkeeperQuality(goalkeeper)) * 0.28);
   emitCognitiveEvent(state, "saveResolved", [goalkeeper.profile.id, ...relevantPlayersNear(state, state.ball.position)], {
-    shotId: attempt.source === "shot" ? attempt.sourceId : undefined,
-    passId: attempt.source === "cross" ? attempt.sourceId : undefined,
+    shotId: attemptShotId(attempt),
+    passId: attemptPassId(attempt),
     saveOutcome: outcome,
   });
 };
@@ -438,7 +528,7 @@ const resolveCatch = (state: MatchState, goalkeeper: PlayerRuntime, attempt: Goa
   if (state.offsideWatch && state.offsideWatch.team !== goalkeeper.team) state.offsideWatch = null;
   registerControlledTeam(state, goalkeeper.team, true);
   state.stats[goalkeeper.team].catches += 1;
-  if (attempt.source === "cross") state.stats[goalkeeper.team].highBallClaims += 1;
+  if (attempt.source === "aerial") state.stats[goalkeeper.team].highBallClaims += 1;
   if (attempt.source === "shot") {
     state.stats[goalkeeper.team].saves += 1;
     emitMatchEvent(state, { type: "save-made", team: goalkeeper.team, playerId: goalkeeper.profile.id, outcome: "catch", height, shotId: attempt.sourceId });
@@ -466,7 +556,7 @@ const resolveLooseContact = (
     state.ball.velocity = scale(direction, incomingSpeed * (0.42 + (1 - quality) * 0.18));
     state.ball.verticalVelocity = Math.max(-2, state.ball.verticalVelocity * 0.24 + (attempt.action === "punch" ? 5 : 1.5));
     state.stats[goalkeeper.team].parries += 1;
-    if (attempt.source === "cross") state.stats[goalkeeper.team].punches += 1;
+    if (attempt.source === "aerial") state.stats[goalkeeper.team].punches += 1;
     if (attempt.source === "shot") {
       state.stats[goalkeeper.team].saves += 1;
       emitMatchEvent(state, { type: "save-made", team: goalkeeper.team, playerId: goalkeeper.profile.id, outcome: "parry", height, shotId: attempt.sourceId });
@@ -501,8 +591,8 @@ const resolveLooseContact = (
   );
   goalkeeper.goalkeeperAlertUntil = state.elapsed + GOALKEEPING.alertSeconds;
   emitCognitiveEvent(state, "ballTrajectoryChanged", relevantPlayersNear(state, contact), {
-    shotId: attempt.source === "shot" ? attempt.sourceId : undefined,
-    passId: attempt.source === "cross" ? attempt.sourceId : undefined,
+    shotId: attemptShotId(attempt),
+    passId: attemptPassId(attempt),
   });
 };
 

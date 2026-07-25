@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { distance } from "../shared/math";
 import { smallSidedMatchConfig, startOpenPlay } from "./__fixtures__/reference-match";
 import { FIELD, FIXED_STEP, GOALKEEPING } from "./config";
 import { stepMatch } from "./engine";
@@ -31,13 +32,13 @@ const armLaunchedAttempt = (
   keeper: PlayerRuntime,
   speed: number,
   height: number,
-  options: { yOffset?: number; source?: "shot" | "cross"; vertical?: number; desperate?: boolean } = {},
+  options: { yOffset?: number; source?: "shot" | "aerial"; vertical?: number; desperate?: boolean } = {},
 ) => {
   const { yOffset = 0, source = "shot", vertical = 0, desperate = false } = options;
   keeper.position = { x: 10, y: FIELD.height / 2 };
   const direction: Vec2 = yOffset === 0 ? { x: 1, y: 0 } : { x: 0, y: Math.sign(yOffset) };
   const attempt: GoalkeeperAttempt = {
-    source, sourceId: 1, action: source === "cross" ? "aerialClaim" : vertical > 0 ? "verticalJump" : "lowDive",
+    source, sourceId: 1, action: source === "aerial" ? "aerialClaim" : vertical > 0 ? "verticalJump" : "lowDive",
     startedAt: 0, reactionReadyAt: 0, expiresAt: 3,
     origin: { ...keeper.position }, approachTarget: { ...keeper.position },
     launchedAt: 0, launchDirection: direction, launchSpeed: 0, launchVertical: vertical,
@@ -240,7 +241,7 @@ describe("resolucao do contato", () => {
     const state = createState();
     const keeper = goalkeeper(state);
     makeElite(keeper);
-    armLaunchedAttempt(state, keeper, 38, 2.1, { source: "cross" });
+    armLaunchedAttempt(state, keeper, 38, 2.1, { source: "aerial" });
     state.pendingPass = {
       id: 1, passerId: "maya-fw", receiverId: "maya-mf", team: "coral", startedAt: 0,
       trajectory: "air", range: "long", targeting: "space", purpose: "cross", selectionReason: "progressivePass",
@@ -260,7 +261,7 @@ describe("resolucao do contato", () => {
     const state = createState();
     const keeper = goalkeeper(state);
     makeElite(keeper);
-    const attempt = armLaunchedAttempt(state, keeper, 76, 2.7, { source: "cross" });
+    const attempt = armLaunchedAttempt(state, keeper, 76, 2.7, { source: "aerial" });
     attempt.action = "punch";
     state.pendingPass = {
       id: 1, passerId: "maya-fw", receiverId: "maya-mf", team: "coral", startedAt: 0,
@@ -423,6 +424,80 @@ describe("bola solta na area", () => {
 
     updateGoalkeeperAnticipation(state);
     expect(keeper.goalkeeperAttempt).toBeNull();
+  });
+});
+
+describe("posicao de guarda", () => {
+  /** Distancia do ponto ao segmento gol→bola: zero significa "na bissetriz do angulo bola–postes". */
+  const gapToBisector = (point: Vec2, goal: Vec2, ball: Vec2): number => {
+    const segment = { x: ball.x - goal.x, y: ball.y - goal.y };
+    const squared = segment.x * segment.x + segment.y * segment.y;
+    const amount = squared < 0.001 ? 0
+      : Math.max(0, Math.min(1, ((point.x - goal.x) * segment.x + (point.y - goal.y) * segment.y) / squared));
+    return Math.hypot(point.x - (goal.x + segment.x * amount), point.y - (goal.y + segment.y * amount));
+  };
+
+  it("fica entre a bola e o gol em vez de sair atras dela", () => {
+    const state = createState();
+    const keeper = goalkeeper(state);
+    makeElite(keeper);
+    // Bola parada aberta dentro da area, com o campo limpo: o cenario em que o goleiro virava o
+    // pressionador natural (era o mais perto) e saia do gol atras dela, tomando gol pelas costas.
+    for (const player of state.players) {
+      if (player === keeper) continue;
+      player.position = { x: FIELD.width - 6, y: FIELD.height / 2 };
+      player.kickCooldown = 9;
+    }
+    state.activeShot = null;
+    state.pendingPass = null;
+    state.ball.controllerId = null;
+    state.ball.dribbleOwnerId = null;
+    state.ball.position = { x: 26, y: FIELD.goalBottom + 10 };
+    state.ball.velocity = { x: 0, y: 0 };
+    state.ball.height = 0;
+
+    const goal = { x: 0, y: FIELD.height / 2 };
+    // Um segundo e meio para ele deixar a ancora da formacao e assumir a posicao; o que se mede
+    // e o regime, nao a caminhada ate ele.
+    for (let frame = 0; frame < 180; frame += 1) stepMatch(state, FIXED_STEP);
+    let worstAdvance = 0;
+    for (let frame = 0; frame < 120; frame += 1) {
+      stepMatch(state, FIXED_STEP);
+      worstAdvance = Math.max(worstAdvance, distance(keeper.position, goal) / distance(state.ball.position, goal));
+    }
+
+    // Nunca avancou para perto da bola: a profundidade e uma fracao do caminho, sempre.
+    expect(worstAdvance).toBeLessThan(0.4);
+    // E parou na bissetriz, nao no meio do gol nem em cima da bola.
+    expect(gapToBisector(keeper.position, goal, state.ball.position)).toBeLessThan(keeper.radius);
+  });
+});
+
+describe("bola aerea na area", () => {
+  it("reivindica bola alta que nao e cruzamento, mesmo saindo atras do adversario", () => {
+    const state = createState();
+    const keeper = goalkeeper(state);
+    makeElite(keeper);
+    keeper.position = { x: 10, y: FIELD.height / 2 };
+    keeper.velocity = { x: 0, y: 0 };
+    state.activeShot = null;
+    // Sobra no ar caindo na area, sem passe pendente e sem rotulo de cruzamento: um afastamento,
+    // um lancamento, um desvio. A mao vence o pe, entao a bola e dele.
+    state.pendingPass = null;
+    state.ball.controllerId = null;
+    state.ball.dribbleOwnerId = null;
+    state.ball.position = { x: 20, y: FIELD.height / 2 + 1 };
+    state.ball.velocity = { x: -3, y: 0 };
+    state.ball.height = 2.5;
+    state.ball.verticalVelocity = 1;
+    state.ball.lastTouch = "coral";
+    // Adversario MAIS PERTO da bola que o goleiro: com o pe ele chegaria antes; com a mao, nao.
+    const attacker = state.players.find((player) => player.team === "coral" && player.profile.position !== "goalkeeper")!;
+    attacker.position = { x: 26, y: FIELD.height / 2 + 3 };
+
+    updateGoalkeeperAnticipation(state);
+
+    expect(keeper.goalkeeperAttempt?.source).toBe("aerial");
   });
 });
 

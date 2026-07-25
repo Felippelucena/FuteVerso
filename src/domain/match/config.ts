@@ -157,16 +157,31 @@ export const RESTART = {
   // Distância a que o cobrador para atrás da bola (a bola fica no ponto; ele, um passo atrás). Vale
   // para os seis reinícios: no lateral/escanteio isso já o deixa na linha/junto do arco, sem knob.
   takerStandOffset: FIELD.playerRadius + FIELD.ballRadius + 0.15,
-  // A bola do escanteio entra uns passos para dentro da quina, senão sairia direto pela lateral.
-  cornerBallInset: FIELD.cornerArcRadius + FIELD.ballRadius + 1.5,
+  // Lei 17: a bola fica DENTRO do arco de escanteio — é a marcação desenhada no gramado. O centro
+  // vai sobre a diagonal da quina, a um raio de bola da borda do arco: bola inteira dentro do
+  // arco e inteira dentro do campo, sem depender de nenhuma folga inventada.
+  cornerBallInset: (FIELD.cornerArcRadius - FIELD.ballRadius) / Math.SQRT2,
   // A bola do lateral entra um passo para DENTRO da linha (não exatamente sobre ela): posta na
   // borda, o ruído angular do chute a empurrava para fora já nos primeiros ticks e o jogo
   // reentendia como nova saída. Um passo para dentro dá a margem que a detecção de limite exige.
   throwInBallInset: FIELD.ballRadius + 1.5,
   fieldMarginFactor: 0.55,
   fieldMarginFloor: 8,
-  // Colocação (TeamShapePlacement) que espalha os dois times para o meio no tiro de meta.
-  goalKickLineHeight: 40,
+  // --- Distância que o adversário respeita até a bola entrar em jogo ---
+  // Leis 8, 13 e 17 usam a MESMA medida (9,15 m) para o círculo central, o tiro livre e o
+  // escanteio — é o raio do círculo central, e por isso sai dele em vez de virar outro número.
+  opponentDistance: FIELD.centerCircleRadius,
+  // Lei 15: no lateral são 2 m do ponto do arremesso.
+  throwInOpponentDistance: meters(2),
+  // Folga além da linha da área no tiro de meta (Lei 16): o corpo inteiro fica fora dela.
+  boxClearanceMargin: FIELD.playerRadius,
+  // Colocação (TeamShapePlacement) do tiro de meta. Quem cobra arma a saída com a zaga aberta
+  // junto da área (o companheiro PODE receber dentro dela desde 2019); quem defende pressiona a
+  // borda — e a zona de exclusão o mantém fora da área sem coreografia nenhuma.
+  goalKickBuildUpLineHeight: 10,
+  goalKickBuildUpWidth: 0.85,
+  goalKickPressLineHeight: 48,
+  goalKickPressForwardLimit: 80,
   goalKickWidth: 0.7,
   // Escanteio: atacantes ocupam a área (forwardLimit alto), defensores comprimem no próprio gol.
   cornerAttackForwardLimit: 92,
@@ -276,12 +291,27 @@ export const GOALKEEPING = {
   // O impulso do mergulho é dimensionado para pousar no ponto de interceptação (a
   // perpendicular à rota da bola), limitado a este múltiplo do diveLaunchSpeed.
   maxDiveSpeedFactor: 1,
-  // Bola solta perigosa na própria área: o goleiro sai/mergulha para recolher mesmo sem ser
-  // um chute a gol. Só dispara quando a bola está lenta, um adversário ameaça recolhê-la, e o
-  // goleiro chega antes dele — senão fica na linha e deixa para a defesa.
+  // --- Posição de guarda (princípio da posição, não uma Lei) ---
+  // O goleiro vive na bissetriz do ângulo bola–postes, que é o segmento da bola até o CENTRO do
+  // gol: de lá os dois cantos ficam à mesma distância. A profundidade é uma fração do caminho
+  // até a bola, e é o que fecha o ângulo quando ela chega e devolve o corpo para trás quando ela
+  // se afasta — encobri-lo exige passar por cima e ainda cair sob o travessão.
+  guardAdvanceFraction: 0.22,
+  // Piso de avanço: nunca colado na linha, porque de dentro do gol não se joga o corpo.
+  guardRestingDepth: meters(1.8),
+  // --- Reivindicação: a única pergunta que faz o goleiro sair do gol ---
+  // Bola solta rasteira é do pé: só sai quando ela está lenta, um adversário ameaça recolhê-la e
+  // ele chega antes — senão segura a posição e deixa para a defesa.
   looseClaimMaxBallSpeed: 46,
   looseClaimBeatMargin: 1.4,
   looseClaimThreatRange: 16,
+  // Bola alta na área é da mão: acima de `mediumHeight` a mão vence o pé de qualquer um, então
+  // ele reivindica mesmo saindo ATRÁS do adversário mais próximo (margem invertida em relação à
+  // rasteira) e sem precisar que alguém a ameace.
+  aerialClaimBeatMargin: 4,
+  // Passo da varredura que procura o ponto reivindicável na rota. Grosseiro de propósito: é
+  // gatilho, não mira — a mira fina é do solver do mergulho (`launchSearchStep`).
+  claimSearchStep: 0.06,
   // Depois de agarrar nas mãos, segura a posse (imune a desarme) por este tempo, esperando o
   // time se reposicionar antes de distribuir — ignorando o marcador que pressiona.
   secureHoldSeconds: 1.9,

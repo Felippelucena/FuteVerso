@@ -1,10 +1,11 @@
 import { FIELD, RESTART, STAMINA } from "../config";
-import { clamp, distance, normalize, scale, subtract } from "../../shared/math";
+import { add, clamp, distance, normalize, scale, subtract } from "../../shared/math";
 import type { MatchState, PlayerRuntime, RestartKind, RestartState, Team, TeamShapePlacement, Vec2 } from "../model";
 import { clearDribbleOwner, clearGoalkeeperAttempts, registerControlledTeam } from "./control";
 import { emitCognitiveEvent } from "./cognitive-events";
 import { emitMatchEvent } from "./events";
-import { attackDirection, baseCell, cellAnchor, formationAnchor, kickoffBallPosition, kickoffPosition, kickoffTaker, NEUTRAL_LINE_HEIGHT } from "./formation-geometry";
+import { attackDirection, baseCell, cellAnchor, formationAnchor, insidePenaltyArea, kickoffBallPosition, kickoffPosition, kickoffTaker, NEUTRAL_LINE_HEIGHT } from "./formation-geometry";
+import { goalkeeperGuardPost } from "./goalkeeper-geometry";
 import { attackingProgress } from "./offside";
 
 /**
@@ -26,6 +27,77 @@ import { attackingProgress } from "./offside";
 
 const fieldRestartMargin = (): number =>
   Math.max(RESTART.fieldMarginFloor, FIELD.goalAreaDepth * RESTART.fieldMarginFactor);
+
+// ---------------------------------------------------------------------------------------------
+// Zona de exclusão: o espaço que o adversário deixa livre até a bola entrar em jogo
+// ---------------------------------------------------------------------------------------------
+
+/**
+ * Uma regra só para as Leis 8, 13, 15, 16 e 17. Cada reinício exige do ADVERSÁRIO uma distância
+ * do ponto da cobrança (9,15 m no tiro livre, no escanteio e na saída; 2 m no lateral) e, quando
+ * a cobrança é da defesa dentro da própria área (tiro de meta e tiro livre ali), a grande área
+ * inteira. Não há predicado separado de "está irregular": *estar irregular é ser movido pela
+ * projeção*, o que impede o desenho e o gate de discordarem.
+ *
+ * Consumida em dois lugares, e só neles: o alvo de caminhada do adversário (`restartLayoutTarget`)
+ * e o gate da cobrança (`advanceRestart`) — o mesmo par "eles recuam / o árbitro segura o jogo"
+ * do futebol de verdade, com `maxSetupSeconds` como trava.
+ */
+const exclusionRadius = (kind: RestartKind): number =>
+  kind === "throwIn" ? RESTART.throwInOpponentDistance
+    : kind === "goalKick" ? 0
+      : RESTART.opponentDistance;
+
+/** Lei 16 (tiro de meta) e Lei 13 (tiro livre da defesa dentro da própria área). */
+const forbidsOwnBox = (restart: RestartState): boolean =>
+  restart.kind === "goalKick"
+  || (restart.kind === "freeKick" && insidePenaltyArea(restart.team, restart.spot, true));
+
+const pushedOutOfRadius = (point: Vec2, spot: Vec2, radius: number): Vec2 => {
+  const gap = distance(point, spot);
+  if (radius <= 0 || gap >= radius) return point;
+  const away = gap < 0.001 ? { x: 0, y: 1 } : normalize(subtract(point, spot));
+  return add(spot, scale(away, radius));
+};
+
+/**
+ * Cobrança dentro da própria área: as duas exigências viram uma só no eixo da profundidade — o
+ * adversário recua para fora da área e, se o ponto da cobrança ainda estiver perto, mais um tanto.
+ * Resolver no mesmo eixo é o que garante que a projeção satisfaça as duas de uma vez (empurrar em
+ * volta do ponto e depois para fora da área poderia devolvê-lo à área, e o gate travaria).
+ */
+const pushedBeyondBox = (point: Vec2, restart: RestartState, radius: number): Vec2 => {
+  // A Lei manda sair da ÁREA, não recuar atrás de uma linha imaginária: quem está pela ponta, já
+  // fora dela pela lateral, e longe da bola, está regular onde está.
+  const irregular = insidePenaltyArea(restart.team, point, true)
+    || (radius > 0 && distance(point, restart.spot) < radius);
+  if (!irregular) return point;
+  const direction = attackDirection(restart.team);
+  const ownGoalX = direction > 0 ? 0 : FIELD.width;
+  const lateralGap = Math.abs(point.y - restart.spot.y);
+  const radialDepth = lateralGap < radius ? Math.sqrt(radius * radius - lateralGap * lateralGap) : 0;
+  const spotDepth = Math.abs(restart.spot.x - ownGoalX);
+  const minimumDepth = Math.max(
+    FIELD.penaltyDepth + RESTART.boxClearanceMargin,
+    radialDepth > 0 ? spotDepth + radialDepth : 0,
+  );
+  const depth = Math.abs(point.x - ownGoalX);
+  if (depth >= minimumDepth) return point;
+  return { x: ownGoalX + direction * minimumDepth, y: point.y };
+};
+
+/** O ponto legal mais próximo para um adversário nesta cobrança. */
+export const clearedOfRestart = (restart: RestartState, point: Vec2): Vec2 => {
+  const radius = exclusionRadius(restart.kind);
+  return forbidsOwnBox(restart)
+    ? pushedBeyondBox(point, restart, radius)
+    : pushedOutOfRadius(point, restart.spot, radius);
+};
+
+/** Todos os adversários já deixaram a zona livre? É o que a cobrança espera antes de sair. */
+const opponentsCleared = (state: MatchState, restart: RestartState): boolean =>
+  state.players.every((player) => player.team === restart.team
+    || distance(clearedOfRestart(restart, player.position), player.position) < 0.01);
 
 /** Quem cobra o reinício: goleiro no tiro de meta, cobrador da saída no kickoff, mais próximo nos demais. */
 const chooseTaker = (state: MatchState, team: Team, kind: RestartKind, exitPosition: Vec2): PlayerRuntime | null => {
@@ -51,9 +123,18 @@ const restartSpot = (kind: RestartKind, exitPosition: Vec2, team: Team): { spot:
   const margin = fieldRestartMargin();
   if (kind === "kickoff") return { spot: kickoffBallPosition(), facing: { x: dir, y: 0 } };
   if (kind === "goalKick") {
-    // Na marca do pênalti (o círculo desenhado do campo), com o goleiro atrás dela.
-    const spotX = dir > 0 ? FIELD.penaltySpotDistance : FIELD.width - FIELD.penaltySpotDistance;
-    return { spot: { x: spotX, y: FIELD.height / 2 }, facing: { x: dir, y: 0 } };
+    // Lei 16: a bola sai de qualquer ponto da PEQUENA área (a marca do pênalti é da Lei 14, e é
+    // de lá que ela saía antes — fora da pequena). Vale o canto do lado por onde ela saiu, como
+    // no jogo de verdade, encostado para dentro para a bola INTEIRA ficar dentro da marcação.
+    const depth = FIELD.goalAreaDepth - FIELD.ballRadius;
+    const side = exitPosition.y < FIELD.height / 2 ? -1 : 1;
+    return {
+      spot: {
+        x: dir > 0 ? depth : FIELD.width - depth,
+        y: FIELD.height / 2 + side * (FIELD.goalAreaWidth / 2 - FIELD.ballRadius),
+      },
+      facing: { x: dir, y: 0 },
+    };
   }
   if (kind === "throwIn") {
     // Bola um passo para DENTRO da linha lateral (não sobre ela, senão o chute a jogaria para fora).
@@ -202,9 +283,11 @@ export const advanceRestart = (state: MatchState, dt: number): void => {
   const arrived = distance(taker.position, stand) <= RESTART.arrivalRadius;
   const minElapsed = state.elapsed >= restart.startedAt + RESTART.minSetupSeconds;
   const timedOut = state.elapsed >= restart.startedAt + RESTART.maxSetupSeconds;
-  // A saída de bola só sai quando os dois times estão cada um no seu campo — o reposicionamento
-  // após o gol/intervalo tem que concluir. Os demais reinícios não esperam o campo todo.
-  const positioned = restart.kind !== "kickoff" || teamsInOwnHalves(state);
+  // O árbitro segura a cobrança até o adversário respeitar a distância (Leis 8, 13, 15, 16 e 17).
+  // Na saída de bola vale ainda a outra metade da Lei 8, que é dos DOIS times: cada um no seu
+  // campo — o reposicionamento após o gol/intervalo tem que concluir.
+  const positioned = opponentsCleared(state, restart)
+    && (restart.kind !== "kickoff" || teamsInOwnHalves(state));
   if (timedOut) {
     taker.position = { ...stand };
     taker.velocity = { x: 0, y: 0 };
@@ -219,11 +302,20 @@ export const advanceRestart = (state: MatchState, dt: number): void => {
 export const restartLayoutTarget = (player: PlayerRuntime, state: MatchState): Vec2 => {
   const restart = state.restart!;
   if (player.profile.id === restart.takerId) return restart.takerStand;
+  // O goleiro que não cobra não tem desenho de reinício: ele tem posição de goleiro, e ela já se
+  // refere à bola parada no ponto — poste próximo no escanteio, ângulo no tiro livre. Era daqui
+  // que vinha o goleiro plantado numa âncora de formação enquanto o time se recolocava.
+  if (player.profile.position === "goalkeeper") return goalkeeperGuardPost(player, restart.spot);
+  const layout = restartLayoutShape(player, restart);
+  return player.team === restart.team ? layout : clearedOfRestart(restart, layout);
+};
+
+const restartLayoutShape = (player: PlayerRuntime, restart: RestartState): Vec2 => {
   switch (restart.kind) {
     case "kickoff":
       return kickoffPosition(player, restart.team);
     case "goalKick":
-      return goalKickTarget(player);
+      return goalKickTarget(player, restart);
     case "corner":
       return cornerTarget(player, restart.team);
     case "throwIn":
@@ -233,14 +325,22 @@ export const restartLayoutTarget = (player: PlayerRuntime, state: MatchState): V
   }
 };
 
-/** Tiro de meta: os dois times sobem e ocupam o meio, de forma distribuída. */
-const goalKickTarget = (player: PlayerRuntime): Vec2 => {
-  const placement: TeamShapePlacement = {
-    lineHeight: RESTART.goalKickLineHeight,
-    width: RESTART.goalKickWidth,
-    depth: 1,
-    forwardLimit: 94,
-  };
+/**
+ * Tiro de meta: quem cobra ARMA A SAÍDA — a zaga abre junto da área (desde 2019 o companheiro
+ * pode receber dentro dela) e o meio se oferece; quem defende sobe para pressionar a borda. Antes
+ * os dois times recebiam a mesma colocação no meio-campo, e o goleiro cobrava sem nenhuma opção
+ * curta: só lhe restava lançar para dentro de um aglomerado, onde perdia a bola.
+ */
+const goalKickTarget = (player: PlayerRuntime, restart: RestartState): Vec2 => {
+  const kicking = player.team === restart.team;
+  const placement: TeamShapePlacement = kicking
+    ? { lineHeight: RESTART.goalKickBuildUpLineHeight, width: RESTART.goalKickBuildUpWidth, depth: 1, forwardLimit: 94 }
+    : {
+      lineHeight: RESTART.goalKickPressLineHeight,
+      width: RESTART.goalKickWidth,
+      depth: 1,
+      forwardLimit: RESTART.goalKickPressForwardLimit,
+    };
   return cellAnchor(baseCell(player), player.team, placement);
 };
 

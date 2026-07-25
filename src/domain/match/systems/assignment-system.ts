@@ -157,19 +157,21 @@ const byId = (first: PlayerRuntime, second: PlayerRuntime): number =>
 // decisões do time, mas agora entregam um dever numerado em vez de um id solto.
 // ---------------------------------------------------------------------------------------------
 
-const choosePresser = (state: MatchState, team: Team, players: PlayerRuntime[]): PlayerRuntime | null => {
-  const ownGoalX = team === "blue" ? 0 : FIELD.width;
-  return [...players].sort((first, second) => {
+/**
+ * Quem vai na bola. Recebe só jogadores de linha: o goleiro nunca pressiona — quando ele sai, sai
+ * pela própria regra de reivindicação (goalkeeper-system), que exige chegar antes do adversário.
+ * Antes ele entrava aqui com uma penalidade que se anulava perto do próprio gol, e então o
+ * goleiro era o pressionador natural de toda bola na área: saía do gol atrás dela.
+ */
+export const choosePresser = (state: MatchState, players: PlayerRuntime[]): PlayerRuntime | null =>
+  [...players].sort((first, second) => {
     const score = (player: PlayerRuntime): number => {
-      const goalkeeperPenalty = player.profile.position === "goalkeeper"
-        && Math.abs(state.ball.position.x - ownGoalX) > FIELD.width * 0.14 ? FIELD.width * 0.2 : 0;
       const mentality = (player.profile.mental.aggression + player.profile.mental.intensity + player.profile.mental.anticipation) / 300;
       const future = predictPlayerPosition(player, predictionHorizon(player, 0.85) * 0.55);
-      return distance(future, state.ball.position) + goalkeeperPenalty - mentality * FIELD.width * 0.045;
+      return distance(future, state.ball.position) - mentality * FIELD.width * 0.045;
     };
     return score(first) - score(second);
   })[0] ?? null;
-};
 
 /**
  * Segundo engajador: sai da linha para dividir quando a bola do adversário entra no nosso terço
@@ -326,7 +328,6 @@ const assignOutOfPossession = (
   state: MatchState,
   team: Team,
   context: AssignmentContext,
-  players: PlayerRuntime[],
   outfield: PlayerRuntime[],
   opponents: PlayerRuntime[],
   duties: Map<string, DutyChoice>,
@@ -334,7 +335,7 @@ const assignOutOfPossession = (
   const carrier = state.players.find((player) => player.profile.id === context.ballActorId) ?? null;
   const carrierId = carrier && carrier.team !== team ? carrier.profile.id : null;
 
-  const presser = choosePresser(state, team, players);
+  const presser = choosePresser(state, outfield);
   if (presser) duties.set(presser.profile.id, { duty: "press", priority: 0, targetPlayerId: carrierId });
   const second = chooseSecondPresser(
     state,
@@ -568,7 +569,7 @@ export const buildAssignments = (
 
   const safetyId = context.posture === "inPossession"
     ? assignInPossession(state, team, context, outfield, duties)
-    : (assignOutOfPossession(state, team, context, players, outfield, opponents, duties), null);
+    : (assignOutOfPossession(state, team, context, outfield, opponents, duties), null);
 
   const placement = placementFor(state, team, context);
   const rowShift = laneShift(state, context);

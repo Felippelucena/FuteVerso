@@ -128,6 +128,18 @@ export const goalCenter = (team: Team, ownGoal: boolean): Vec2 => {
   return { x: ownGoal ? FIELD.width - attackingX : attackingX, y: FIELD.height / 2 };
 };
 
+/**
+ * Ponto dentro da grande área de um dos gols — a que o time defende (`ownGoal`) ou a que ataca.
+ * Fonte única: a mão do goleiro, a zona de exclusão do tiro de meta e o que mais precisar da
+ * marcação medem a mesma área.
+ */
+export const insidePenaltyArea = (team: Team, point: Vec2, ownGoal: boolean): boolean => {
+  const goal = goalCenter(team, ownGoal);
+  const top = (FIELD.height - FIELD.penaltyWidth) / 2;
+  return Math.abs(point.x - goal.x) <= FIELD.penaltyDepth
+    && point.y >= top && point.y <= top + FIELD.penaltyWidth;
+};
+
 const stepAlong = (axis: readonly number[], value: number, steps: number): number => {
   let nearest = 0;
   for (let index = 1; index < axis.length; index += 1) {
