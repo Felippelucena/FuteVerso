@@ -230,6 +230,14 @@ export class GameRenderer {
         ctx.stroke();
       }
       ctx.globalAlpha = 1;
+      // Os postes, onde a bola ricocheteia. Na escala do campo inteiro a madeira real some, então
+      // o desenho tem um piso em pixels — é legibilidade, não a medida usada pela física.
+      ctx.fillStyle = "rgba(244, 249, 246, 0.95)";
+      for (const postY of [FIELD.goalTop - FIELD.postRadius, FIELD.goalBottom + FIELD.postRadius]) {
+        ctx.beginPath();
+        ctx.arc(edge, this.y(postY), Math.max(2, FIELD.postRadius * this.scale), 0, Math.PI * 2);
+        ctx.fill();
+      }
     }
     ctx.restore();
   }

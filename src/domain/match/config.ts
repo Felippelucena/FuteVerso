@@ -34,6 +34,13 @@ export const FIELD = {
   /** Profundidade da rede atrás da linha do gol. */
   goalDepth: meters(2),
   goalHeight: 4.8,
+  /**
+   * Raio da secção dos postes e do travessão (Regra 1: 12 cm de espessura). A boca do gol é
+   * medida pelas bordas INTERNAS da madeira, então `goalTop`, `goalBottom` e `goalHeight` são
+   * essas bordas e os eixos ficam um raio para fora delas. Fino de propósito: o que se sente em
+   * campo é a soma com o raio da bola, e é ela que decide entre entrar, bater e sair.
+   */
+  postRadius: meters(0.06),
   penaltyDepth: meters(16.5),
   penaltyWidth: meters(40.32),
   goalAreaDepth: meters(5.5),
@@ -57,6 +64,8 @@ export const PHYSICS = {
   ballDrag: 0.72,
   airBallDrag: 0.16,
   ballBounce: 0.38,
+  // A madeira é rígida: devolve muito mais da bola que o gramado, que afunda e absorve.
+  goalFrameRestitution: 0.7,
   landingFriction: 0.86,
   ballPlayerRestitution: 0.42,
   gravity: 29,

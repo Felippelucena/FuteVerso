@@ -6,9 +6,11 @@ import {
   clearDribbleOwner,
   pressureAt,
   registerControlledTeam,
+  registerLooseBall,
 } from "../runtime/control";
 import { emitMatchEvent } from "../runtime/events";
 import { emitCognitiveEvent, relevantPlayersNear } from "../runtime/cognitive-events";
+import { GOAL_MOUTH, insideGoalMouth, resolveGoalFrameContact } from "../runtime/goal-frame";
 import { beginRestart, registerRestartKick } from "../runtime/restart";
 import { offsideOffendersAtPass } from "../runtime/offside";
 import { playerSkillSpeed } from "../runtime/player-metrics";
@@ -203,7 +205,7 @@ export const executeBallAction = (state: MatchState, player: PlayerRuntime, acti
     const techniqueSpeed = technique === "header" ? 0.76 : technique === "redirect" ? 0.82 : 1;
     const speed = lerp(54, 92, action.power) * skillFactor * techniqueSpeed;
     const executedTarget = targetAlongDirection(state.ball.position, action.target, direction);
-    const requestedHeight = clamp(action.targetHeight ?? (technique === "header" ? 2.9 : technique === "volley" ? 2.65 : 0.35), 0.1, FIELD.goalHeight - 0.25);
+    const requestedHeight = clamp(action.targetHeight ?? (technique === "header" ? 2.9 : technique === "volley" ? 2.65 : 0.35), 0.1, GOAL_MOUTH.ceiling - 0.25);
     const solution = solveShotTrajectory(state.ball.position, executedTarget, contactHeight, requestedHeight, speed);
     releaseBall(state, player, normalize(solution.velocity), length(solution.velocity), solution.verticalVelocity);
     state.ball.height = contactHeight;
@@ -217,9 +219,7 @@ export const executeBallAction = (state: MatchState, player: PlayerRuntime, acti
     if (distance(player.position, action.target) > FIELD.width * 0.29) state.stats[player.team].longShots += 1;
     const goalLineX = player.team === "blue" ? FIELD.width : 0;
     const goalPoint = predictShotPoint(state.ball.position, state.ball.velocity, state.ball.height, state.ball.verticalVelocity, solution.duration);
-    state.ball.lastShotOnTarget = solution.duration > 0
-      && goalPoint.position.y > FIELD.goalTop && goalPoint.position.y < FIELD.goalBottom
-      && goalPoint.height >= 0 && goalPoint.height < FIELD.goalHeight;
+    state.ball.lastShotOnTarget = solution.duration > 0 && insideGoalMouth(goalPoint.position.y, goalPoint.height);
     if (state.ball.lastShotOnTarget) state.stats[player.team].shotsOnTarget += 1;
     const shotId = ++state.shotCounter;
     state.activeShot = {
@@ -397,6 +397,25 @@ const registerGoal = (state: MatchState, scorerTeam: Team): void => {
   beginRestart(state, "kickoff", conceding, state.ball.position);
 };
 
+/**
+ * Bateu na madeira: o chute (ou o cruzamento) morreu ali e a sobra é bola livre. Quem estava
+ * lendo aquela trajetória precisa saber que ela mudou — sem isso o goleiro segue defendendo um
+ * chute que já ricocheteou e o recebedor segue esperando um passe que não chega.
+ */
+const registerFrameRebound = (state: MatchState): void => {
+  const shotId = state.activeShot?.id;
+  const pass = state.pendingPass;
+  state.activeShot = null;
+  state.pendingPass = null;
+  state.ball.lastAction = null;
+  state.ball.lastShotOnTarget = false;
+  clearDribbleOwner(state);
+  registerLooseBall(state);
+  const nearby = relevantPlayersNear(state, state.ball.position);
+  if (pass) emitCognitiveEvent(state, "passResolved", nearby, { passId: pass.id, outcome: "loose" });
+  emitCognitiveEvent(state, "ballTrajectoryChanged", nearby, { shotId, passId: pass?.id });
+};
+
 export const updateBall = (state: MatchState, dt: number): void => {
   const ball = state.ball;
   // Bola parada: enquanto o cobrador caminha (ninguém com a posse), a bola fica presa no ponto —
@@ -429,34 +448,28 @@ export const updateBall = (state: MatchState, dt: number): void => {
       }
     }
   } else if (resolveGoalkeeperContact(state, previousPosition, previousHeight, dt) && ball.controllerId) return;
-  const crossingAt = (goalX: number): { y: number; height: number } => {
-    const travelX = ball.position.x - previousPosition.x;
-    const amount = Math.abs(travelX) > 0.0001 ? clamp((goalX - previousPosition.x) / travelX, 0, 1) : 1;
-    return {
-      y: previousPosition.y + (ball.position.y - previousPosition.y) * amount,
-      height: Math.max(0, previousHeight + (ball.height - previousHeight) * amount),
-    };
-  };
-  if (ball.position.x < -ball.radius) {
-    const crossing = crossingAt(0);
-    const inGoal = crossing.y > FIELD.goalTop && crossing.y < FIELD.goalBottom;
-    if (inGoal && crossing.height < FIELD.goalHeight) registerGoal(state, "coral");
-    else if (!inGoal) {
-      const defendingTeam: Team = "blue";
-      const restartTeam = ball.lastTouch === defendingTeam ? otherTeam(defendingTeam) : defendingTeam;
-      beginRestart(state, restartTeam === defendingTeam ? "goalKick" : "corner", restartTeam, ball.position);
-    } else ball.velocity.x = Math.abs(ball.velocity.x);
+  // A baliza é sólida: o ricochete pode jogar a bola para dentro ou para fora, e o julgamento
+  // da linha só acontece no trajeto já desviado — daí resolvê-la antes de olhar os limites.
+  if (ball.controllerId === null && resolveGoalFrameContact(ball, previousPosition, previousHeight)) {
+    registerFrameRebound(state);
     return;
   }
-  if (ball.position.x > FIELD.width + ball.radius) {
-    const crossing = crossingAt(FIELD.width);
-    const inGoal = crossing.y > FIELD.goalTop && crossing.y < FIELD.goalBottom;
-    if (inGoal && crossing.height < FIELD.goalHeight) registerGoal(state, "blue");
-    else if (!inGoal) {
-      const defendingTeam: Team = "coral";
+  const goalLineX = ball.position.x < -ball.radius ? 0
+    : ball.position.x > FIELD.width + ball.radius ? FIELD.width
+    : null;
+  if (goalLineX !== null) {
+    const travelX = ball.position.x - previousPosition.x;
+    const amount = Math.abs(travelX) > 0.0001 ? clamp((goalLineX - previousPosition.x) / travelX, 0, 1) : 1;
+    const crossingY = previousPosition.y + (ball.position.y - previousPosition.y) * amount;
+    const crossingHeight = Math.max(0, previousHeight + (ball.height - previousHeight) * amount);
+    const defendingTeam: Team = goalLineX === 0 ? "blue" : "coral";
+    // Regra 10: passou inteira pela linha de meta ou é gol (pela boca) ou é bola fora de jogo —
+    // por cima do travessão e por fora dos postes valem a mesma saída, não um rebote em campo.
+    if (insideGoalMouth(crossingY, crossingHeight)) registerGoal(state, otherTeam(defendingTeam));
+    else {
       const restartTeam = ball.lastTouch === defendingTeam ? otherTeam(defendingTeam) : defendingTeam;
       beginRestart(state, restartTeam === defendingTeam ? "goalKick" : "corner", restartTeam, ball.position);
-    } else ball.velocity.x = -Math.abs(ball.velocity.x);
+    }
     return;
   }
   if (ball.position.y < -ball.radius || ball.position.y > FIELD.height + ball.radius) {
