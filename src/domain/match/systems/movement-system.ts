@@ -109,8 +109,13 @@ const updatePlayer = (state: MatchState, player: PlayerRuntime, decision: AgentD
   const speed = length(player.velocity);
   if (speed > 0.3 && (!controlsBall || decision.ballAction.kind === "dribble")) player.facing = normalize(player.velocity);
   applyStamina(player, player.pace, dt);
-  player.position.x = clamp(player.position.x, player.radius, FIELD.width - player.radius);
-  player.position.y = clamp(player.position.y, player.radius, FIELD.height - player.radius);
+  // A faixa de segurança (runOff) fora das linhas é jogável: o cobrador do lateral e do escanteio
+  // caminha até um ponto fora do campo. Prender aqui em `player.radius` (só dentro do campo) o
+  // impedia de chegar ao `takerStand`, e a cobrança só saía no timeout. Mesmas bordas do
+  // `clampPlayersToField`, que roda depois — os dois precisam concordar.
+  const low = -FIELD.runOff + player.radius;
+  player.position.x = clamp(player.position.x, low, FIELD.width + FIELD.runOff - player.radius);
+  player.position.y = clamp(player.position.y, low, FIELD.height + FIELD.runOff - player.radius);
 };
 
 export const updatePlayers = (state: MatchState, decisions: Map<string, AgentDecision>, dt: number): void => {

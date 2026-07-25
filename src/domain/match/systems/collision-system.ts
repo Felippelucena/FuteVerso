@@ -37,6 +37,9 @@ export const resolvePlayerCollisions = (state: MatchState): void => {
 
 export const resolveBallPlayerCollision = (state: MatchState): void => {
   if (state.ball.height > 1.8 || state.ball.controllerId) return;
+  // Bola parada (reinício antes da cobrança): ela fica presa no ponto e ninguém a disputa — um
+  // jogador que a atravesse no posicionamento não a "toca" nem a desloca. Regra 8.
+  if (state.restart && !state.restart.ballInPlay) return;
   const nearest = state.players
     .filter((player) => !isEvadedDefender(state, player)
       && !(player.profile.position === "goalkeeper" && state.activeShot && state.activeShot.team !== player.team))

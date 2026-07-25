@@ -41,53 +41,54 @@ const chooseTaker = (state: MatchState, team: Team, kind: RestartKind, exitPosit
 };
 
 /**
- * Geometria do reinício: onde a bola descansa (`spot`) e para onde o cobrador olha (`facing`). O
- * cobrador para em `takerStand` (no lateral/escanteio, do lado de fora do campo).
+ * Onde a bola descansa (`spot`) e para onde o cobrador olha (`facing`). `facing` aponta sempre para
+ * DENTRO do campo (a direção da cobrança). A posição do cobrador não vem daqui: é sempre um passo
+ * atrás da bola (ver `restartGeometry`), o que já o deixa na linha/fora dela no lateral e junto da
+ * bola no escanteio, sem regra especial.
  */
-const restartGeometry = (kind: RestartKind, exitPosition: Vec2, team: Team): { spot: Vec2; facing: Vec2; takerStand: Vec2 } => {
+const restartSpot = (kind: RestartKind, exitPosition: Vec2, team: Team): { spot: Vec2; facing: Vec2 } => {
   const dir = attackDirection(team);
   const margin = fieldRestartMargin();
-  const out = RESTART.takerOutsideMargin;
-  // Cobrador um passo atrás da bola, na direção contrária à cobrança (dentro do campo).
-  const behind = (spot: Vec2, facing: Vec2): Vec2 => subtract(spot, scale(facing, RESTART.takerStandOffset));
-  if (kind === "kickoff") {
-    const spot = kickoffBallPosition();
-    const facing = { x: dir, y: 0 };
-    return { spot, facing, takerStand: behind(spot, facing) };
-  }
+  if (kind === "kickoff") return { spot: kickoffBallPosition(), facing: { x: dir, y: 0 } };
   if (kind === "goalKick") {
     // Na marca do pênalti (o círculo desenhado do campo), com o goleiro atrás dela.
     const spotX = dir > 0 ? FIELD.penaltySpotDistance : FIELD.width - FIELD.penaltySpotDistance;
-    const spot = { x: spotX, y: FIELD.height / 2 };
-    const facing = { x: dir, y: 0 };
-    return { spot, facing, takerStand: behind(spot, facing) };
+    return { spot: { x: spotX, y: FIELD.height / 2 }, facing: { x: dir, y: 0 } };
   }
   if (kind === "throwIn") {
-    // Bola na linha lateral; o cobrador fica do lado de FORA do campo, atrás dela (mesmo x).
+    // Bola um passo para DENTRO da linha lateral (não sobre ela, senão o chute a jogaria para fora).
     const top = exitPosition.y < FIELD.height / 2;
     const x = clamp(exitPosition.x, margin, FIELD.width - margin);
-    return {
-      spot: { x, y: top ? 0 : FIELD.height },
-      facing: normalize({ x: dir * 0.35, y: top ? 1 : -1 }),
-      takerStand: { x, y: top ? -out : FIELD.height + out },
-    };
+    const inset = RESTART.throwInBallInset;
+    return { spot: { x, y: top ? inset : FIELD.height - inset }, facing: normalize({ x: dir * 0.35, y: top ? 1 : -1 }) };
   }
   if (kind === "corner") {
-    // Bola uns passos para dentro da quina (senão sai direto pela lateral); o cobrador na quina,
-    // do lado de fora das duas linhas, virado para dentro na diagonal.
+    // Bola uns passos para dentro da quina (senão sairia direto pela lateral), na diagonal do gol.
     const fromLeft = exitPosition.x < FIELD.width / 2;
     const top = exitPosition.y < FIELD.height / 2;
     const inset = RESTART.cornerBallInset;
     return {
       spot: { x: fromLeft ? inset : FIELD.width - inset, y: top ? inset : FIELD.height - inset },
       facing: normalize({ x: fromLeft ? 1 : -1, y: top ? 1 : -1 }),
-      takerStand: { x: fromLeft ? -out : FIELD.width + out, y: top ? -out : FIELD.height + out },
     };
   }
   // freeKick: no ponto da infração, virado para o ataque do time.
-  const spot = { x: clamp(exitPosition.x, margin, FIELD.width - margin), y: clamp(exitPosition.y, margin, FIELD.height - margin) };
-  const facing = { x: dir, y: 0 };
-  return { spot, facing, takerStand: behind(spot, facing) };
+  return {
+    spot: { x: clamp(exitPosition.x, margin, FIELD.width - margin), y: clamp(exitPosition.y, margin, FIELD.height - margin) },
+    facing: { x: dir, y: 0 },
+  };
+};
+
+/**
+ * Geometria completa do reinício. O cobrador para SEMPRE um passo atrás da bola, na direção
+ * contrária à cobrança (`spot − facing·offset`) — a mesma regra para os seis tipos. Como `facing`
+ * aponta para dentro do campo, esse passo atrás o coloca na linha (ou logo fora) no lateral e junto
+ * do arco no escanteio, sempre a ~um passo da bola: perto o bastante para `advanceRestart` acusar a
+ * chegada, sem o cobrador precisar caminhar até um ponto solto fora do campo.
+ */
+const restartGeometry = (kind: RestartKind, exitPosition: Vec2, team: Team): { spot: Vec2; facing: Vec2; takerStand: Vec2 } => {
+  const { spot, facing } = restartSpot(kind, exitPosition, team);
+  return { spot, facing, takerStand: subtract(spot, scale(facing, RESTART.takerStandOffset)) };
 };
 
 /**

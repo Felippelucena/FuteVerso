@@ -29,6 +29,17 @@ const triggerThrowIn = (state: MatchState, lastTouch: Team = "coral"): void => {
   stepMatch(state, FIXED_STEP);
 };
 
+/** Tempo (em segundos após `startedAt`) até o cobrador assumir a posse — a promoção da cobrança. */
+const promotionDelay = (state: MatchState): number => {
+  const takerId = state.restart!.takerId;
+  const startedAt = state.restart!.startedAt;
+  for (let tick = 0; tick < (RESTART.maxSetupSeconds + 1) * 120; tick += 1) {
+    stepMatch(state, FIXED_STEP);
+    if (state.ball.controllerId === takerId) return state.elapsed - startedAt;
+  }
+  return Number.POSITIVE_INFINITY;
+};
+
 describe("bola parada — cobrança caminhada", () => {
   it("arma o lateral para o time certo, com a bola parada no ponto", () => {
     const state = createState();
@@ -126,6 +137,37 @@ describe("bola parada — cobrança caminhada", () => {
     expect(liveAt).toBeGreaterThanOrEqual(ownHalvesAt);
     // E promoveu pela readiness (não pela trava de tempo): a espera foi do reposicionamento.
     expect(liveAt).toBeLessThan(RESTART.maxSetupSeconds * 120);
+  });
+
+  it("o cobrador do lateral CHEGA ao ponto e cobra — promove pela chegada, não pela trava de tempo", () => {
+    const state = createState();
+    triggerThrowIn(state);
+    const delay = promotionDelay(state);
+    // Promoveu perto do preparo mínimo (chegou caminhando), bem antes do teto anti-deadlock.
+    expect(delay).toBeGreaterThanOrEqual(RESTART.minSetupSeconds - FIXED_STEP * 3);
+    expect(delay).toBeLessThan(RESTART.maxSetupSeconds - 1);
+  });
+
+  it("o cobrador do escanteio CHEGA à quina e cobra — promove pela chegada, não pela trava de tempo", () => {
+    const state = createState();
+    startOpenPlay(state);
+    // Um atacante azul já perto da quina de cima à direita, como o ponta que sobe para a cobrança.
+    const winger = state.players.find((player) => player.team === "blue" && player.profile.position !== "goalkeeper")!;
+    winger.position = { x: FIELD.width - 15, y: 12 };
+    state.ball.controllerId = null;
+    state.ball.dribbleOwnerId = null;
+    state.pendingPass = null;
+    state.ball.lastTouch = "coral";
+    state.ball.lastTouchPlayerId = null;
+    state.ball.velocity = { x: 0, y: 0 };
+    state.ball.height = 0;
+    state.ball.position = { x: FIELD.width + 20, y: 6 };
+    stepMatch(state, FIXED_STEP);
+    expect(state.restart?.kind).toBe("corner");
+    expect(state.restart?.takerId).toBe(winger.profile.id);
+    const delay = promotionDelay(state);
+    expect(delay).toBeGreaterThanOrEqual(RESTART.minSetupSeconds - FIXED_STEP * 3);
+    expect(delay).toBeLessThan(RESTART.maxSetupSeconds - 1);
   });
 
   it("cobra dentro do limite mesmo com o cobrador cercado longe (trava anti-deadlock)", () => {

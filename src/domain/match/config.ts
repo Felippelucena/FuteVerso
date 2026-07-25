@@ -154,12 +154,15 @@ export const RESTART = {
   // mesmo. Generoso o bastante para os dois times voltarem à formação na saída de bola.
   maxSetupSeconds: 7,
   arrivalRadius: FIELD.playerRadius + FIELD.ballRadius + 0.6,
-  // Distância a que o cobrador para atrás da bola (a bola fica no ponto; ele, um passo atrás).
+  // Distância a que o cobrador para atrás da bola (a bola fica no ponto; ele, um passo atrás). Vale
+  // para os seis reinícios: no lateral/escanteio isso já o deixa na linha/junto do arco, sem knob.
   takerStandOffset: FIELD.playerRadius + FIELD.ballRadius + 0.15,
-  // Recuo do cobrador para FORA da linha no lateral/escanteio: o corpo inteiro fica além da linha.
-  takerOutsideMargin: FIELD.playerRadius + 1,
   // A bola do escanteio entra uns passos para dentro da quina, senão sairia direto pela lateral.
   cornerBallInset: FIELD.cornerArcRadius + FIELD.ballRadius + 1.5,
+  // A bola do lateral entra um passo para DENTRO da linha (não exatamente sobre ela): posta na
+  // borda, o ruído angular do chute a empurrava para fora já nos primeiros ticks e o jogo
+  // reentendia como nova saída. Um passo para dentro dá a margem que a detecção de limite exige.
+  throwInBallInset: FIELD.ballRadius + 1.5,
   fieldMarginFactor: 0.55,
   fieldMarginFloor: 8,
   // Colocação (TeamShapePlacement) que espalha os dois times para o meio no tiro de meta.
