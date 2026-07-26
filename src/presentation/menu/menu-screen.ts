@@ -33,7 +33,11 @@ export const menuScreenDefinition = (application: GameApplication): ScreenDefini
   mount: ({ root, navigation }) => new MenuScreen(root, navigation, application),
 });
 
+const MISSING_CLUBS = "O catálogo precisa de dois clubes para uma partida. Crie-os no editor.";
+
 export class MenuScreen implements Screen {
+  private playable = false;
+
   constructor(
     private readonly root: HTMLElement,
     private readonly navigation: Navigation,
@@ -56,14 +60,15 @@ export class MenuScreen implements Screen {
       const { stats } = match.state;
       this.find("#menu-resume-detail").textContent = `${stats.blue.goals} × ${stats.coral.goals} · congelada`;
     }
-    this.setMessage(this.application.world.clubs.length < 2
-      ? "O catálogo precisa de dois clubes para uma partida. Crie-os no editor."
-      : "");
+    void this.application.clubCount().then((count) => {
+      this.playable = count >= 2;
+      this.setMessage(this.playable ? "" : MISSING_CLUBS);
+    });
   }
 
   private startQuickGame(): void {
-    if (this.application.world.clubs.length < 2) {
-      this.setMessage("O catálogo precisa de dois clubes para uma partida. Crie-os no editor.", true);
+    if (!this.playable) {
+      this.setMessage(MISSING_CLUBS, true);
       return;
     }
     this.navigation.push({ screenId: "quick-clubs" });

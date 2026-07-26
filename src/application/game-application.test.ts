@@ -1,19 +1,18 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import { squadOf } from "../domain/contract/queries";
 import type { PlayerProfile } from "../domain/roster/model";
 import { TEAM_SIZE } from "../domain/tactics/model";
 import { inspectPlan } from "../domain/tactics/rules";
-import { MemoryWorldRepository } from "../infrastructure/persistence/memory-world-repository";
+import { MemoryCatalog } from "../infrastructure/persistence/memory-catalog";
 import { createTestWorld } from "./__fixtures__/test-world";
 import { GameApplication } from "./game-application";
 
-const createApplication = (clubCount = 3) => {
+const createApplication = async (clubCount = 3) => {
   const world = createTestWorld(clubCount);
-  const repository = new MemoryWorldRepository(world);
-  const application = new GameApplication(world, repository);
+  const catalog = new MemoryCatalog(world);
+  const application = new GameApplication(catalog, { ...world.settings });
   // A partida não nasce com a aplicação: é o fluxo de Jogo Rápido que a põe em campo.
-  application.startMatch(application.suggestedSetup()!);
-  return { application, repository };
+  await application.startMatch((await application.suggestedSetup())!);
+  return { application, catalog, world };
 };
 
 const newPlayer = (overrides: Partial<PlayerProfile> = {}): PlayerProfile => ({
@@ -36,35 +35,37 @@ const newPlayer = (overrides: Partial<PlayerProfile> = {}): PlayerProfile => ({
 });
 
 describe("GameApplication", () => {
-  let context: ReturnType<typeof createApplication>;
+  let context: Awaited<ReturnType<typeof createApplication>>;
 
-  beforeEach(() => {
-    context = createApplication();
+  beforeEach(async () => {
+    context = await createApplication();
   });
 
-  it("abre a partida com os dois primeiros clubes do catálogo", () => {
-    const { application } = context;
-    expect(application.clubOf("blue")!.id).toBe(application.world.clubs[0].id);
-    expect(application.clubOf("coral")!.id).toBe(application.world.clubs[1].id);
+  it("abre a partida com os dois primeiros clubes por nome", async () => {
+    const { application, catalog } = context;
+    const { rows } = await catalog.clubs.page({ sort: "name", limit: 2 });
+
+    expect(application.clubOf("blue")!.id).toBe(rows[0].id);
+    expect(application.clubOf("coral")!.id).toBe(rows[1].id);
     expect(application.state.players).toHaveLength(TEAM_SIZE * 2);
   });
 
-  it("não tem partida antes de o fluxo de jogo iniciar uma", () => {
+  it("não tem partida antes de o fluxo de jogo iniciar uma", async () => {
     const world = createTestWorld(3);
-    const application = new GameApplication(world, new MemoryWorldRepository(world));
+    const application = new GameApplication(new MemoryCatalog(world), { ...world.settings });
 
     expect(application.match).toBeNull();
     expect(application.setup).toBeNull();
     expect(() => application.state).toThrow();
 
-    expect(application.startMatch(application.suggestedSetup()!)).toEqual({ ok: true });
+    expect(await application.startMatch((await application.suggestedSetup())!)).toEqual({ ok: true });
     expect(application.match).not.toBeNull();
   });
 
-  it("recusa o mesmo clube dos dois lados", () => {
-    const { application } = context;
-    const only = application.world.clubs[0];
-    expect(application.selectClubs(only.id, only.id)).toEqual({ ok: false, reason: "same-club" });
+  it("recusa o mesmo clube dos dois lados", async () => {
+    const { application, world } = context;
+    const only = world.clubs[0];
+    expect(await application.selectClubs(only.id, only.id)).toEqual({ ok: false, reason: "same-club" });
   });
 
   it("congela a partida ao sair, sem descartá-la", () => {
@@ -75,108 +76,143 @@ describe("GameApplication", () => {
     expect(application.match!.paused).toBe(true);
   });
 
-  it("troca os clubes em campo e reinicia a partida", () => {
-    const { application } = context;
-    const third = application.world.clubs[2];
+  it("troca os clubes em campo e reinicia a partida", async () => {
+    const { application, world } = context;
+    const third = world.clubs[2];
 
-    const result = application.selectClubs(third.id, application.world.clubs[0].id);
+    const result = await application.selectClubs(third.id, world.clubs[0].id);
 
     expect(result).toEqual({ ok: true });
     expect(application.clubOf("blue")!.id).toBe(third.id);
     expect(application.state.elapsed).toBe(0);
     const inPlay = new Set(application.state.players.map((player) => player.profile.id));
-    expect(squadOf(application.world.players, application.world.contracts, third.id)
-      .some((player) => inPlay.has(player.id))).toBe(true);
+    const squad = await application.squadOfClub(third.id);
+    expect(squad.players.some((player) => inPlay.has(player.id))).toBe(true);
   });
 
-  it("recusa clube inexistente", () => {
-    expect(context.application.selectClubs("nao-existe", context.application.world.clubs[1].id))
+  it("recusa clube inexistente", async () => {
+    expect(await context.application.selectClubs("nao-existe", context.world.clubs[1].id))
       .toEqual({ ok: false, reason: "club-not-found" });
   });
 
-  it("cria jogador como agente livre e mantém as escalações válidas", () => {
-    const { application } = context;
-    const before = application.world.players.length;
+  it("cria jogador como agente livre e lhe dá memória inicial", async () => {
+    const { application, catalog } = context;
+    const before = (await catalog.players.page()).total;
 
-    expect(application.upsertPlayer(newPlayer())).toEqual({ ok: true });
+    expect(await application.savePlayer(newPlayer())).toEqual({ ok: true });
 
-    expect(application.world.players).toHaveLength(before + 1);
-    expect(application.world.contracts.some(({ playerId }) => playerId === "novo-jogador")).toBe(false);
-    expect(application.world.memories["novo-jogador"]).toBeDefined();
+    expect((await catalog.players.page()).total).toBe(before + 1);
+    const { rows } = await catalog.contracts.page({ filter: { field: "playerId", value: "novo-jogador" } });
+    expect(rows).toHaveLength(0);
+    expect(await catalog.memories.get("novo-jogador")).not.toBeNull();
   });
 
-  it("rejeita jogador com atributo fora da escala", () => {
+  it("rejeita jogador com atributo fora da escala", async () => {
     const invalid = newPlayer();
     invalid.skills.passing = 140;
-    expect(context.application.upsertPlayer(invalid)).toEqual({ ok: false, reason: "invalid-player" });
+    expect(await context.application.savePlayer(invalid)).toEqual({ ok: false, reason: "invalid-player" });
   });
 
-  it("preserva a carreira e recalibra a política quando a função muda", () => {
-    const { application } = context;
-    const target = application.world.players.find((player) => player.position === "centerMid")!;
-    application.world.memories[target.id].stats.goals = 7;
+  it("preserva a carreira e recalibra a política quando a função muda", async () => {
+    const { application, catalog, world } = context;
+    const target = world.players.find((player) => player.position === "centerMid")!;
+    const memory = (await catalog.memories.get(target.id))!;
+    memory.stats.goals = 7;
+    await catalog.memories.put([memory]);
 
-    application.upsertPlayer({ ...target, role: target.role === "playmaker" ? "defender" : "playmaker" });
+    await application.savePlayer({ ...target, role: target.role === "playmaker" ? "defender" : "playmaker" });
 
-    const memory = application.world.memories[target.id];
-    expect(memory.stats.goals).toBe(7);
-    expect(memory.version).toBe(2);
+    const updated = (await catalog.memories.get(target.id))!;
+    expect(updated.stats.goals).toBe(7);
+    expect(updated.version).toBe(2);
   });
 
-  it("exclui jogador escalado e recompõe a escalação do clube", () => {
-    const { application } = context;
-    const club = application.world.clubs[0];
+  it("exclui jogador escalado e recompõe a escalação do clube", async () => {
+    const { application, catalog, world } = context;
+    const club = world.clubs[0];
     const starter = club.defaultPlan.assignments[3].playerId;
 
-    expect(application.deletePlayer(starter)).toEqual({ ok: true });
+    expect(await application.deletePlayer(starter)).toEqual({ ok: true });
 
-    const updated = application.world.clubs.find(({ id }) => id === club.id)!;
-    expect(application.world.players.some(({ id }) => id === starter)).toBe(false);
-    expect(application.world.contracts.some(({ playerId }) => playerId === starter)).toBe(false);
+    const updated = (await catalog.clubs.get(club.id))!;
+    const squad = await application.squadOfClub(club.id);
+    expect(await catalog.players.get(starter)).toBeNull();
+    expect((await catalog.contracts.page({ filter: { field: "playerId", value: starter } })).total).toBe(0);
     expect(updated.defaultPlan.assignments).toHaveLength(TEAM_SIZE);
     expect(updated.defaultPlan.assignments.some((assignment) => assignment.playerId === starter)).toBe(false);
-    expect(inspectPlan(updated.defaultPlan, squadOf(application.world.players, application.world.contracts, club.id))).toEqual([]);
+    expect(inspectPlan(updated.defaultPlan, squad.players)).toEqual([]);
   });
 
-  it("recusa excluir jogador inexistente", () => {
-    expect(context.application.deletePlayer("fantasma")).toEqual({ ok: false, reason: "player-not-found" });
+  /**
+   * O ganho da integridade incremental sobre a varredura global: os outros clubes não são
+   * sequer tocados. Se um dia alguém reintroduzir um `repairWorld` no caminho da edição, este
+   * teste acusa — os planos alheios voltariam a ser reescritos.
+   */
+  it("não toca nos planos dos outros clubes ao excluir um jogador", async () => {
+    const { application, catalog, world } = context;
+    const untouched = world.clubs.slice(1);
+    const before = untouched.map((club) => JSON.stringify(club.defaultPlan));
+
+    await application.deletePlayer(world.clubs[0].defaultPlan.assignments[3].playerId);
+
+    for (const [index, club] of untouched.entries()) {
+      expect(JSON.stringify((await catalog.clubs.get(club.id))!.defaultPlan)).toBe(before[index]);
+    }
+  });
+
+  it("recusa excluir jogador inexistente", async () => {
+    expect(await context.application.deletePlayer("fantasma")).toEqual({ ok: false, reason: "player-not-found" });
+  });
+
+  it("excluir clube solta os jogadores como agentes livres, sem apagá-los", async () => {
+    const { application, catalog, world } = context;
+    const club = world.clubs[2];
+    const squad = await application.squadOfClub(club.id);
+    expect(squad.players.length).toBeGreaterThan(0);
+
+    expect(await application.deleteClub(club.id)).toEqual({ ok: true });
+
+    expect(await catalog.clubs.get(club.id)).toBeNull();
+    expect((await catalog.contracts.page({ filter: { field: "clubId", value: club.id } })).total).toBe(0);
+    for (const player of squad.players) expect(await catalog.players.get(player.id)).not.toBeNull();
   });
 
   it("normaliza a semente e reinicia a partida", () => {
     const { application } = context;
     expect(application.setSeed(-5)).toBe(0);
     expect(application.setSeed(12.9)).toBe(12);
-    expect(application.world.settings.randomSeed).toBe(12);
+    expect(application.settings.randomSeed).toBe(12);
     expect(application.state.elapsed).toBe(0);
   });
 
-  it("persiste configuração sem perder o catálogo", async () => {
-    const { application, repository } = context;
+  it("persiste configuração sem tocar no catálogo", async () => {
+    const { application, catalog } = context;
     application.setLearningEnabled(false);
 
-    const stored = await repository.load();
-    expect(stored?.settings.learningEnabled).toBe(false);
-    expect(stored?.clubs).toHaveLength(3);
+    expect((await catalog.loadSettings())?.learningEnabled).toBe(false);
+    expect((await catalog.clubs.page()).total).toBe(3);
   });
 
-  it("restaura as memórias iniciais de todos os jogadores", () => {
-    const { application } = context;
-    const target = application.world.players[0].id;
-    application.world.memories[target].stats.goals = 4;
+  it("restaura as memórias iniciais de todos os jogadores", async () => {
+    const { application, catalog, world } = context;
+    const target = world.players[0].id;
+    const memory = (await catalog.memories.get(target))!;
+    memory.stats.goals = 4;
+    await catalog.memories.put([memory]);
 
-    application.resetLearning();
+    await application.resetLearning();
 
-    expect(application.world.memories[target].stats.goals).toBe(0);
-    expect(Object.keys(application.world.memories)).toHaveLength(application.world.players.length);
+    expect((await catalog.memories.get(target))!.stats.goals).toBe(0);
+    expect((await catalog.memories.page()).total).toBe(world.players.length);
   });
 
-  it("entrega um estado de partida isolado do catálogo", () => {
-    const { application } = context;
+  it("entrega um estado de partida isolado do catálogo", async () => {
+    const { application, catalog } = context;
     const runtime = application.state.players[0];
-    const original = application.world.players.find(({ id }) => id === runtime.profile.id)!.name;
+    const original = (await catalog.players.get(runtime.profile.id))!.name;
 
     runtime.profile.name = "Mexido";
 
-    expect(application.world.players.find(({ id }) => id === runtime.profile.id)!.name).toBe(original);
+    expect((await catalog.players.get(runtime.profile.id))!.name).toBe(original);
   });
 });

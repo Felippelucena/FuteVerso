@@ -35,6 +35,7 @@ export const clubSelectScreenDefinition = (application: GameApplication): Screen
 
 export class ClubSelectScreen implements Screen {
   private readonly chosen: Record<Team, string | null> = { blue: null, coral: null };
+  private clubs: Club[] = [];
 
   constructor(
     private readonly root: HTMLElement,
@@ -51,11 +52,19 @@ export class ClubSelectScreen implements Screen {
   }
 
   render(): void {
-    const clubs = this.sortedClubs();
+    void this.load();
+  }
+
+  private async load(): Promise<void> {
+    // Enquanto não houver muitos clubes a lista cabe inteira; quando houver, esta é a chamada
+    // que ganha paginação — a tela já não depende de ter o catálogo em memória.
+    const { rows } = await this.application.queries.clubs.page({ sort: "name" });
+    const clubs = [...rows];
     // A sugestão da aplicação abre a tela já jogável; trocar um lado é opcional.
-    const suggested = this.application.suggestedSetup();
+    const suggested = await this.application.suggestedSetup();
     this.chosen.blue ??= suggested?.blue.clubId ?? clubs[0]?.id ?? null;
     this.chosen.coral ??= suggested?.coral.clubId ?? clubs[1]?.id ?? null;
+    this.clubs = clubs;
     for (const team of ["blue", "coral"] as const) this.renderColumn(team, clubs);
   }
 
@@ -76,7 +85,7 @@ export class ClubSelectScreen implements Screen {
 
   private choose(team: Team, clubId: string): void {
     this.chosen[team] = clubId;
-    this.render();
+    for (const side of ["blue", "coral"] as const) this.renderColumn(side, this.clubs);
   }
 
   private continue(): void {
@@ -86,10 +95,6 @@ export class ClubSelectScreen implements Screen {
       return;
     }
     this.navigation.push({ screenId: "quick-plan", params: { blue, coral } });
-  }
-
-  private sortedClubs(): Club[] {
-    return [...this.application.world.clubs].sort((first, second) => first.name.localeCompare(second.name));
   }
 
   private setMessage(message: string, error = false): void {

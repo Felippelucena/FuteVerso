@@ -9,7 +9,7 @@ import { POSITION_LABELS, POSITION_SHORT_LABELS, ROLE_LABELS } from "../app/labe
 import { icon } from "../app/icons";
 import type { Screen } from "../app/screen";
 import type { EditorEntity } from "../editor/editor-screen";
-import { createPlayersViewModel } from "./players-view-model";
+import { createPlayerRows } from "./players-view-model";
 
 const SKILL_FIELDS: { key: keyof PlayerSkills; label: string }[] = [
   { key: "acceleration", label: "Aceleração" }, { key: "sprintSpeed", label: "Velocidade" },
@@ -47,7 +47,15 @@ const playersScreenTemplate = (): Html => html`
   <div class="manager-view">
     <div class="manager-heading"><div><span class="eyebrow">CATÁLOGO</span><h2>Jogadores</h2></div><button id="add-player" class="primary-button" type="button">${icon("Plus")}Novo jogador</button></div>
     <p id="manager-message" class="manager-message" aria-live="polite"></p>
-    <div class="players-section"><div class="section-heading"><h3>Todos os jogadores</h3><span id="player-count"></span></div><div id="players-table" class="players-table"></div></div>
+    <div class="players-section">
+      <div class="section-heading"><h3>Todos os jogadores</h3><span id="player-count"></span></div>
+      <div id="players-table" class="players-table"></div>
+      <div class="pager">
+        <button class="secondary-button" id="page-previous" type="button">${icon("ChevronLeft")}Anterior</button>
+        <span id="page-label"></span>
+        <button class="secondary-button" id="page-next" type="button">Próxima${icon("ChevronRight")}</button>
+      </div>
+    </div>
     ${playerDialogTemplate()}
   </div>`;
 
@@ -89,9 +97,16 @@ export const playersEntity: EditorEntity = {
   },
 };
 
+const PAGE_SIZE = 25;
+
 export class PlayersScreen implements Screen {
   private editingPlayerId: string | null = null;
   private readonly playerForm: HTMLFormElement;
+  private page = 0;
+  /** Descarta resposta de uma página que já não é a atual. */
+  private request = 0;
+  /** Preservadas entre abrir e salvar enquanto não houver campo para elas no formulário. */
+  private editedSecondaryPositions: PlayerPosition[] = [];
 
   constructor(
     private readonly root: HTMLElement,
@@ -103,11 +118,30 @@ export class PlayersScreen implements Screen {
   }
 
   render(): void {
-    const viewModel = createPlayersViewModel(this.application.world);
-    this.find("#player-count").textContent = viewModel.countLabel;
-    render(this.find("#players-table"), html`${viewModel.rows.map((row) => {
+    void this.load();
+  }
+
+  private async load(): Promise<void> {
+    const token = ++this.request;
+    const { queries } = this.application;
+    const { rows, total } = await queries.players.page({
+      sort: "name",
+      offset: this.page * PAGE_SIZE,
+      limit: PAGE_SIZE,
+    });
+    const view = await createPlayerRows(queries, rows, this.application.settings.currentYear);
+    if (token !== this.request) return;
+
+    const pages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+    this.find("#player-count").textContent = `${total} jogadores`;
+    this.find("#page-label").textContent = `${this.page + 1} / ${pages}`;
+    this.find<HTMLButtonElement>("#page-previous").disabled = this.page === 0;
+    this.find<HTMLButtonElement>("#page-next").disabled = this.page + 1 >= pages;
+
+    const byId = new Map(rows.map((player) => [player.id, player]));
+    render(this.find("#players-table"), html`${view.map((row) => {
       const secondary = row.secondaryPositions.map((position) => POSITION_SHORT_LABELS[position]).join("/");
-      const player = this.application.world.players.find(({ id }) => id === row.id)!;
+      const player = byId.get(row.id)!;
       return html`
       <div class="player-table-row"><span class="shirt shirt--neutral">${row.shirtNumber ?? "–"}</span><div class="player-table-name"><strong>${row.name}</strong><span>${row.clubName} · ${POSITION_SHORT_LABELS[row.position]}${secondary ? ` (${secondary})` : ""} · ${ROLE_LABELS[row.role]} · ${row.age} anos · ${countryName(row.nationality)} · ${dominantMentalTraits(player.mental).join(" / ")}</span></div>
         <div class="player-rating"><span>GER <strong>${row.overall}</strong></span><span>CON <strong>${player.skills.control}</strong></span><span>PAS <strong>${player.skills.passing}</strong></span><span>VEL <strong>${player.skills.sprintSpeed}</strong></span></div>
@@ -115,9 +149,16 @@ export class PlayersScreen implements Screen {
     })}`);
   }
 
+  private turnPage(delta: number): void {
+    this.page = Math.max(0, this.page + delta);
+    this.render();
+  }
+
   private bindEvents(): void {
     this.find("#add-player").addEventListener("click", () => this.openPlayerDialog());
     this.find("#players-table").addEventListener("click", (event) => this.handlePlayerAction(event));
+    this.find("#page-previous").addEventListener("click", () => this.turnPage(-1));
+    this.find("#page-next").addEventListener("click", () => this.turnPage(1));
     this.dialogFind("#cancel-player").addEventListener("click", () => this.dialog.close());
     this.dialogFind("#close-player").addEventListener("click", () => this.dialog.close());
     (this.playerForm.elements.namedItem("position") as HTMLSelectElement).addEventListener("change", () => this.syncRoleOptions());
@@ -134,17 +175,18 @@ export class PlayersScreen implements Screen {
     const edit = (event.target as HTMLElement).closest<HTMLButtonElement>("[data-edit-player]");
     const remove = (event.target as HTMLElement).closest<HTMLButtonElement>("[data-delete-player]");
     if (edit) {
-      const profile = this.application.world.players.find(({ id }) => id === edit.dataset.editPlayer);
-      if (profile) this.openPlayerDialog(profile);
+      void this.application.queries.players.get(edit.dataset.editPlayer!)
+        .then((profile) => { if (profile) this.openPlayerDialog(profile); });
     }
     if (remove) {
-      const result = this.application.deletePlayer(remove.dataset.deletePlayer!);
-      if (result.ok) {
-        this.setMessage("Jogador excluído. As escalações afetadas foram recompostas.");
-        this.render();
-      } else {
-        this.setMessage(commandMessage(result.reason), true);
-      }
+      void this.application.deletePlayer(remove.dataset.deletePlayer!).then((result) => {
+        if (result.ok) {
+          this.setMessage("Jogador excluído. As escalações afetadas foram recompostas.");
+          this.render();
+        } else {
+          this.setMessage(commandMessage(result.reason), true);
+        }
+      });
     }
   }
 
@@ -152,38 +194,39 @@ export class PlayersScreen implements Screen {
     event.preventDefault();
     const data = new FormData(this.playerForm);
     const position = String(data.get("position")) as PlayerPosition;
-    const existing = this.editingPlayerId
-      ? this.application.world.players.find(({ id }) => id === this.editingPlayerId)
-      : null;
     const age = Number(data.get("age"));
     const profile: PlayerProfile = {
       id: this.editingPlayerId ?? (crypto.randomUUID?.() ?? `player-${Date.now()}`),
       name: String(data.get("name")).trim(),
       nationality: String(data.get("nationality")),
-      birthYear: this.application.world.settings.currentYear - (Number.isFinite(age) ? age : DEFAULT_AGE),
+      birthYear: this.application.settings.currentYear - (Number.isFinite(age) ? age : DEFAULT_AGE),
       position,
       // As posições secundárias ainda não têm campo próprio; são preservadas na edição e
       // ganham interface no editor de jogadores da fase seguinte.
-      secondaryPositions: (existing?.secondaryPositions ?? []).filter((secondary) => secondary !== position && secondary !== "goalkeeper" && position !== "goalkeeper"),
+      secondaryPositions: this.editedSecondaryPositions.filter((secondary) =>
+        secondary !== position && secondary !== "goalkeeper" && position !== "goalkeeper"),
       role: position === "goalkeeper" ? "defender" : String(data.get("role")) as PlayerRole,
       skills: Object.fromEntries(SKILL_FIELDS.map(({ key }) => [key, Number(data.get(key))])) as unknown as PlayerSkills,
       mental: Object.fromEntries(MENTAL_FIELDS.map(({ key }) => [key, Number(data.get(`mental-${key}`))])) as unknown as PlayerMentalAttributes,
     };
-    const result = this.application.upsertPlayer(profile);
-    if (!result.ok) {
-      this.setMessage(commandMessage(result.reason), true);
-      return;
-    }
-    this.dialog.close();
-    this.setMessage(this.editingPlayerId ? "Jogador atualizado. A partida atual não foi alterada." : "Jogador criado como agente livre.");
-    this.render();
+    const editing = this.editingPlayerId !== null;
+    void this.application.savePlayer(profile).then((result) => {
+      if (!result.ok) {
+        this.setMessage(commandMessage(result.reason), true);
+        return;
+      }
+      this.dialog.close();
+      this.setMessage(editing ? "Jogador atualizado. A partida atual não foi alterada." : "Jogador criado como agente livre.");
+      this.render();
+    });
   }
 
   private openPlayerDialog(profile?: PlayerProfile): void {
     this.editingPlayerId = profile?.id ?? null;
+    this.editedSecondaryPositions = profile?.secondaryPositions ?? [];
     this.playerForm.reset();
     this.dialogFind("#dialog-title").textContent = profile ? "Editar jogador" : "Novo jogador";
-    const currentYear = this.application.world.settings.currentYear;
+    const currentYear = this.application.settings.currentYear;
     (this.playerForm.elements.namedItem("id") as HTMLInputElement).value = profile?.id ?? "";
     (this.playerForm.elements.namedItem("name") as HTMLInputElement).value = profile?.name ?? "";
     (this.playerForm.elements.namedItem("age") as HTMLInputElement).value = String(profile ? currentYear - profile.birthYear : DEFAULT_AGE);

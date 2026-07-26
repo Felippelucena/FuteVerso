@@ -182,9 +182,11 @@ export class MatchScreen implements Screen {
   }
 
   private renderEvents(): void {
+    // Os nomes vêm dos 22 em campo, não do catálogo: um evento só cita quem está jogando.
+    const roster = this.state.players.map((player) => player.profile);
     render(this.find<HTMLOListElement>("#event-list"), html`${this.state.events.map((event) => {
       const team = "team" in event ? event.team : null;
-      return html`<li class="event-item ${team ? `event-item--${team}` : ""}"><time>${formatClock(event.time)}</time><span>${formatMatchEvent(event, this.application.world.players, this.teamNames)}</span></li>`;
+      return html`<li class="event-item ${team ? `event-item--${team}` : ""}"><time>${formatClock(event.time)}</time><span>${formatMatchEvent(event, roster, this.teamNames)}</span></li>`;
     })}`);
   }
 
@@ -274,12 +276,15 @@ export class MatchScreen implements Screen {
     this.bindSettings();
   }
 
-  private renderClubSelectors(): void {
-    const clubs = [...this.application.world.clubs].sort((first, second) => first.name.localeCompare(second.name));
+  private async renderClubSelectors(): Promise<void> {
+    const { rows } = await this.application.queries.clubs.page({ sort: "name" });
     for (const team of ["blue", "coral"] as const) {
       const select = this.settingsFind<HTMLSelectElement>(`#settings-club-${team}`);
       const current = this.application.setup?.[team].clubId;
-      render(select, html`${clubs
+      const opponent = this.application.setup?.[team === "blue" ? "coral" : "blue"].clubId;
+      // O adversário nem aparece na lista: `startMatch` recusa clubes iguais, e a tela só
+      // precisa não oferecer o que seria recusado.
+      render(select, html`${rows.filter(({ id }) => id !== opponent)
         .map((club) => html`<option value="${club.id}" ${club.id === current ? "selected" : ""}>${club.name}</option>`)}`);
     }
   }
@@ -289,28 +294,24 @@ export class MatchScreen implements Screen {
       this.settingsFind<HTMLSelectElement>(`#settings-club-${team}`).addEventListener("change", () => {
         const blue = this.settingsFind<HTMLSelectElement>("#settings-club-blue").value;
         const coral = this.settingsFind<HTMLSelectElement>("#settings-club-coral").value;
-        // Dois clubes iguais não têm elenco para os dois lados; o outro lado cede a vez.
-        const opponents = this.application.world.clubs.filter(({ id }) => id !== (team === "blue" ? blue : coral));
-        const resolved = blue === coral ? opponents[0]?.id ?? coral : team === "blue" ? coral : blue;
-        const result = team === "blue"
-          ? this.application.selectClubs(blue, resolved)
-          : this.application.selectClubs(resolved, coral);
-        if (result.ok) this.resetSelection();
-        this.renderClubSelectors();
-        this.render();
+        void this.application.selectClubs(blue, coral).then((result) => {
+          if (result.ok) this.resetSelection();
+          void this.renderClubSelectors();
+          this.render();
+        });
       });
     }
   }
 
   private bindSettings(): void {
-    this.renderClubSelectors();
+    void this.renderClubSelectors();
     this.bindClubSelectors();
     const seedInput = this.settingsFind<HTMLInputElement>("#settings-seed-input");
-    seedInput.value = String(this.application.world.settings.randomSeed);
+    seedInput.value = String(this.application.settings.randomSeed);
     const applySeed = (): void => {
       const parsed = Number(seedInput.value);
       if (!Number.isFinite(parsed)) {
-        seedInput.value = String(this.application.world.settings.randomSeed);
+        seedInput.value = String(this.application.settings.randomSeed);
         return;
       }
       seedInput.value = String(this.application.setSeed(parsed));
@@ -322,15 +323,15 @@ export class MatchScreen implements Screen {
     this.settingsFind("#settings-random-seed").addEventListener("click", () => {
       const values = new Uint32Array(1);
       crypto.getRandomValues(values);
-      const currentSeed = this.application.world.settings.randomSeed;
+      const currentSeed = this.application.settings.randomSeed;
       seedInput.value = String(values[0] === currentSeed ? (values[0] + 1) >>> 0 : values[0]);
       applySeed();
     });
     for (const button of this.root.querySelectorAll<HTMLButtonElement>("[data-open-match-settings]")) {
       button.addEventListener("click", () => {
-        seedInput.value = String(this.application.world.settings.randomSeed);
+        seedInput.value = String(this.application.settings.randomSeed);
         this.settingsFind<HTMLInputElement>("#learning-toggle").checked = this.state.learningEnabled;
-        this.renderClubSelectors();
+        void this.renderClubSelectors();
         this.settingsDialog.showModal();
       });
     }
@@ -338,9 +339,10 @@ export class MatchScreen implements Screen {
       this.application.setLearningEnabled((event.currentTarget as HTMLInputElement).checked);
     });
     this.settingsFind("#reset-learning").addEventListener("click", () => {
-      this.application.resetLearning();
-      this.resetSelection();
-      this.render();
+      void this.application.resetLearning().then(() => {
+        this.resetSelection();
+        this.render();
+      });
     });
   }
 

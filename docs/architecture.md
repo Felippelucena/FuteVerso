@@ -18,7 +18,7 @@ infrastructure ----------┴----------┘
 - `domain/club`: clubes, identidade visual e plano tático padrão.
 - `domain/contract`: vínculo jogador–clube e as consultas de elenco derivadas dele.
 - `domain/tactics`: grade de slots, plano tático, formações, encaixe de posição e escalação automática.
-- `domain/world`: agregado `World` (todo o conteúdo editável) e as regras que o mantêm coerente.
+- `domain/world`: forma serializada `World` (todo o conteúdo editável) e as regras que o mantêm coerente.
 - `domain/match`: estado, regras, IA, runtime compartilhado e sistemas determinísticos da partida.
 - `application`: sessão em execução, boot do mundo, casos de uso e portas externas.
 - `content`: catálogo gerado — listas de nomes por país, países e geradores.
@@ -32,8 +32,10 @@ infrastructure ----------┴----------┘
 2. O motor recebe somente `MatchConfig`; ele não conhece o perfil salvo nem sua origem.
 3. `MatchSession` não conhece DOM, Canvas, relógio do navegador, storage ou repository.
 4. `presentation` depende de `application`, tipos do domínio e renderer, mas não importa `infrastructure`.
-5. `World` representa todo o conteúdo editável do jogo; o repositório é quem sabe como gravá-lo.
+5. `World` é a forma serializada inteira do conteúdo editável — geração, import/export e testes. Ele **não** é o estado de execução: o catálogo mora no `Catalog` e é consultado sob demanda, porque um mundo construído pelo usuário não cabe em memória por princípio.
 5a. Elenco nunca é armazenado: `Contract` é a única fonte da verdade e `squadOf` deriva o resto.
+5c. Campo derivado (`overall`, `sortName`) existe só para o índice, é escrito exclusivamente pelo adapter e nunca volta na leitura — o domínio segue dono da fórmula.
+5d. Um filtro por consulta. O IndexedDB não cruza índices, e prometer o contrário produziria paginação com total errado.
 5b. O vocabulário tático (`BuildUpStyle`, `DefensiveBlock`, `PressTrigger`, `AttackChannel`) é declarado por `domain/tactics` e reexportado por `domain/match/model`.
 6. Eventos de partida são dados estruturados. Somente presentation converte eventos em texto.
 7. Aleatoriedade da simulação vem da semente de `MatchState`; não usar `Math.random()` dentro do domínio.
@@ -44,11 +46,17 @@ infrastructure ----------┴----------┘
 
 `MatchSession` é o limite entre a simulação determinística e o tempo real. Ela possui o `MatchState`, pausa, velocidade e acumulador do fixed timestep. `advance(realDeltaSeconds)` limita o delta, aplica o multiplicador e executa no máximo 140 ticks por chamada.
 
-`GameApplication` coordena `World`, `MatchSession` e a porta `WorldRepository`. Ela recebe o mundo já carregado por `bootstrapWorld`, persiste memórias e oferece os comandos de seed, aprendizado, escolha de clubes e CRUD de jogadores. Toda edição passa por `repairWorld`, então excluir um jogador escalado recompõe a escalação em vez de invalidá-la. Mudanças no catálogo são salvas imediatamente, mas uma partida em andamento só recebe o elenco novo quando reiniciada.
+`GameApplication` coordena `MatchSession` e a porta `Catalog`. Ela recebe as configurações já resolvidas por `bootstrapCatalog`, persiste memórias e oferece os comandos de seed, aprendizado, escolha de clubes e edição de jogadores, clubes e contratos. Mudanças são gravadas imediatamente, mas uma partida em andamento só recebe o elenco novo quando reiniciada.
+
+**Integridade incremental.** Cada comando repara só o seu raio de alcance, e o raio de uma edição de jogador é o clube a que ele está vinculado — no máximo um, porque um plano só escala quem está no próprio elenco. `repairWorld` continua valendo onde uma incoerência entra de uma vez (mundo recém-gerado ou importado); no caminho da edição ele seria O(clubes × jogadores) e não sobrevive a um catálogo grande. `inspectWorld` é diagnóstico global sob demanda, nunca automático.
+
+A apresentação recebe `queries: ReadonlyCatalog` — lê à vontade, mas gravar é privilégio dos comandos, que são quem mantém a integridade. O tipo impede o atalho.
 
 A partida **não** nasce com a aplicação: `match` é `MatchSession | null`, e num ambiente de edição o catálogo pode nem ter dois clubes. `startMatch(setup)` a põe em campo, `leaveMatch()` a congela (segue viva e retomável enquanto a aba existir) e `endMatch()` a descarta. `requireMatch()` é para as telas que só existem dentro de uma partida; quem pode viver sem ela usa `match` e trata o `null`. Um clube não pode ocupar os dois lados — a regra é do comando, não da tela.
 
-`bootstrapWorld` é o único ponto que decide entre continuar e começar do zero: lê o repositório e, se estiver vazio, gera um catálogo com `generateCatalog` e o grava.
+`bootstrapCatalog` é o único ponto que decide entre continuar e começar do zero: lê as configurações e, se o banco estiver vazio, gera um catálogo com `generateCatalog`, o repara e o grava.
+
+`Catalog` expõe quatro `Store<T>` iguais — jogadores, clubes, contratos e memórias — com `page`, `get`, `getMany`, `put` e `remove`. É a mesma interface que a tabela do editor consome, então acrescentar Estádio é acrescentar um store, não um caminho novo. A semântica de paginação (filtro, ordenação, desempate pela chave primária) vive num lugar só, em `infrastructure/persistence/paging.ts`, e os dois adapters são comparados diretamente por teste: divergência aqui é do tipo que passa despercebida — uma linha que some entre duas páginas.
 
 ## Apresentação
 

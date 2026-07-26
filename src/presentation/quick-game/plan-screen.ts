@@ -1,5 +1,6 @@
 import type { CommandError, GameApplication } from "../../application/game-application";
 import type { MatchSetup } from "../../application/match/build-match-config";
+import type { Club } from "../../domain/club/model";
 import type { PlayerProfile } from "../../domain/roster/model";
 import type { Team } from "../../domain/shared/model";
 import type { TeamTacticalPlan } from "../../domain/tactics/model";
@@ -55,7 +56,9 @@ export const planScreenDefinition = (application: GameApplication): ScreenDefini
  * receberá (uma cópia editável por time, entregue a `startMatch`) já é esta.
  */
 export class PlanScreen implements Screen {
-  private readonly plans: Record<Team, TeamTacticalPlan>;
+  private readonly plans: Partial<Record<Team, TeamTacticalPlan>> = {};
+  private readonly clubs: Partial<Record<Team, Club>> = {};
+  private readonly squads: Record<Team, PlayerProfile[]> = { blue: [], coral: [] };
 
   constructor(
     private readonly root: HTMLElement,
@@ -63,10 +66,6 @@ export class PlanScreen implements Screen {
     private readonly navigation: Navigation,
     private readonly application: GameApplication,
   ) {
-    this.plans = {
-      blue: structuredClone(this.clubOf("blue")?.defaultPlan ?? createEmptyPlan()),
-      coral: structuredClone(this.clubOf("coral")?.defaultPlan ?? createEmptyPlan()),
-    };
     for (const button of this.root.querySelectorAll<HTMLButtonElement>("[data-auto-pick]")) {
       button.addEventListener("click", () => this.autoPick(button.dataset.autoPick as Team));
     }
@@ -74,16 +73,24 @@ export class PlanScreen implements Screen {
   }
 
   render(): void {
+    void this.load();
+  }
+
+  /** Só os dois elencos saem do catálogo — a tela não conhece o tamanho do resto. */
+  private async load(): Promise<void> {
     for (const team of ["blue", "coral"] as const) {
-      const club = this.clubOf(team);
+      const club = await this.application.queries.clubs.get(this.params[team]);
+      this.clubs[team] = club ?? undefined;
+      this.squads[team] = club ? (await this.application.squadOfClub(club.id)).players : [];
+      this.plans[team] ??= structuredClone(club?.defaultPlan ?? createEmptyPlan());
       this.find(`#plan-club-${team}`).textContent = `${TEAM_LABELS[team]} · ${club?.name ?? "—"}`;
       this.renderLineup(team);
     }
   }
 
   private renderLineup(team: Team): void {
-    const squad = new Map(this.squadOf(team).map((player) => [player.id, player]));
-    const plan = this.plans[team];
+    const squad = new Map(this.squads[team].map((player) => [player.id, player]));
+    const plan = this.plans[team] ?? createEmptyPlan();
     const formation = plan.formationId ? findFormation(plan.formationId) : null;
     render(this.find(`#plan-lineup-${team}`), html`
       <div class="plan-formation">${formation?.name ?? "Personalizada"}</div>
@@ -101,33 +108,26 @@ export class PlanScreen implements Screen {
   }
 
   private autoPick(team: Team): void {
-    const plan = this.plans[team];
+    const plan = this.plans[team] ?? createEmptyPlan();
     // Reescalar mantém a formação do plano; só o preenchimento dos slots é refeito.
     const formation = (plan.formationId ? findFormation(plan.formationId) : null) ?? defaultFormation();
-    this.plans[team] = autoPickPlan(this.squadOf(team), formation, plan);
-    this.render();
+    this.plans[team] = autoPickPlan(this.squads[team], formation, plan);
+    this.renderLineup(team);
   }
 
   private start(): void {
+    if (!this.plans.blue || !this.plans.coral) return;
     const setup: MatchSetup = {
       blue: { clubId: this.params.blue, plan: this.plans.blue },
       coral: { clubId: this.params.coral, plan: this.plans.coral },
     };
-    const result = this.application.startMatch(setup);
-    if (!result.ok) {
-      this.setMessage(commandMessage(result.reason), true);
-      return;
-    }
-    this.navigation.push({ screenId: "match" });
-  }
-
-  private clubOf(team: Team) {
-    return this.application.world.clubs.find(({ id }) => id === this.params[team]) ?? null;
-  }
-
-  private squadOf(team: Team): PlayerProfile[] {
-    const club = this.clubOf(team);
-    return club ? this.application.squadOfClub(club.id) : [];
+    void this.application.startMatch(setup).then((result) => {
+      if (!result.ok) {
+        this.setMessage(commandMessage(result.reason), true);
+        return;
+      }
+      this.navigation.push({ screenId: "match" });
+    });
   }
 
   private setMessage(message: string, error = false): void {

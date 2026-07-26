@@ -6,6 +6,7 @@ import { NEUTRAL_MENTALITY, type TeamTacticalPlan } from "../../domain/tactics/m
 import { createEmptyPlan } from "../../domain/tactics/rules";
 import { PRESS_TRIGGERS } from "../../domain/tactics/vocabulary";
 import type { PlayerProfile } from "../../domain/roster/model";
+import { stripAccents } from "../../domain/shared/text";
 import { clubNamePartsFor } from "../names";
 import type { ContentRandom } from "./random";
 
@@ -29,12 +30,6 @@ const NICKNAME_PREFIXES = [
   "Os Tricolores", "O Timão", "A Máquina", "Os Alvinegros", "Os Coloradas",
   "O Furacão", "Os Leões", "Os Tubarões", "Os Guerreiros", "O Esquadrão",
 ];
-
-const stripAccents = (value: string): string =>
-  value.normalize("NFD").split("").filter((char) => {
-    const code = char.charCodeAt(0);
-    return code < 0x0300 || code > 0x036f;
-  }).join("");
 
 /** Sigla de três letras: iniciais quando dá, senão as primeiras letras da palavra principal. */
 const buildShortName = (name: string, taken: Set<string>): string => {

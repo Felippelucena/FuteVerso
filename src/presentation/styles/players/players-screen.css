@@ -25,6 +25,22 @@
   border-top: 1px solid var(--line);
 }
 
+.pager {
+  padding-top: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  color: var(--text-muted);
+  font-size: var(--type-md);
+  font-variant-numeric: tabular-nums;
+}
+
+.pager button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
 .players-table { border: 1px solid var(--line); }
 
 .player-table-row {

@@ -1,13 +1,13 @@
 import { describe, expect, it } from "vitest";
 import { createMatchState, stepMatch } from "../../domain/match";
 import { FIXED_STEP } from "../../domain/match/config";
-import { createTestSetup, createTestWorld } from "../__fixtures__/test-world";
+import { createTestContext, createTestWorld } from "../__fixtures__/test-world";
 import { buildMatchConfig } from "./build-match-config";
 import { MatchSession, SIMULATION_SPEEDS } from "./match-session";
 
 const testWorld = createTestWorld();
 
-const createConfig = (seed = 2026) => buildMatchConfig(testWorld, createTestSetup(testWorld), seed);
+const createConfig = (seed = 2026) => buildMatchConfig(createTestContext(testWorld, undefined, { seed }));
 
 const createSession = (seed = 2026): MatchSession => new MatchSession(createConfig(seed));
 

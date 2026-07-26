@@ -4,13 +4,13 @@ import { TEAM_SIZE } from "../../domain/tactics/model";
 import { DEFAULT_INSTRUCTION, instructionFor } from "../../domain/tactics/model";
 import { positionFit } from "../../domain/tactics/position-fit";
 import { findSlot, GOALKEEPER_SLOT_ID } from "../../domain/tactics/slots";
-import { createTestSetup, createTestWorld } from "../__fixtures__/test-world";
+import { createTestContext, createTestSetup, createTestWorld } from "../__fixtures__/test-world";
 import { buildMatchConfig } from "./build-match-config";
 
 describe("buildMatchConfig", () => {
   it("monta os participantes dos dois clubes com goleiro em primeiro", () => {
     const world = createTestWorld();
-    const config = buildMatchConfig(world, createTestSetup(world));
+    const config = buildMatchConfig(createTestContext(world));
 
     expect(config.participants).toHaveLength(TEAM_SIZE * 2);
     for (const team of ["blue", "coral"] as const) {
@@ -29,7 +29,7 @@ describe("buildMatchConfig", () => {
 
   it("veste cada participante com a camisa do contrato", () => {
     const world = createTestWorld();
-    const config = buildMatchConfig(world, createTestSetup(world));
+    const config = buildMatchConfig(createTestContext(world));
 
     for (const participant of config.participants) {
       const contract = world.contracts.find(({ playerId }) => playerId === participant.profile.id)!;
@@ -43,7 +43,7 @@ describe("buildMatchConfig", () => {
     const starter = setup.blue.plan.assignments[0].playerId;
     delete world.memories[starter];
 
-    const config = buildMatchConfig(world, setup, 42);
+    const config = buildMatchConfig(createTestContext(world, setup, { seed: 42 }));
 
     expect(config.seed).toBe(42);
     expect(config.participants.find(({ profile }) => profile.id === starter)?.memory.playerId).toBe(starter);
@@ -51,7 +51,7 @@ describe("buildMatchConfig", () => {
 
   it("produz um snapshot sem referências compartilhadas com o mundo", () => {
     const world = createTestWorld();
-    const config = buildMatchConfig(world, createTestSetup(world));
+    const config = buildMatchConfig(createTestContext(world));
     const participant = config.participants[0];
     const originalName = world.players.find(({ id }) => id === participant.profile.id)!.name;
 
@@ -68,23 +68,16 @@ describe("buildMatchConfig", () => {
     const intruder = squadOf(world.players, world.contracts, world.clubs[1].id)[0];
     setup.blue.plan.assignments[1] = { ...setup.blue.plan.assignments[1], playerId: intruder.id };
 
-    expect(() => buildMatchConfig(world, setup)).toThrow("Plano tático inválido");
+    expect(() => buildMatchConfig(createTestContext(world, setup))).toThrow("Plano tático inválido");
   });
 
-  it("rejeita clube fora do catálogo", () => {
-    const world = createTestWorld();
-    const setup = createTestSetup(world);
-    setup.coral.clubId = "club-inexistente";
-
-    expect(() => buildMatchConfig(world, setup)).toThrow("não existe no catálogo");
-  });
 });
 
 describe("plano tático que viaja com o participante", () => {
   it("leva slot, encaixe e instrução de cada titular", () => {
     const world = createTestWorld();
     const setup = createTestSetup(world);
-    const config = buildMatchConfig(world, setup);
+    const config = buildMatchConfig(createTestContext(world, setup));
 
     for (const team of ["blue", "coral"] as const) {
       const squad = squadOf(world.players, world.contracts, setup[team].clubId);
@@ -104,7 +97,7 @@ describe("plano tático que viaja com o participante", () => {
     const setup = createTestSetup(world);
     setup.blue.plan.instructions = {};
 
-    const config = buildMatchConfig(world, setup);
+    const config = buildMatchConfig(createTestContext(world, setup));
 
     expect(config.participants.filter(({ team }) => team === "blue")
       .every(({ instruction }) => instruction.support === DEFAULT_INSTRUCTION.support)).toBe(true);
@@ -113,7 +106,7 @@ describe("plano tático que viaja com o participante", () => {
   it("entrega instrução isolada do plano", () => {
     const world = createTestWorld();
     const setup = createTestSetup(world);
-    const config = buildMatchConfig(world, setup);
+    const config = buildMatchConfig(createTestContext(world, setup));
     const participant = config.participants[0];
 
     participant.instruction.support = "attack";

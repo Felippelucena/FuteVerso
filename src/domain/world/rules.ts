@@ -13,6 +13,18 @@ import type { World } from "./model";
 const clone = <T>(value: T): T => structuredClone(value);
 
 /**
+ * Mundo vazio. Um catálogo sem clube nenhum é estado legítimo — o conteúdo é do usuário, e ele
+ * começa de algum lugar —, então isto não é um caso de erro.
+ */
+export const emptyWorld = (): World => ({
+  players: [],
+  clubs: [],
+  contracts: [],
+  memories: {},
+  settings: { learningEnabled: true, randomSeed: 1, currentYear: 2026, catalogSeed: 0 },
+});
+
+/**
  * Reescreve o plano para caber no elenco atual: descarta titulares que saíram do clube ou
  * que caíram em slot bloqueado e recompõe o que faltar. Preserva quem continua válido, para
  * que vender um reserva não desmonte a escalação inteira.

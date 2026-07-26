@@ -1,8 +1,8 @@
 import { GameApplication } from "./application/game-application";
-import { bootstrapWorld } from "./application/world/bootstrap-world";
-import type { WorldRepository } from "./application/ports/world-repository";
-import { IndexedDbWorldRepository } from "./infrastructure/persistence/indexeddb-world-repository";
-import { MemoryWorldRepository } from "./infrastructure/persistence/memory-world-repository";
+import { bootstrapCatalog } from "./application/world/bootstrap-catalog";
+import type { Catalog } from "./application/ports/catalog";
+import { IndexedDbCatalog } from "./infrastructure/persistence/indexeddb-catalog";
+import { MemoryCatalog } from "./infrastructure/persistence/memory-catalog";
 import { AnimationLoop } from "./presentation/app/animation-loop";
 import { Navigator } from "./presentation/app/navigator";
 import { render } from "./presentation/app/dom";
@@ -21,20 +21,20 @@ const root = document.querySelector<HTMLDivElement>("#app");
 if (!root) throw new Error("Elemento raiz não encontrado.");
 
 // Sem IndexedDB (navegação privada, permissão negada) o jogo roda igual, só não guarda nada.
-const createRepository = (): WorldRepository => {
+const createCatalog = (): Catalog => {
   try {
-    if (typeof indexedDB !== "undefined") return new IndexedDbWorldRepository(indexedDB, window.localStorage);
+    if (typeof indexedDB !== "undefined") return new IndexedDbCatalog(indexedDB, window.localStorage);
   } catch {
-    // cai no repositório volátil
+    // cai no catálogo volátil
   }
-  return new MemoryWorldRepository();
+  return new MemoryCatalog();
 };
 
 const boot = async (): Promise<void> => {
   render(root, html`<div class="boot-screen"><span class="brand-mark" aria-hidden="true"></span><p>Carregando o mundo…</p></div>`);
 
-  const repository = createRepository();
-  const application = new GameApplication(await bootstrapWorld(repository), repository);
+  const catalog = createCatalog();
+  const application = new GameApplication(catalog, await bootstrapCatalog(catalog));
   const navigator = new Navigator(root, [
     menuScreenDefinition(application),
     clubSelectScreenDefinition(application),
@@ -51,10 +51,10 @@ const boot = async (): Promise<void> => {
   loop.start();
 
   // DEBUG (somente desenvolvimento): expõe o jogo no console para inspeção do estado.
-  // Ex.: window.fv.session.togglePaused(), window.fv.state.ball, window.fv.world.clubs
+  // Ex.: window.fv.session.togglePaused(), window.fv.state.ball, await window.fv.world()
   (window as unknown as { fv: unknown }).fv = {
     application,
-    repository,
+    catalog,
     navigator,
     loop,
     get session() {
@@ -63,9 +63,9 @@ const boot = async (): Promise<void> => {
     get state() {
       return application.match?.state ?? null;
     },
-    get world() {
-      return application.world;
-    },
+    // Função, e não getter: montar o mundo inteiro é uma varredura do catálogo, e no console
+    // isso precisa ser um pedido explícito.
+    world: () => catalog.exportWorld(),
   };
 };
 
