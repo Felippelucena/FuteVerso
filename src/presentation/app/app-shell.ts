@@ -4,7 +4,7 @@ import { playerDialogTemplate, playersScreenTemplate } from "../players/players-
 import { find, render } from "./dom";
 import { html } from "./html";
 import { formatMatchClock, type TeamNames } from "./labels";
-import { hydrateIcons } from "./icons";
+import { icon } from "./icons";
 
 export type AppView = "match" | "players";
 
@@ -28,8 +28,8 @@ export class AppShell {
           <div class="simulation-status"><span class="live-dot"></span><span>SIMULAÇÃO ATIVA</span></div>
         </header>
         <nav class="view-tabs" aria-label="Áreas do simulador">
-          <button type="button" class="is-active" data-view="match"><i data-lucide="goal"></i>Partida</button>
-          <button type="button" data-view="players"><i data-lucide="users"></i>Jogadores</button>
+          <button type="button" class="is-active" data-view="match">${icon("Goal")}Partida</button>
+          <button type="button" data-view="players">${icon("Users")}Jogadores</button>
         </nav>
         ${matchScreenTemplate()}
         ${playersScreenTemplate()}
@@ -44,7 +44,6 @@ export class AppShell {
     for (const button of this.root.querySelectorAll<HTMLButtonElement>("[data-view]")) {
       button.addEventListener("click", () => this.setView(button.dataset.view as AppView));
     }
-    hydrateIcons();
   }
 
   onViewChanged(listener: (view: AppView) => void): void {

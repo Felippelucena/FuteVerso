@@ -6,7 +6,7 @@ import { PLAYER_POSITIONS } from "../../domain/roster/positions";
 import { find, render } from "../app/dom";
 import { html, type Html } from "../app/html";
 import { POSITION_LABELS, POSITION_SHORT_LABELS, ROLE_LABELS } from "../app/labels";
-import { hydrateIcons } from "../app/icons";
+import { icon } from "../app/icons";
 import { createPlayersViewModel } from "./players-view-model";
 
 const SKILL_FIELDS: { key: keyof PlayerSkills; label: string }[] = [
@@ -43,7 +43,7 @@ const countryOptions = (): Html => html`${COUNTRIES
 
 export const playersScreenTemplate = (): Html => html`
   <section id="players-view" class="manager-view" hidden>
-    <div class="manager-heading"><div><span class="eyebrow">CATÁLOGO</span><h2>Jogadores</h2></div><button id="add-player" class="primary-button" type="button"><i data-lucide="plus"></i>Novo jogador</button></div>
+    <div class="manager-heading"><div><span class="eyebrow">CATÁLOGO</span><h2>Jogadores</h2></div><button id="add-player" class="primary-button" type="button">${icon("Plus")}Novo jogador</button></div>
     <p id="manager-message" class="manager-message" aria-live="polite"></p>
     <div class="players-section"><div class="section-heading"><h3>Todos os jogadores</h3><span id="player-count"></span></div><div id="players-table" class="players-table"></div></div>
   </section>`;
@@ -51,7 +51,7 @@ export const playersScreenTemplate = (): Html => html`
 export const playerDialogTemplate = (): Html => html`
   <dialog id="player-dialog" class="player-dialog">
     <form id="player-form" method="dialog">
-      <div class="dialog-heading"><div><span class="eyebrow">PERFIL</span><h2 id="dialog-title">Novo jogador</h2></div><button class="icon-button" id="close-player" type="button" aria-label="Fechar" title="Fechar"><i data-lucide="x"></i></button></div>
+      <div class="dialog-heading"><div><span class="eyebrow">PERFIL</span><h2 id="dialog-title">Novo jogador</h2></div><button class="icon-button" id="close-player" type="button" aria-label="Fechar" title="Fechar">${icon("X")}</button></div>
       <input type="hidden" name="id" />
       <div class="identity-fields">
         <label><span>Nome</span><input name="name" maxlength="32" required /></label>
@@ -64,7 +64,7 @@ export const playerDialogTemplate = (): Html => html`
       <div class="skills-heading"><strong>Personalidade</strong><span>1–100</span></div>
       <label class="mental-preset"><span>Preset mental</span><select id="mental-preset" name="mentalPreset">${Object.entries(MENTAL_PRESET_LABELS).map(([value, label]) => html`<option value="${value}">${label}</option>`)}<option value="custom">Personalizado</option></select></label>
       <div class="skills-grid mental-grid">${mentalInputs()}</div>
-      <div class="dialog-actions"><button type="button" class="secondary-button" id="cancel-player">Cancelar</button><button type="submit" class="primary-button"><i data-lucide="save"></i>Salvar jogador</button></div>
+      <div class="dialog-actions"><button type="button" class="secondary-button" id="cancel-player">Cancelar</button><button type="submit" class="primary-button">${icon("Save")}Salvar jogador</button></div>
     </form>
   </dialog>`;
 
@@ -97,9 +97,8 @@ export class PlayersScreen {
       return html`
       <div class="player-table-row"><span class="shirt shirt--neutral">${row.shirtNumber ?? "–"}</span><div class="player-table-name"><strong>${row.name}</strong><span>${row.clubName} · ${POSITION_SHORT_LABELS[row.position]}${secondary ? ` (${secondary})` : ""} · ${ROLE_LABELS[row.role]} · ${row.age} anos · ${countryName(row.nationality)} · ${dominantMentalTraits(player.mental).join(" / ")}</span></div>
         <div class="player-rating"><span>GER <strong>${row.overall}</strong></span><span>CON <strong>${player.skills.control}</strong></span><span>PAS <strong>${player.skills.passing}</strong></span><span>VEL <strong>${player.skills.sprintSpeed}</strong></span></div>
-        <div class="row-actions"><button class="icon-button" type="button" data-edit-player="${row.id}" aria-label="Editar ${row.name}" title="Editar"><i data-lucide="pencil"></i></button><button class="icon-button icon-button--danger" type="button" data-delete-player="${row.id}" aria-label="Excluir ${row.name}" title="Excluir"><i data-lucide="trash-2"></i></button></div></div>`;
+        <div class="row-actions"><button class="icon-button" type="button" data-edit-player="${row.id}" aria-label="Editar ${row.name}" title="Editar">${icon("Pencil")}</button><button class="icon-button icon-button--danger" type="button" data-delete-player="${row.id}" aria-label="Excluir ${row.name}" title="Excluir">${icon("Trash2")}</button></div></div>`;
     })}`);
-    hydrateIcons();
   }
 
   private bindEvents(): void {

@@ -9,7 +9,7 @@ import type { GameRenderer } from "../canvas/game-renderer";
 import { find, render } from "../app/dom";
 import { html, type Html } from "../app/html";
 import { DRIBBLE_RANGE_REASON_LABELS, DRIBBLE_TOUCH_LABELS, DUTY_LABELS, formatClock, INTENT_LABELS, PACE_LABELS, PASS_PURPOSE_LABELS, percentage, PHASE_LABELS, POSITION_LABELS, REASON_LABELS, ROLE_LABELS, SHOT_TECHNIQUE_LABELS, type TeamNames } from "../app/labels";
-import { hydrateIcons } from "../app/icons";
+import { icon } from "../app/icons";
 import { formatMatchEvent } from "./format-match-event";
 import { createContestMetric, createMatchHeaderViewModel, createMatchSummary } from "./match-view-model";
 
@@ -36,9 +36,9 @@ export const matchScreenTemplate = (): Html => html`
       <div class="field-toolbar">
         <div class="toolbar-title"><strong>Partida autônoma</strong><span id="possession-label">Bola em disputa</span></div>
         <div class="toolbar-actions">
-          <button class="icon-button mobile-settings-button" data-open-match-settings type="button" aria-label="Abrir configurações da partida" title="Configurações"><i data-lucide="sliders-horizontal"></i></button>
-          <button class="icon-button" id="pause-button" type="button" aria-label="Pausar simulação" title="Pausar simulação"><i data-lucide="pause"></i></button>
-          <button class="icon-button" id="reset-button" type="button" aria-label="Reiniciar partida" title="Reiniciar partida"><i data-lucide="rotate-ccw"></i></button>
+          <button class="icon-button mobile-settings-button" data-open-match-settings type="button" aria-label="Abrir configurações da partida" title="Configurações">${icon("SlidersHorizontal")}</button>
+          <button class="icon-button" id="pause-button" type="button" aria-label="Pausar simulação" title="Pausar simulação">${icon("Pause")}</button>
+          <button class="icon-button" id="reset-button" type="button" aria-label="Reiniciar partida" title="Reiniciar partida">${icon("RotateCcw")}</button>
           <div class="speed-control" aria-label="Velocidade da simulação">
             ${SIMULATION_SPEEDS.map((speed) => html`<button type="button" data-speed="${speed}" class="${speed === 1 ? "is-active" : ""}">${speed}×</button>`)}
           </div>
@@ -46,7 +46,7 @@ export const matchScreenTemplate = (): Html => html`
       </div>
       <div class="canvas-wrap"><canvas id="game-canvas" aria-label="Campo de futebol com oito agentes autônomos"></canvas></div>
       <div class="timeline" aria-label="Linha do tempo da partida">
-        <button class="icon-button" id="live-button" type="button" aria-label="Voltar ao vivo" title="Voltar ao vivo" disabled><i data-lucide="radio"></i></button>
+        <button class="icon-button" id="live-button" type="button" aria-label="Voltar ao vivo" title="Voltar ao vivo" disabled>${icon("Radio")}</button>
         <input id="timeline-slider" class="timeline-slider" type="range" min="0" max="0" value="0" step="1" aria-label="Posição na linha do tempo" />
         <span class="timeline-clock"><span id="timeline-view">0:00</span> / <span id="timeline-live">0:00</span></span>
       </div>
@@ -59,7 +59,7 @@ export const matchScreenTemplate = (): Html => html`
     <aside class="inspector" aria-label="Painel da partida">
       <div class="inspector-heading">
         <div><span class="eyebrow">CENTRAL DA PARTIDA</span><h2>Leitura ao vivo</h2></div>
-        <button class="icon-button" data-open-match-settings type="button" aria-label="Abrir configurações da partida" title="Configurações"><i data-lucide="sliders-horizontal"></i></button>
+        <button class="icon-button" data-open-match-settings type="button" aria-label="Abrir configurações da partida" title="Configurações">${icon("SlidersHorizontal")}</button>
       </div>
       <div class="inspector-tabs" role="tablist" aria-label="Dados da partida">
         <button type="button" role="tab" aria-selected="true" aria-controls="inspector-players" class="is-active" data-inspector-tab="players">Jogadores</button>
@@ -87,7 +87,7 @@ export const matchScreenTemplate = (): Html => html`
 export const matchSettingsTemplate = (): Html => html`
   <dialog id="match-settings-dialog" class="settings-dialog">
     <form method="dialog">
-      <div class="dialog-heading"><div><span class="eyebrow">PARTIDA</span><h2>Configurações</h2></div><button class="icon-button" value="cancel" aria-label="Fechar configurações" title="Fechar"><i data-lucide="x"></i></button></div>
+      <div class="dialog-heading"><div><span class="eyebrow">PARTIDA</span><h2>Configurações</h2></div><button class="icon-button" value="cancel" aria-label="Fechar configurações" title="Fechar">${icon("X")}</button></div>
       <div class="settings-group">
         <div><strong>Times em campo</strong><p>Trocar de clube reinicia a partida com o plano padrão de cada um.</p></div>
         <div class="seed-control seed-control--dialog" aria-label="Clubes da partida">
@@ -99,7 +99,7 @@ export const matchSettingsTemplate = (): Html => html`
         <div><strong>Semente da partida</strong><p>Use o mesmo número para reproduzir uma simulação.</p></div>
         <div class="seed-control seed-control--dialog" aria-label="Semente da partida">
           <input id="settings-seed-input" type="number" min="0" max="4294967295" step="1" inputmode="numeric" aria-label="Semente numérica da partida" />
-          <button id="settings-random-seed" type="button" aria-label="Gerar nova semente" title="Gerar nova semente"><i data-lucide="dices"></i></button>
+          <button id="settings-random-seed" type="button" aria-label="Gerar nova semente" title="Gerar nova semente">${icon("Dices")}</button>
         </div>
       </div>
       <div class="settings-group settings-group--inline">
@@ -300,10 +300,9 @@ export class MatchScreen {
   private renderPauseButton(): void {
     const paused = this.application.match.paused;
     const button = this.find<HTMLButtonElement>("#pause-button");
-    render(button, html`<i data-lucide="${paused ? "play" : "pause"}"></i>`);
+    render(button, icon(paused ? "Play" : "Pause"));
     button.setAttribute("aria-label", paused ? "Continuar simulação" : "Pausar simulação");
     button.title = paused ? "Continuar simulação" : "Pausar simulação";
-    hydrateIcons();
   }
 
   private activateInspectorTab(button: HTMLButtonElement): void {
