@@ -151,12 +151,6 @@ select {
   white-space: nowrap;
 }
 
-.roster-player > i {
-  color: var(--muted);
-  font-size: 8px;
-  font-style: normal;
-  font-variant-numeric: tabular-nums;
-}
 
 .stamina-meter {
   display: flex;
@@ -382,43 +376,12 @@ select {
 
 .manager-message.is-error { color: #ff9e8b; }
 
-.lineup-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  border: 1px solid var(--line);
-  background: var(--line);
-  gap: 1px;
-}
 
-.lineup-panel {
-  padding: 18px;
-  background: var(--panel);
-}
 
-.lineup-title {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
 
-.lineup-title > span {
-  width: 4px;
-  height: 34px;
-  background: var(--blue);
-}
 
-.lineup-panel--coral .lineup-title > span { background: var(--coral); }
-.lineup-title small { color: var(--muted); font-size: 8px; }
-.lineup-title h3 { margin: 0; font-size: 15px; }
 
-.lineup-slots {
-  margin-top: 14px;
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 9px;
-}
 
-.lineup-slots label,
 .identity-fields label,
 .skill-field,
 .mental-preset {
@@ -428,7 +391,6 @@ select {
   gap: 5px;
 }
 
-.lineup-slots label > span,
 .identity-fields label > span,
 .skill-field > span,
 .mental-preset > span {
@@ -437,7 +399,6 @@ select {
   font-weight: 700;
 }
 
-.lineup-slots select,
 .identity-fields input,
 .identity-fields select,
 .skill-field input,
@@ -451,7 +412,6 @@ select {
   font-size: 11px;
 }
 
-.lineup-slots select:focus,
 .identity-fields input:focus,
 .identity-fields select:focus,
 .skill-field input:focus,
@@ -553,7 +513,6 @@ select {
 @media (max-width: 900px) {
   .match-roster { grid-template-columns: 1fr; }
   .roster-team + .roster-team { border-left: 0; border-top: 1px solid var(--line); }
-  .lineup-grid { grid-template-columns: 1fr; }
   .identity-fields { grid-template-columns: 1fr 0.5fr; }
   .skills-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 }
@@ -562,8 +521,6 @@ select {
   .view-tabs { padding-inline: 12px; }
   .manager-view { padding: 16px 12px 30px; }
   .manager-heading { align-items: flex-end; }
-  .lineup-panel { padding: 14px; }
-  .lineup-slots { grid-template-columns: 1fr; }
   .player-table-row { grid-template-columns: 34px minmax(0, 1fr) auto; }
   .player-rating { grid-column: 2 / 4; grid-row: 2; }
   .row-actions { grid-column: 3; grid-row: 1; }
@@ -609,8 +566,6 @@ input {
 }
 
 .brand-lockup,
-.agent-identity,
-.learning-copy,
 .inspector-heading {
   display: flex;
   align-items: center;
@@ -805,16 +760,6 @@ p {
   background: #151b18;
 }
 
-.seed-control label {
-  padding: 0 8px;
-  display: flex;
-  align-items: center;
-  border-right: 1px solid var(--line);
-  color: var(--muted);
-  font-size: 8px;
-  font-weight: 800;
-  letter-spacing: 0.06em;
-}
 
 .seed-control input {
   min-width: 0;
@@ -921,37 +866,10 @@ p {
   display: block;
 }
 
-.canvas-legend {
-  position: absolute;
-  left: 20px;
-  bottom: 14px;
-  display: flex;
-  gap: 18px;
-  color: rgba(255, 255, 255, 0.76);
-  font-size: 10px;
-  font-weight: 650;
-  pointer-events: none;
-}
 
-.canvas-legend span {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
 
-.legend-dot {
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-}
 
-.legend-dot--blue {
-  background: var(--blue);
-}
 
-.legend-dot--coral {
-  background: var(--coral);
-}
 
 .match-strip {
   min-height: 58px;
@@ -1110,41 +1028,11 @@ p {
   color: var(--muted);
 }
 
-.agent-block {
-  padding: 16px 18px;
-  border-bottom: 1px solid var(--line);
-}
 
-.agent-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-}
 
-.agent-identity {
-  min-width: 0;
-  gap: 10px;
-}
 
-.agent-identity > div {
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-}
 
-.agent-identity strong {
-  font-size: 13px;
-}
 
-.agent-identity small {
-  overflow: hidden;
-  color: var(--muted);
-  font-size: 8px;
-  font-weight: 750;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
 
 .shirt {
   width: 34px;
@@ -1184,77 +1072,20 @@ p {
   color: #ff9b87;
 }
 
-.attributes {
-  margin-top: 14px;
-  display: grid;
-  gap: 7px;
-}
 
-.attribute-row {
-  display: grid;
-  grid-template-columns: 64px 1fr 24px;
-  align-items: center;
-  gap: 8px;
-  color: var(--muted);
-  font-size: 9px;
-}
 
-.attribute-row strong {
-  color: #d9dfdb;
-  font-size: 9px;
-  text-align: right;
-  font-variant-numeric: tabular-nums;
-}
 
-.attribute-track {
-  height: 3px;
-  overflow: hidden;
-  background: #303833;
-}
 
-.attribute-track i {
-  height: 100%;
-  display: block;
-  background: #93a29a;
-}
 
-.policy-line {
-  margin-top: 12px;
-  padding-top: 10px;
-  display: flex;
-  justify-content: space-between;
-  border-top: 1px solid #2a312d;
-  color: var(--muted);
-  font-size: 8px;
-  font-weight: 700;
-  font-variant-numeric: tabular-nums;
-}
 
-.learning-section,
 .events-section {
   padding: 16px 18px;
   border-bottom: 1px solid var(--line);
 }
 
-.learning-copy {
-  justify-content: space-between;
-}
 
-.learning-copy > div {
-  display: flex;
-  flex-direction: column;
-}
 
-.learning-copy strong {
-  font-size: 13px;
-}
 
-.learning-section p {
-  margin-top: 8px;
-  color: var(--muted);
-  font-size: 10px;
-  line-height: 1.5;
-}
 
 .switch {
   cursor: pointer;
@@ -1304,23 +1135,7 @@ p {
   outline-offset: 2px;
 }
 
-.text-button {
-  margin-top: 12px;
-  padding: 0;
-  border: 0;
-  background: transparent;
-  color: #c8d1cc;
-  font-size: 10px;
-  font-weight: 700;
-  text-decoration: underline;
-  text-underline-offset: 3px;
-  cursor: pointer;
-}
 
-.events-section > .eyebrow {
-  display: block;
-  margin-bottom: 8px;
-}
 
 .event-list {
   margin: 0;
@@ -1406,11 +1221,6 @@ p {
     grid-row: 3;
   }
 
-  .learning-section {
-    grid-column: 1;
-    grid-row: 4;
-  }
-
   .events-section {
     grid-column: 2;
     grid-row: 4;
@@ -1479,13 +1289,6 @@ p {
     min-height: 300px;
   }
 
-  .canvas-legend {
-    left: 12px;
-    right: 12px;
-    justify-content: space-between;
-    gap: 6px;
-  }
-
   .match-strip {
     padding: 10px 12px;
     gap: 8px;
@@ -1503,7 +1306,6 @@ p {
   .inspector .match-roster,
   .player-detail,
   .analysis-section,
-  .learning-section,
   .events-section {
     grid-column: auto;
     grid-row: auto;
