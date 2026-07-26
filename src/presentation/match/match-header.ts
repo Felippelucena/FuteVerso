@@ -13,8 +13,8 @@ const template = (): Html => html`
   <div class="simulation-status"><span class="live-dot"></span><span id="simulation-state">SIMULAÇÃO ATIVA</span></div>`;
 
 /**
- * Status da sessão, não conteúdo de tela: a partida segue enquanto se navega pelo catálogo, e o
- * placar segue junto. Por isso é o laço que o atualiza, e não a tela ativa.
+ * Status da sessão, não conteúdo de tela: por isso é o laço que o atualiza, e não a tela ativa.
+ * Fora da partida o navegador esconde a faixa inteira — aqui basta não ter o que dizer.
  */
 export class MatchHeader {
   constructor(
@@ -25,9 +25,11 @@ export class MatchHeader {
   }
 
   render(): void {
-    const state = this.application.state;
+    const match = this.application.match;
+    if (!match) return;
+    const state = match.state;
     const names = teamNamesOf(this.application);
-    const paused = this.application.match.paused;
+    const paused = match.paused;
     this.find("#score-blue").textContent = String(state.stats.blue.goals);
     this.find("#score-coral").textContent = String(state.stats.coral.goals);
     this.find("#score-name-blue").textContent = names.blue;

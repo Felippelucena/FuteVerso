@@ -9,7 +9,8 @@
 
 @import "./app/app-shell.css";
 @import "./app/topbar.css";
-@import "./app/view-tabs.css";
+@import "./app/screen-host.css";
+@import "./app/entity-tabs.css";
 
 @import "./components/brand-mark.css";
 @import "./components/heading-row.css";
@@ -30,6 +31,11 @@
 @import "./match/events.css";
 @import "./match/settings-dialog.css";
 
+@import "./menu/menu-screen.css";
+@import "./quick-game/club-select.css";
+@import "./quick-game/plan.css";
+
+@import "./editor/editor-screen.css";
 @import "./players/players-screen.css";
 @import "./players/player-dialog.css";
 

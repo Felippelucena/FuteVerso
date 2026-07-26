@@ -1,5 +1,5 @@
-/* 4 x 4 navigation and roster */
-.view-tabs {
+/* Abas de entidade do editor. */
+.entity-tabs {
   min-height: 42px;
   padding: 0 24px;
   display: flex;
@@ -9,7 +9,7 @@
   background: var(--surface-1);
 }
 
-.view-tabs button {
+.entity-tabs button {
   height: 42px;
   padding: 0 14px;
   display: inline-flex;
@@ -24,19 +24,19 @@
   cursor: pointer;
 }
 
-.view-tabs button:hover,
-.view-tabs button:focus-visible,
-.view-tabs button.is-active {
+.entity-tabs button:hover,
+.entity-tabs button:focus-visible,
+.entity-tabs button.is-active {
   color: var(--text);
   border-bottom-color: var(--lime);
   outline: none;
 }
 
-.view-tabs svg {
+.entity-tabs svg {
   width: 15px;
   height: 15px;
 }
 
 @media (max-width: 680px) {
-  .view-tabs { padding-inline: 12px; }
+  .entity-tabs { padding-inline: 12px; }
 }

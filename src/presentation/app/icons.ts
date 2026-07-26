@@ -1,4 +1,6 @@
 import {
+  ChevronLeft,
+  ChevronRight,
   Dices,
   Goal,
   Pause,
@@ -8,16 +10,21 @@ import {
   Radio,
   RotateCcw,
   Save,
+  Shield,
   SlidersHorizontal,
   Trash2,
   Users,
+  Wand2,
   X,
   type IconNode,
   type SVGProps,
 } from "lucide";
 import { html, type Html } from "./html";
 
-const UI_ICONS = { Dices, Goal, Pause, Pencil, Play, Plus, Radio, RotateCcw, Save, SlidersHorizontal, Trash2, Users, X };
+const UI_ICONS = {
+  ChevronLeft, ChevronRight, Dices, Goal, Pause, Pencil, Play, Plus, Radio,
+  RotateCcw, Save, Shield, SlidersHorizontal, Trash2, Users, Wand2, X,
+};
 
 export type IconName = keyof typeof UI_ICONS;
 

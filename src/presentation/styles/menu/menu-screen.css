@@ -1,0 +1,81 @@
+.menu-view {
+  padding: 40px 24px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 28px;
+  overflow-y: auto;
+}
+
+.menu-hero {
+  text-align: center;
+}
+
+.menu-hero h2 {
+  margin-top: 6px;
+  font-size: var(--type-display);
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+.menu-hero p {
+  margin-top: 8px;
+  color: var(--text-muted);
+  font-size: var(--type-lg);
+}
+
+.menu-actions {
+  width: min(760px, 100%);
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: 12px;
+}
+
+.menu-card {
+  min-height: 132px;
+  padding: 18px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  background: var(--surface-1);
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+}
+
+.menu-card:hover,
+.menu-card:focus-visible {
+  border-color: var(--lime);
+  background: var(--surface-2);
+  outline: none;
+}
+
+.menu-card svg {
+  width: 22px;
+  height: 22px;
+  color: var(--lime);
+}
+
+.menu-card strong {
+  font-size: var(--type-xl);
+}
+
+.menu-card span {
+  color: var(--text-muted);
+  font-size: var(--type-md);
+  line-height: 1.45;
+}
+
+.menu-message {
+  min-height: 18px;
+  color: var(--text-muted);
+  font-size: var(--type-md);
+}
+
+.menu-message.is-error {
+  color: var(--coral);
+}

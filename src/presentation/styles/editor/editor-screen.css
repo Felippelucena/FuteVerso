@@ -1,0 +1,19 @@
+.editor-view {
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.entity-host {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.entity-host > * {
+  flex: 1;
+  min-height: 0;
+}

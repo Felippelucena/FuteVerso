@@ -10,7 +10,10 @@ import { GameApplication } from "./game-application";
 const createApplication = (clubCount = 3) => {
   const world = createTestWorld(clubCount);
   const repository = new MemoryWorldRepository(world);
-  return { application: new GameApplication(world, repository), repository };
+  const application = new GameApplication(world, repository);
+  // A partida não nasce com a aplicação: é o fluxo de Jogo Rápido que a põe em campo.
+  application.startMatch(application.suggestedSetup()!);
+  return { application, repository };
 };
 
 const newPlayer = (overrides: Partial<PlayerProfile> = {}): PlayerProfile => ({
@@ -41,9 +44,35 @@ describe("GameApplication", () => {
 
   it("abre a partida com os dois primeiros clubes do catálogo", () => {
     const { application } = context;
-    expect(application.clubOf("blue").id).toBe(application.world.clubs[0].id);
-    expect(application.clubOf("coral").id).toBe(application.world.clubs[1].id);
+    expect(application.clubOf("blue")!.id).toBe(application.world.clubs[0].id);
+    expect(application.clubOf("coral")!.id).toBe(application.world.clubs[1].id);
     expect(application.state.players).toHaveLength(TEAM_SIZE * 2);
+  });
+
+  it("não tem partida antes de o fluxo de jogo iniciar uma", () => {
+    const world = createTestWorld(3);
+    const application = new GameApplication(world, new MemoryWorldRepository(world));
+
+    expect(application.match).toBeNull();
+    expect(application.setup).toBeNull();
+    expect(() => application.state).toThrow();
+
+    expect(application.startMatch(application.suggestedSetup()!)).toEqual({ ok: true });
+    expect(application.match).not.toBeNull();
+  });
+
+  it("recusa o mesmo clube dos dois lados", () => {
+    const { application } = context;
+    const only = application.world.clubs[0];
+    expect(application.selectClubs(only.id, only.id)).toEqual({ ok: false, reason: "same-club" });
+  });
+
+  it("congela a partida ao sair, sem descartá-la", () => {
+    const { application } = context;
+    application.leaveMatch();
+
+    expect(application.match).not.toBeNull();
+    expect(application.match!.paused).toBe(true);
   });
 
   it("troca os clubes em campo e reinicia a partida", () => {
@@ -53,7 +82,7 @@ describe("GameApplication", () => {
     const result = application.selectClubs(third.id, application.world.clubs[0].id);
 
     expect(result).toEqual({ ok: true });
-    expect(application.clubOf("blue").id).toBe(third.id);
+    expect(application.clubOf("blue")!.id).toBe(third.id);
     expect(application.state.elapsed).toBe(0);
     const inPlay = new Set(application.state.players.map((player) => player.profile.id));
     expect(squadOf(application.world.players, application.world.contracts, third.id)

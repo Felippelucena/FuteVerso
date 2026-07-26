@@ -12,46 +12,96 @@ import { buildMatchConfig, type MatchSetup } from "./match/build-match-config";
 import { MatchSession } from "./match/match-session";
 import type { WorldRepository } from "./ports/world-repository";
 
-export type CommandError = "invalid-player" | "player-not-found" | "club-not-found" | "invalid-plan";
+export type CommandError =
+  | "invalid-player"
+  | "player-not-found"
+  | "club-not-found"
+  | "invalid-plan"
+  /** Um clube não tem elenco para os dois lados; a regra é do comando, não da tela. */
+  | "same-club";
 export type CommandResult = { ok: true } | { ok: false; reason: CommandError };
 
 const clone = <T>(value: T): T => structuredClone(value);
 
-/** Escolhe dois clubes distintos para a partida de abertura. */
-const defaultSetup = (world: World): MatchSetup => {
-  const [home, away] = world.clubs;
-  if (!home || !away) throw new Error("O catálogo precisa de pelo menos dois clubes.");
-  return {
-    blue: { clubId: home.id, plan: clone(home.defaultPlan) },
-    coral: { clubId: away.id, plan: clone(away.defaultPlan) },
-  };
-};
-
 export class GameApplication {
   private currentWorld: World;
-  private currentSetup: MatchSetup;
-  readonly match: MatchSession;
+  private currentSetup: MatchSetup | null = null;
+  private currentMatch: MatchSession | null = null;
 
   constructor(world: World, private readonly repository: WorldRepository) {
     this.currentWorld = world;
-    this.currentSetup = defaultSetup(world);
-    this.match = new MatchSession(buildMatchConfig(this.currentWorld, this.currentSetup));
   }
 
   get world(): World {
     return this.currentWorld;
   }
 
-  get setup(): MatchSetup {
+  /**
+   * A partida só existe dentro do fluxo de jogo — num ambiente de edição o catálogo pode nem
+   * ter dois clubes. Fora dela, `null` é o estado normal, não um defeito.
+   */
+  get match(): MatchSession | null {
+    return this.currentMatch;
+  }
+
+  get setup(): MatchSetup | null {
     return this.currentSetup;
   }
 
-  get state(): MatchState {
-    return this.match.state;
+  /** Para as telas que só existem dentro de uma partida; o navegador garante a precondição. */
+  requireMatch(): MatchSession {
+    if (!this.currentMatch) throw new Error("Nenhuma partida em andamento.");
+    return this.currentMatch;
   }
 
-  clubOf(team: Team): Club {
-    return this.currentWorld.clubs.find(({ id }) => id === this.currentSetup[team].clubId)!;
+  get state(): MatchState {
+    return this.requireMatch().state;
+  }
+
+  /** Dois primeiros clubes do catálogo: o palpite que abre o fluxo de Jogo Rápido. */
+  suggestedSetup(): MatchSetup | null {
+    const [home, away] = this.currentWorld.clubs;
+    if (!home || !away) return null;
+    return {
+      blue: { clubId: home.id, plan: clone(home.defaultPlan) },
+      coral: { clubId: away.id, plan: clone(away.defaultPlan) },
+    };
+  }
+
+  /** Põe uma partida em campo, criando a sessão ou reaproveitando a que existe. */
+  startMatch(setup: MatchSetup): CommandResult {
+    const blue = this.currentWorld.clubs.find(({ id }) => id === setup.blue.clubId);
+    const coral = this.currentWorld.clubs.find(({ id }) => id === setup.coral.clubId);
+    if (!blue || !coral) return { ok: false, reason: "club-not-found" };
+    if (blue.id === coral.id) return { ok: false, reason: "same-club" };
+    if (this.planIssues(setup.blue.plan, blue.id) || this.planIssues(setup.coral.plan, coral.id)) {
+      return { ok: false, reason: "invalid-plan" };
+    }
+    this.currentSetup = setup;
+    const config = buildMatchConfig(this.currentWorld, setup);
+    if (this.currentMatch) this.currentMatch.restart(config);
+    else this.currentMatch = new MatchSession(config);
+    return { ok: true };
+  }
+
+  /** Sair da partida a congela: ela segue viva e retomável enquanto a aba existir. */
+  leaveMatch(): void {
+    if (!this.currentMatch) return;
+    this.currentMatch.setPaused(true);
+    this.persistMatchProgress();
+  }
+
+  /** Descarta a partida de vez. O progresso ainda é gravado antes de sumir. */
+  endMatch(): void {
+    if (!this.currentMatch) return;
+    this.persistMatchProgress();
+    this.currentMatch = null;
+    this.currentSetup = null;
+  }
+
+  clubOf(team: Team): Club | null {
+    const clubId = this.currentSetup?.[team].clubId;
+    return this.currentWorld.clubs.find(({ id }) => id === clubId) ?? null;
   }
 
   squadOfClub(clubId: string): PlayerProfile[] {
@@ -59,8 +109,9 @@ export class GameApplication {
   }
 
   persistMatchProgress(): void {
+    if (!this.currentMatch) return;
     // Sempre persiste a fronteira ao vivo, mesmo que a linha do tempo esteja rebobinada.
-    const liveState = this.match.liveState;
+    const liveState = this.currentMatch.liveState;
     for (const memory of extractPlayerMemories(liveState)) {
       this.currentWorld.memories[memory.playerId] = clone(memory);
     }
@@ -71,24 +122,18 @@ export class GameApplication {
 
   restartMatch(): void {
     this.persistMatchProgress();
-    this.match.restart(buildMatchConfig(this.currentWorld, this.currentSetup));
+    this.rebuildMatch();
   }
 
-  /** Troca os clubes em campo. A partida só recebe o elenco novo ao reiniciar. */
+  /** Troca os clubes em campo, cada um com seu plano padrão, e recomeça. */
   selectClubs(blueClubId: string, coralClubId: string): CommandResult {
     const blue = this.currentWorld.clubs.find(({ id }) => id === blueClubId);
     const coral = this.currentWorld.clubs.find(({ id }) => id === coralClubId);
     if (!blue || !coral) return { ok: false, reason: "club-not-found" };
-    const setup: MatchSetup = {
+    return this.startMatch({
       blue: { clubId: blue.id, plan: clone(blue.defaultPlan) },
       coral: { clubId: coral.id, plan: clone(coral.defaultPlan) },
-    };
-    if (this.planIssues(setup.blue.plan, blue.id) || this.planIssues(setup.coral.plan, coral.id)) {
-      return { ok: false, reason: "invalid-plan" };
-    }
-    this.currentSetup = setup;
-    this.match.restart(buildMatchConfig(this.currentWorld, this.currentSetup));
-    return { ok: true };
+    });
   }
 
   setSeed(seed: number): number {
@@ -97,12 +142,12 @@ export class GameApplication {
     this.persistMatchProgress();
     this.currentWorld.settings.randomSeed = normalized;
     void this.repository.saveProgress(this.currentWorld).catch(() => undefined);
-    this.match.restart(buildMatchConfig(this.currentWorld, this.currentSetup));
+    this.rebuildMatch();
     return normalized;
   }
 
   setLearningEnabled(enabled: boolean): void {
-    this.match.setLearningEnabled(enabled);
+    this.currentMatch?.setLearningEnabled(enabled);
     this.currentWorld.settings.learningEnabled = enabled;
     this.persistMatchProgress();
   }
@@ -112,7 +157,13 @@ export class GameApplication {
       this.currentWorld.players.map((player) => [player.id, createMemory(player)]),
     );
     void this.repository.save(this.currentWorld).catch(() => undefined);
-    this.match.restart(buildMatchConfig(this.currentWorld, this.currentSetup));
+    this.rebuildMatch();
+  }
+
+  /** Único ponto que remonta a partida a partir do mundo atual. Sem partida, não faz nada. */
+  private rebuildMatch(): void {
+    if (!this.currentMatch || !this.currentSetup) return;
+    this.currentMatch.restart(buildMatchConfig(this.currentWorld, this.currentSetup));
   }
 
   upsertPlayer(player: PlayerProfile): CommandResult {
@@ -165,10 +216,12 @@ export class GameApplication {
   }
 
   /** Após uma edição, recarrega os planos em campo a partir dos clubes já reparados. */
-  private refreshedSetup(): MatchSetup {
+  private refreshedSetup(): MatchSetup | null {
+    const setup = this.currentSetup;
+    if (!setup) return null;
     const rebuild = (team: Team) => {
-      const club = this.currentWorld.clubs.find(({ id }) => id === this.currentSetup[team].clubId);
-      return club ? { clubId: club.id, plan: clone(club.defaultPlan) } : this.currentSetup[team];
+      const club = this.currentWorld.clubs.find(({ id }) => id === setup[team].clubId);
+      return club ? { clubId: club.id, plan: clone(club.defaultPlan) } : setup[team];
     };
     return { blue: rebuild("blue"), coral: rebuild("coral") };
   }

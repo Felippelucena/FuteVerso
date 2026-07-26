@@ -7,7 +7,8 @@ import { find, render } from "../app/dom";
 import { html, type Html } from "../app/html";
 import { POSITION_LABELS, POSITION_SHORT_LABELS, ROLE_LABELS } from "../app/labels";
 import { icon } from "../app/icons";
-import type { Screen, ScreenDefinition } from "../app/screen";
+import type { Screen } from "../app/screen";
+import type { EditorEntity } from "../editor/editor-screen";
 import { createPlayersViewModel } from "./players-view-model";
 
 const SKILL_FIELDS: { key: keyof PlayerSkills; label: string }[] = [
@@ -43,11 +44,12 @@ const countryOptions = (): Html => html`${COUNTRIES
   .map((country) => html`<option value="${country.code}">${country.name}</option>`)}`;
 
 const playersScreenTemplate = (): Html => html`
-  <section data-screen="players" class="manager-view" hidden>
+  <div class="manager-view">
     <div class="manager-heading"><div><span class="eyebrow">CATÁLOGO</span><h2>Jogadores</h2></div><button id="add-player" class="primary-button" type="button">${icon("Plus")}Novo jogador</button></div>
     <p id="manager-message" class="manager-message" aria-live="polite"></p>
     <div class="players-section"><div class="section-heading"><h3>Todos os jogadores</h3><span id="player-count"></span></div><div id="players-table" class="players-table"></div></div>
-  </section>`;
+    ${playerDialogTemplate()}
+  </div>`;
 
 const playerDialogTemplate = (): Html => html`
   <dialog id="player-dialog" class="player-dialog">
@@ -76,14 +78,16 @@ const commandMessage = (reason: CommandError): string => {
   return "Essa alteração deixaria um plano tático inválido.";
 };
 
-export const playersScreenDefinition = (application: GameApplication): ScreenDefinition => ({
+/** Entidade do editor. O descritor genérico da fase seguinte substitui esta montagem manual. */
+export const playersEntity: EditorEntity = {
   id: "players",
   label: "Jogadores",
   icon: "Users",
-  template: playersScreenTemplate,
-  dialogs: playerDialogTemplate,
-  mount: ({ root, dialogs }) => new PlayersScreen(root, find(dialogs, "#player-dialog"), application),
-});
+  mount: (host, application) => {
+    render(host, playersScreenTemplate());
+    return new PlayersScreen(host, find(host, "#player-dialog"), application);
+  },
+};
 
 export class PlayersScreen implements Screen {
   private editingPlayerId: string | null = null;

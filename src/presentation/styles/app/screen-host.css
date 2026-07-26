@@ -1,0 +1,29 @@
+/*
+ * As telas montadas são irmãs no host; o navegador mostra uma e esconde as outras. O host é
+ * quem carrega o `flex: 1`, não cada tela — assim uma tela nova não precisa saber disso.
+ */
+.screen-host {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.screen-slot {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.screen-slot > * {
+  flex: 1;
+  min-height: 0;
+}
+
+.back-button {
+  flex-shrink: 0;
+}

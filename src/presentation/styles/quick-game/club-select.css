@@ -1,0 +1,106 @@
+.club-select-view,
+.plan-view {
+  padding: 18px 24px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  overflow-y: auto;
+}
+
+.club-select-grid,
+.plan-grid {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.club-column,
+.plan-column {
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  border: 1px solid var(--line);
+  border-top-width: 3px;
+  border-radius: var(--radius-md);
+  padding: 12px;
+  background: var(--surface-1);
+}
+
+.club-column--blue,
+.plan-column--blue { border-top-color: var(--blue); }
+
+.club-column--coral,
+.plan-column--coral { border-top-color: var(--coral); }
+
+.club-list {
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  overflow-y: auto;
+}
+
+.club-option {
+  padding: 9px 11px;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  grid-template-rows: auto auto;
+  align-items: center;
+  column-gap: 10px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+}
+
+.club-option:hover:not(:disabled),
+.club-option:focus-visible {
+  background: var(--surface-2);
+  outline: none;
+}
+
+.club-option.is-selected {
+  border-color: var(--lime);
+  background: var(--surface-2);
+}
+
+.club-option:disabled {
+  opacity: 0.38;
+  cursor: not-allowed;
+}
+
+.club-crest {
+  grid-row: 1 / -1;
+  width: 22px;
+  height: 22px;
+  border-radius: var(--radius-round);
+  background: linear-gradient(135deg, var(--crest) 50%, var(--crest-alt) 50%);
+}
+
+.club-option-name {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  font-size: var(--type-lg);
+}
+
+.club-option-name strong {
+  color: var(--lime);
+  font-size: var(--type-sm);
+  letter-spacing: 0.5px;
+}
+
+.club-option-meta {
+  color: var(--text-muted);
+  font-size: var(--type-xs);
+}
+
+@media (max-width: 780px) {
+  .club-select-grid,
+  .plan-grid { grid-template-columns: minmax(0, 1fr); }
+}

@@ -35,7 +35,8 @@ export class AnimationLoop {
     if (!this.running) return;
     const realDelta = (now - this.previousTime) / 1000;
     this.previousTime = now;
-    const steps = this.application.match.advance(realDelta);
+    // Fora do fluxo de jogo não há partida; o laço segue vivo só para repintar a tela ativa.
+    const steps = this.application.match?.advance(realDelta) ?? 0;
     const screen = this.activeScreen();
     // O canvas é repintado todo frame porque o resize limpa o backing store.
     screen.frame?.();

@@ -1,6 +1,6 @@
 import type { GameApplication } from "../../application/game-application";
-import { SIMULATION_SPEEDS, type SimulationSpeed } from "../../application/match/match-session";
-import type { AssignmentDuty } from "../../domain/match/model";
+import { MatchSession, SIMULATION_SPEEDS, type SimulationSpeed } from "../../application/match/match-session";
+import type { AssignmentDuty, MatchState } from "../../domain/match/model";
 import type { Team } from "../../domain/shared/model";
 import { GameRenderer } from "../canvas/game-renderer";
 import { find, render } from "../app/dom";
@@ -102,6 +102,7 @@ export const matchScreenDefinition = (application: GameApplication): ScreenDefin
   id: "match",
   label: "Partida",
   icon: "Goal",
+  chrome: "match",
   template: matchScreenTemplate,
   dialogs: matchSettingsTemplate,
   mount: ({ root, dialogs }) => new MatchScreen(root, find(dialogs, "#match-settings-dialog"), application),
@@ -124,11 +125,11 @@ export class MatchScreen implements Screen {
     private readonly settingsDialog: HTMLDialogElement,
     private readonly application: GameApplication,
   ) {
-    this.selectedPlayerId = application.state.players[0]?.profile.id ?? "";
+    this.selectedPlayerId = application.requireMatch().state.players[0]?.profile.id ?? "";
     this.renderer = new GameRenderer(this.find("#game-canvas"));
     new ResizeObserver(() => this.resize()).observe(this.find("#game-canvas"));
     this.roster = new RosterList(this.find("#match-roster"));
-    this.rosterSection = new Section(() => this.roster.rebuild(this.application.state.players, this.teamNames));
+    this.rosterSection = new Section(() => this.roster.rebuild(this.state.players, this.teamNames));
     this.detailSection = new Section(() => this.renderPlayerDetail());
     this.eventsSection = new Section(() => this.renderEvents());
     this.analysisSection = new Section(() => this.renderAnalysisTable());
@@ -140,6 +141,15 @@ export class MatchScreen implements Screen {
     this.bindEvents();
   }
 
+  /** Esta tela só existe dentro de uma partida — o navegador garante a precondição. */
+  private get session(): MatchSession {
+    return this.application.requireMatch();
+  }
+
+  private get state(): MatchState {
+    return this.session.state;
+  }
+
   private get teamNames(): TeamNames {
     return teamNamesOf(this.application);
   }
@@ -148,8 +158,13 @@ export class MatchScreen implements Screen {
     this.render();
   }
 
+  /** Sair da partida a congela: ela continua retomável pelo menu. */
+  suspend(): void {
+    this.application.leaveMatch();
+  }
+
   render(): void {
-    const state = this.application.state;
+    const state = this.state;
     const header = createMatchHeaderViewModel(state, this.teamNames);
     this.renderTeamNames();
     this.find("#possession-label").textContent = header.possessionLabel;
@@ -163,18 +178,18 @@ export class MatchScreen implements Screen {
   }
 
   private eventsSignature(): string {
-    return `${this.application.state.eventCounter}|${this.teamNames.blue}|${this.teamNames.coral}`;
+    return `${this.state.eventCounter}|${this.teamNames.blue}|${this.teamNames.coral}`;
   }
 
   private renderEvents(): void {
-    render(this.find<HTMLOListElement>("#event-list"), html`${this.application.state.events.map((event) => {
+    render(this.find<HTMLOListElement>("#event-list"), html`${this.state.events.map((event) => {
       const team = "team" in event ? event.team : null;
       return html`<li class="event-item ${team ? `event-item--${team}` : ""}"><time>${formatClock(event.time)}</time><span>${formatMatchEvent(event, this.application.world.players, this.teamNames)}</span></li>`;
     })}`);
   }
 
   private renderPlayersPanel(): void {
-    const state = this.application.state;
+    const state = this.state;
     this.rosterSection.update(rosterSignature(state.players, this.teamNames));
     this.roster.patch(state, this.selectedPlayerId);
     const selected = state.players.find((player) => player.profile.id === this.selectedPlayerId) ?? state.players[0];
@@ -185,7 +200,7 @@ export class MatchScreen implements Screen {
   }
 
   frame(): void {
-    this.renderer.render(this.application.state);
+    this.renderer.render(this.state);
   }
 
   resize(): void {
@@ -202,7 +217,7 @@ export class MatchScreen implements Screen {
   }
 
   private renderTimeline(): void {
-    const match = this.application.match;
+    const match = this.session;
     const slider = this.find<HTMLInputElement>("#timeline-slider");
     slider.max = String(match.liveStep);
     slider.value = String(match.viewStep);
@@ -214,7 +229,7 @@ export class MatchScreen implements Screen {
   }
 
   private renderScrubFrame(): void {
-    this.renderer.render(this.application.state);
+    this.renderer.render(this.state);
     this.render();
   }
 
@@ -224,7 +239,7 @@ export class MatchScreen implements Screen {
     }
     const pauseButton = this.find<HTMLButtonElement>("#pause-button");
     pauseButton.addEventListener("click", () => {
-      this.application.match.togglePaused();
+      this.session.togglePaused();
       this.renderPauseButton();
     });
     this.find("#reset-button").addEventListener("click", () => {
@@ -234,20 +249,20 @@ export class MatchScreen implements Screen {
     });
     for (const button of this.root.querySelectorAll<HTMLButtonElement>("[data-speed]")) {
       button.addEventListener("click", () => {
-        this.application.match.setSpeed(Number(button.dataset.speed) as SimulationSpeed);
+        this.session.setSpeed(Number(button.dataset.speed) as SimulationSpeed);
         this.root.querySelectorAll("[data-speed]").forEach((item) => item.classList.toggle("is-active", item === button));
       });
     }
     const slider = this.find<HTMLInputElement>("#timeline-slider");
     slider.addEventListener("input", () => {
-      this.application.match.beginSeek();
-      this.application.match.seek(Number(slider.value));
+      this.session.beginSeek();
+      this.session.seek(Number(slider.value));
       this.renderScrubFrame();
     });
     // Ao soltar o slider, a reprodução volta: continua tocando se não estiver pausada.
-    slider.addEventListener("change", () => this.application.match.endSeek());
+    slider.addEventListener("change", () => this.session.endSeek());
     this.find("#live-button").addEventListener("click", () => {
-      this.application.match.resumeLive();
+      this.session.resumeLive();
       this.renderScrubFrame();
     });
     this.find("#match-roster").addEventListener("click", (event) => {
@@ -263,7 +278,7 @@ export class MatchScreen implements Screen {
     const clubs = [...this.application.world.clubs].sort((first, second) => first.name.localeCompare(second.name));
     for (const team of ["blue", "coral"] as const) {
       const select = this.settingsFind<HTMLSelectElement>(`#settings-club-${team}`);
-      const current = this.application.setup[team].clubId;
+      const current = this.application.setup?.[team].clubId;
       render(select, html`${clubs
         .map((club) => html`<option value="${club.id}" ${club.id === current ? "selected" : ""}>${club.name}</option>`)}`);
     }
@@ -314,7 +329,7 @@ export class MatchScreen implements Screen {
     for (const button of this.root.querySelectorAll<HTMLButtonElement>("[data-open-match-settings]")) {
       button.addEventListener("click", () => {
         seedInput.value = String(this.application.world.settings.randomSeed);
-        this.settingsFind<HTMLInputElement>("#learning-toggle").checked = this.application.state.learningEnabled;
+        this.settingsFind<HTMLInputElement>("#learning-toggle").checked = this.state.learningEnabled;
         this.renderClubSelectors();
         this.settingsDialog.showModal();
       });
@@ -330,7 +345,7 @@ export class MatchScreen implements Screen {
   }
 
   private renderPauseButton(): void {
-    const paused = this.application.match.paused;
+    const paused = this.session.paused;
     const button = this.find<HTMLButtonElement>("#pause-button");
     render(button, icon(paused ? "Play" : "Pause"));
     button.setAttribute("aria-label", paused ? "Continuar simulação" : "Pausar simulação");
@@ -354,7 +369,7 @@ export class MatchScreen implements Screen {
   }
 
   private resetSelection(): void {
-    this.selectedPlayerId = this.application.state.players[0]?.profile.id ?? "";
+    this.selectedPlayerId = this.state.players[0]?.profile.id ?? "";
   }
 
   private renderPlayerDetail(): void {
@@ -368,12 +383,12 @@ export class MatchScreen implements Screen {
   }
 
   private averageShape(team: Team, key: "widthIntegral" | "depthIntegral" | "compactnessIntegral"): number {
-    const stats = this.application.state.stats[team];
+    const stats = this.state.stats[team];
     return stats.spatialSeconds > 0 ? stats[key] / stats.spatialSeconds : 0;
   }
 
   private renderAnalysis(): void {
-    const state = this.application.state;
+    const state = this.state;
     for (const team of ["blue", "coral"] as const) {
       this.find(`#phase-${team}`).textContent = PHASE_LABELS[state.tactics[team].phase];
       const shape = state.tactics[team].shape;
@@ -409,8 +424,8 @@ export class MatchScreen implements Screen {
 
   /** As próprias linhas servem de assinatura da seção: são exatamente o conteúdo exibido. */
   private analysisRows(): (string | number)[][] {
-    const blue = this.application.state.stats.blue;
-    const coral = this.application.state.stats.coral;
+    const blue = this.state.stats.blue;
+    const coral = this.state.stats.coral;
     return [
       ["Passes certos", `${blue.completedPasses}/${blue.passes}`, `${coral.completedPasses}/${coral.passes}`],
       ["Precisão", percentage(blue.completedPasses, blue.passes), percentage(coral.completedPasses, coral.passes)],

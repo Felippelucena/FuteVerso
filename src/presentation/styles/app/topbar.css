@@ -14,6 +14,53 @@
   display: contents;
 }
 
+/* Precisa vencer o `display: contents` acima — `[hidden]` sozinho empata em especificidade. */
+.session-status[hidden] {
+  display: none;
+}
+
+.topbar-lead {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.nav-trail {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--text-muted);
+  font-size: var(--type-md);
+  font-weight: 750;
+}
+
+.nav-trail button {
+  padding: 5px 9px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.nav-trail button:not(:last-child)::after {
+  margin-left: 9px;
+  color: var(--line-strong);
+  content: "›";
+}
+
+.nav-trail button:hover:not(:disabled),
+.nav-trail button:focus-visible {
+  color: var(--text);
+  outline: none;
+}
+
+.nav-trail button.is-current {
+  color: var(--text);
+  cursor: default;
+}
+
 .brand-lockup {
   display: flex;
   align-items: center;
