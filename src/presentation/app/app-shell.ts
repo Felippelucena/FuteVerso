@@ -16,7 +16,7 @@ export class AppShell {
     render(root, html`
       <main class="app-shell">
         <header class="topbar">
-          <div class="brand-lockup"><span class="brand-mark" aria-hidden="true"></span><div><h1>FuteVerso</h1><p>SIMULADOR de Futebol 2D</p></div></div>
+          <div class="brand-lockup"><span class="brand-mark" aria-hidden="true"></span><div><h1>FuteVerso</h1><p class="eyebrow">SIMULADOR de Futebol 2D</p></div></div>
           <div class="session-status" id="session-status"></div>
         </header>
         <nav class="view-tabs" aria-label="Áreas do simulador">

@@ -1,0 +1,88 @@
+.analysis-section {
+  padding: 16px 18px;
+  border-bottom: 1px solid var(--line);
+  background: var(--surface-1);
+}
+
+.analysis-heading,
+.analysis-heading > div {
+  display: flex;
+}
+
+.analysis-heading {
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.analysis-heading > div { flex-direction: column; }
+
+.analysis-heading strong { font-size: var(--type-lg); }
+
+.analysis-heading > span { color: var(--text-muted); font-size: var(--type-2xs); font-weight: 750; }
+
+.phase-grid {
+  margin-top: 11px;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 7px;
+}
+
+.phase-card {
+  min-width: 0;
+  padding: 9px;
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--line);
+  background: var(--surface-2);
+}
+
+.phase-card--blue { border-top: 2px solid var(--blue); }
+
+.phase-card--coral { border-top: 2px solid var(--coral); }
+
+.phase-card small { color: var(--text-muted); font-size: var(--type-3xs); font-weight: 800; }
+
+.phase-card strong { margin-top: 2px; overflow: hidden; font-size: var(--type-sm); text-overflow: ellipsis; white-space: nowrap; }
+
+.phase-card span { margin-top: 4px; color: var(--text-muted); font-size: var(--type-3xs); }
+
+/* Distribuição de deveres: quebra em várias linhas, porque num 11x11 são cinco ou seis grupos. */
+.phase-duties { line-height: 1.5; opacity: 0.82; }
+
+.phase-card canvas {
+  width: 100%;
+  height: 58px;
+  margin-top: 7px;
+  display: block;
+  border: 1px solid var(--line);
+}
+
+.analysis-table {
+  margin-top: 10px;
+  border-top: 1px solid var(--line);
+}
+
+.analysis-row {
+  min-height: 24px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 46px 46px;
+  align-items: center;
+  border-bottom: 1px solid var(--line-soft);
+  font-size: var(--type-2xs);
+}
+
+.analysis-row span { color: var(--text-muted); }
+
+.analysis-row strong { text-align: right; font-size: var(--type-2xs); font-variant-numeric: tabular-nums; }
+
+.analysis-row--head { min-height: 21px; font-size: var(--type-3xs); font-weight: 800; }
+
+.analysis-row--head strong { color: var(--text-muted); font-size: var(--type-3xs); }
+
+.match-summary {
+  margin-top: 10px;
+  color: var(--text-soft);
+  font-size: var(--type-xs);
+  line-height: 1.45;
+}

@@ -1,0 +1,36 @@
+/*
+ * Ordem da cascata, explícita e num lugar só. Nenhuma regra pode depender de ordem *entre*
+ * arquivos: todo override que cruza arquivo tem de ganhar por especificidade. O único par
+ * decidido por ordem é `.seed-control--dialog` sobre `.seed-control`, e por isso o modificador
+ * mora no mesmo arquivo da base — regra que vale para qualquer modificador novo.
+ */
+@import "./tokens.css";
+@import "./base.css";
+
+@import "./app/app-shell.css";
+@import "./app/topbar.css";
+@import "./app/view-tabs.css";
+
+@import "./components/brand-mark.css";
+@import "./components/heading-row.css";
+@import "./components/button.css";
+@import "./components/shirt.css";
+@import "./components/switch.css";
+@import "./components/seed-control.css";
+@import "./components/speed-control.css";
+@import "./components/stamina-meter.css";
+
+@import "./match/field-panel.css";
+@import "./match/timeline.css";
+@import "./match/match-strip.css";
+@import "./match/inspector.css";
+@import "./match/match-roster.css";
+@import "./match/player-detail.css";
+@import "./match/analysis.css";
+@import "./match/events.css";
+@import "./match/settings-dialog.css";
+
+@import "./players/players-screen.css";
+@import "./players/player-dialog.css";
+
+@import "./boot.css";

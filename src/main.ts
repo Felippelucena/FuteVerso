@@ -11,7 +11,7 @@ import { MatchHeader } from "./presentation/match/match-header";
 import { matchScreenDefinition } from "./presentation/match/match-screen";
 import { playersScreenDefinition } from "./presentation/players/players-screen";
 import "@fontsource-variable/inter";
-import "./style.css";
+import "./presentation/styles/index.css";
 
 const root = document.querySelector<HTMLDivElement>("#app");
 if (!root) throw new Error("Elemento raiz não encontrado.");

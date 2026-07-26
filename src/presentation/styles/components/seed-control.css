@@ -1,0 +1,63 @@
+.seed-control {
+  height: 36px;
+  display: grid;
+  grid-template-columns: auto 96px 34px;
+  align-items: stretch;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+}
+
+.seed-control input {
+  min-width: 0;
+  padding: 0 7px;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  font-size: var(--type-sm);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  outline: none;
+}
+
+.seed-control button {
+  padding: 0;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-left: 1px solid var(--line);
+  background: var(--surface-3);
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.seed-control button:hover,
+.seed-control button:focus-visible,
+.seed-control:focus-within {
+  border-color: var(--line-hover);
+  color: var(--text);
+  outline: none;
+}
+
+.seed-control svg {
+  width: 15px;
+  height: 15px;
+}
+
+.seed-control--dialog {
+  width: 100%;
+  grid-template-columns: minmax(0, 1fr) 42px;
+}
+
+.seed-control--dialog input {
+  padding-inline: 10px;
+}
+
+@media (max-width: 580px) {
+  .seed-control {
+      height: 34px;
+      grid-template-columns: auto 82px 32px;
+      margin-right: auto;
+    }
+}

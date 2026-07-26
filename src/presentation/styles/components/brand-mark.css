@@ -1,0 +1,28 @@
+.brand-mark {
+  width: 34px;
+  height: 34px;
+  position: relative;
+  border: 2px solid var(--lime);
+  border-radius: var(--radius-round);
+}
+
+.brand-mark::before,
+.brand-mark::after {
+  content: "";
+  position: absolute;
+  background: var(--lime);
+}
+
+.brand-mark::before {
+  width: 14px;
+  height: 2px;
+  left: 8px;
+  top: 14px;
+}
+
+.brand-mark::after {
+  width: 2px;
+  height: 14px;
+  left: 14px;
+  top: 8px;
+}

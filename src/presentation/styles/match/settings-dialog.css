@@ -1,0 +1,66 @@
+.settings-dialog {
+  width: min(460px, calc(100vw - 28px));
+  max-height: calc(100dvh - 28px);
+  padding: 0;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-md);
+  background: var(--surface-2);
+  color: var(--text);
+}
+
+.settings-dialog::backdrop {
+  background: var(--scrim);
+  backdrop-filter: blur(3px);
+}
+
+.settings-dialog form {
+  padding: 20px;
+}
+
+.settings-dialog .dialog-heading {
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--line);
+}
+
+.settings-dialog .dialog-heading h2 {
+  margin-top: 2px;
+  font-size: var(--type-2xl);
+}
+
+.settings-group {
+  padding: 16px 0;
+  display: grid;
+  gap: 12px;
+  border-bottom: 1px solid var(--line);
+}
+
+.settings-group--inline {
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+}
+
+.settings-group strong {
+  font-size: var(--type-lg);
+}
+
+.settings-group p {
+  margin-top: 3px;
+  color: var(--text-muted);
+  font-size: var(--type-xs);
+  line-height: 1.45;
+}
+
+.settings-reset {
+  width: 100%;
+  margin-top: 14px;
+}
+
+.settings-dialog .dialog-actions {
+  margin-top: 18px;
+}
+
+@media (max-width: 580px) {
+  .settings-dialog form {
+      padding: 16px;
+    }
+}

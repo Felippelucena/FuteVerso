@@ -1,0 +1,22 @@
+.shirt--neutral { background: var(--surface-shirt); color: var(--on-blue); }
+
+.shirt {
+  width: 34px;
+  height: 34px;
+  flex: 0 0 34px;
+  display: grid;
+  place-items: center;
+  border-radius: var(--radius-sm) var(--radius-sm) var(--radius-md) var(--radius-md);
+  font-size: var(--type-lg);
+  font-weight: 850;
+}
+
+.shirt--blue {
+  background: var(--blue);
+  color: var(--on-blue);
+}
+
+.shirt--coral {
+  background: var(--coral);
+  color: var(--on-coral);
+}

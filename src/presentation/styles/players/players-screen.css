@@ -1,0 +1,71 @@
+/* Player management */
+.manager-view {
+  flex: 1;
+  padding: 22px 24px 40px;
+  background: var(--surface-1);
+  overflow-y: auto;
+}
+
+.manager-heading h2 {
+  margin-top: 2px;
+  font-size: var(--type-2xl);
+}
+
+.manager-message {
+  min-height: 22px;
+  margin-top: 8px;
+  color: var(--lime);
+  font-size: var(--type-sm);
+}
+
+.manager-message.is-error { color: var(--coral-soft); }
+
+.players-section {
+  margin-top: 20px;
+  border-top: 1px solid var(--line);
+}
+
+.players-table { border: 1px solid var(--line); }
+
+.player-table-row {
+  min-height: 58px;
+  padding: 8px 10px;
+  display: grid;
+  grid-template-columns: 34px minmax(150px, 1fr) auto auto;
+  align-items: center;
+  gap: 12px;
+  border-bottom: 1px solid var(--line);
+  background: var(--surface-2);
+}
+
+.player-table-row:last-child { border-bottom: 0; }
+
+.player-table-name {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.player-table-name strong { overflow: hidden; font-size: var(--type-lg); text-overflow: ellipsis; white-space: nowrap; }
+
+.player-table-name span { color: var(--text-muted); font-size: var(--type-xs); }
+
+.player-rating { display: flex; gap: 14px; color: var(--text-muted); font-size: var(--type-2xs); }
+
+.player-rating span { display: flex; flex-direction: column; }
+
+.player-rating strong { color: var(--text); font-size: var(--type-md); }
+
+.row-actions { display: flex; gap: 5px; }
+
+@media (max-width: 680px) {
+  .manager-view { padding: 16px 12px 30px; }
+
+  .manager-heading { align-items: flex-end; }
+
+  .player-table-row { grid-template-columns: 34px minmax(0, 1fr) auto; }
+
+  .player-rating { grid-column: 2 / 4; grid-row: 2; }
+
+  .row-actions { grid-column: 3; grid-row: 1; }
+}

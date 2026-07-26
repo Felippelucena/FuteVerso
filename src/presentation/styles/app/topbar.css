@@ -1,0 +1,145 @@
+.topbar {
+  min-height: 76px;
+  padding: 10px 24px;
+  display: grid;
+  grid-template-columns: minmax(180px, 1fr) auto minmax(180px, 1fr);
+  align-items: center;
+  gap: 24px;
+  border-bottom: 1px solid var(--line);
+  background: var(--surface-1);
+}
+
+/* Placar e indicador são células da topbar; o slot que os agrupa não pode virar caixa. */
+.session-status {
+  display: contents;
+}
+
+.brand-lockup {
+  display: flex;
+  align-items: center;
+}
+
+.brand-lockup {
+  gap: 12px;
+}
+
+.brand-lockup h1 {
+  font-size: var(--type-xl);
+  line-height: 1.2;
+  text-transform: uppercase;
+  letter-spacing: 0;
+}
+
+
+.scoreboard {
+  display: grid;
+  grid-template-columns: minmax(92px, 1fr) 82px minmax(92px, 1fr);
+  align-items: stretch;
+  border: 1px solid var(--line);
+  background: var(--surface-0);
+}
+
+.score-team,
+.match-clock {
+  min-height: 50px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.score-team {
+  gap: 14px;
+  padding: 0 16px;
+  font-size: var(--type-md);
+  font-weight: 800;
+}
+
+.score-team strong {
+  font-size: var(--type-display);
+  line-height: 1;
+}
+
+.score-team--blue {
+  border-left: 3px solid var(--blue);
+}
+
+.score-team--coral {
+  border-right: 3px solid var(--coral);
+}
+
+.match-clock {
+  flex-direction: column;
+  border-inline: 1px solid var(--line);
+}
+
+.match-clock span {
+  font-variant-numeric: tabular-nums;
+  font-size: var(--type-xl);
+  font-weight: 750;
+}
+
+.match-clock small {
+  color: var(--lime);
+  font-size: var(--type-2xs);
+  font-weight: 800;
+}
+
+.simulation-status {
+  justify-self: end;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-soft);
+  font-size: var(--type-sm);
+  font-weight: 750;
+}
+
+.live-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: var(--radius-round);
+  background: var(--lime);
+  box-shadow: 0 0 0 4px var(--glow-lime);
+}
+
+.live-dot.is-paused {
+  background: var(--coral);
+  box-shadow: none;
+}
+
+@media (max-width: 900px) {
+  .topbar {
+      grid-template-columns: 1fr auto;
+    }
+
+  .scoreboard {
+      grid-column: 1 / -1;
+      grid-row: 2;
+      width: 100%;
+    }
+
+  .simulation-status {
+      grid-column: 2;
+      grid-row: 1;
+    }
+}
+
+@media (max-width: 580px) {
+  .topbar {
+      padding: 10px 12px;
+      gap: 10px;
+    }
+
+  .simulation-status span:last-child {
+      display: none;
+    }
+
+  .scoreboard {
+      grid-template-columns: minmax(76px, 1fr) 68px minmax(76px, 1fr);
+    }
+
+  .score-team {
+      padding: 0 8px;
+      gap: 8px;
+    }
+}

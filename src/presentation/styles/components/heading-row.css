@@ -1,0 +1,43 @@
+.manager-heading,
+.section-heading,
+.dialog-heading,
+.skills-heading,
+.dialog-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.section-heading {
+  min-height: 54px;
+}
+
+.section-heading h3 { margin: 0; font-size: var(--type-xl); }
+
+.section-heading span { color: var(--text-muted); font-size: var(--type-sm); }
+
+.dialog-heading h2 { margin-top: 2px; font-size: var(--type-2xl); }
+
+.skills-heading {
+  margin-top: 20px;
+  padding-top: 16px;
+  border-top: 1px solid var(--line);
+}
+
+.skills-heading strong { font-size: var(--type-lg); }
+
+.skills-heading span { color: var(--text-muted); font-size: var(--type-xs); }
+
+.dialog-actions {
+  margin-top: 20px;
+  justify-content: flex-end;
+}
+
+.eyebrow {
+  color: var(--text-muted);
+  font-size: var(--type-sm);
+  font-weight: 700;
+  line-height: 1.4;
+  letter-spacing: 0;
+}

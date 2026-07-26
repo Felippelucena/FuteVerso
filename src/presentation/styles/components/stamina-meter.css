@@ -1,0 +1,32 @@
+.stamina-meter {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  width: 34px;
+}
+
+.stamina-meter-bar {
+  height: 3px;
+  overflow: hidden;
+  border-radius: var(--radius-xs);
+  background: var(--surface-track);
+}
+
+.stamina-meter-fill {
+  display: block;
+  height: 100%;
+  border-radius: var(--radius-xs);
+  transition: width 0.2s linear;
+}
+
+.stamina-meter-fill--long {
+  background: var(--lime);
+}
+
+.stamina-meter-fill--volatile {
+  background: var(--amber);
+}
+
+.stamina-meter-fill.is-low {
+  background: var(--danger);
+}

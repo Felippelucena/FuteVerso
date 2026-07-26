@@ -1,0 +1,44 @@
+.speed-control button:hover,
+.speed-control button:focus-visible {
+  border-color: var(--line-hover);
+  outline: none;
+}
+
+.speed-control {
+  height: 36px;
+  display: flex;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+}
+
+.speed-control button {
+  width: 42px;
+  border: 0;
+  border-right: 1px solid var(--line);
+  background: var(--surface-2);
+  color: var(--text-muted);
+  font-size: var(--type-md);
+  font-weight: 750;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.speed-control button:last-child {
+  border-right: 0;
+}
+
+.speed-control button.is-active {
+  background: var(--lime);
+  color: var(--on-lime);
+}
+
+@media (max-width: 580px) {
+  .speed-control {
+      height: 34px;
+    }
+
+  .speed-control button {
+      width: 34px;
+    }
+}

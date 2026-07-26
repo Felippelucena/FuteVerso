@@ -1,0 +1,27 @@
+.app-shell {
+  height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.workspace {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 330px;
+  overflow: hidden;
+}
+
+@media (max-width: 900px) {
+  .workspace {
+      grid-template-columns: minmax(0, 1fr);
+      grid-template-rows: minmax(0, 1fr) minmax(190px, 34vh);
+    }
+}
+
+@media (max-width: 580px) {
+  .workspace {
+      grid-template-rows: minmax(0, 1fr) minmax(180px, 32vh);
+    }
+}

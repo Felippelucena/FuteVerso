@@ -1,0 +1,65 @@
+.primary-button svg,
+.secondary-button svg {
+  width: 15px;
+  height: 15px;
+}
+
+.icon-button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.primary-button,
+.secondary-button {
+  min-height: 36px;
+  padding: 0 13px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  font-size: var(--type-md);
+  font-weight: 750;
+  cursor: pointer;
+}
+
+.primary-button { border-color: var(--lime); background: var(--lime); color: var(--on-lime); }
+
+.secondary-button { background: var(--surface-3); }
+
+.primary-button:hover { background: var(--lime-hover); }
+
+.secondary-button:hover { border-color: var(--line-hover); }
+
+.icon-button--danger { color: var(--coral-soft); }
+
+.icon-button {
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface-3);
+  cursor: pointer;
+}
+
+.icon-button:hover,
+.icon-button:focus-visible {
+  border-color: var(--line-hover);
+  outline: none;
+}
+
+.icon-button svg {
+  width: 16px;
+  height: 16px;
+}
+
+@media (max-width: 580px) {
+  .icon-button {
+      width: 34px;
+      height: 34px;
+    }
+}

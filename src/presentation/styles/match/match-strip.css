@@ -1,0 +1,52 @@
+.match-strip {
+  min-height: 58px;
+  padding: 10px 20px;
+  display: grid;
+  grid-template-columns: auto minmax(120px, 1fr) auto;
+  align-items: center;
+  gap: 14px;
+  border-top: 1px solid var(--line);
+}
+
+.match-strip > div:not(.possession-track) {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.match-strip span {
+  color: var(--text-muted);
+  font-size: var(--type-xs);
+  font-weight: 750;
+}
+
+.match-strip strong {
+  font-size: var(--type-xl);
+  font-variant-numeric: tabular-nums;
+}
+
+.possession-track {
+  height: 5px;
+  position: relative;
+  overflow: hidden;
+  background: var(--coral);
+}
+
+.possession-track span {
+  height: 100%;
+  display: block;
+  background: var(--blue);
+  transition: width 240ms ease;
+}
+
+@media (max-width: 580px) {
+  .match-strip {
+      padding: 10px 12px;
+      gap: 8px;
+    }
+
+  .match-strip > div:not(.possession-track) {
+      flex-direction: column;
+      gap: 0;
+    }
+}

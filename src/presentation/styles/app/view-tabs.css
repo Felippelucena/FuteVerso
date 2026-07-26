@@ -1,0 +1,42 @@
+/* 4 x 4 navigation and roster */
+.view-tabs {
+  min-height: 42px;
+  padding: 0 24px;
+  display: flex;
+  align-items: end;
+  gap: 4px;
+  border-bottom: 1px solid var(--line);
+  background: var(--surface-1);
+}
+
+.view-tabs button {
+  height: 42px;
+  padding: 0 14px;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: var(--type-md);
+  font-weight: 750;
+  cursor: pointer;
+}
+
+.view-tabs button:hover,
+.view-tabs button:focus-visible,
+.view-tabs button.is-active {
+  color: var(--text);
+  border-bottom-color: var(--lime);
+  outline: none;
+}
+
+.view-tabs svg {
+  width: 15px;
+  height: 15px;
+}
+
+@media (max-width: 680px) {
+  .view-tabs { padding-inline: 12px; }
+}
