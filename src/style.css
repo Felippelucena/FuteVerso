@@ -603,6 +603,11 @@ input {
   background: #121714;
 }
 
+/* Placar e indicador são células da topbar; o slot que os agrupa não pode virar caixa. */
+.session-status {
+  display: contents;
+}
+
 .brand-lockup,
 .agent-identity,
 .learning-copy,

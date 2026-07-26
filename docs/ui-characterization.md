@@ -34,3 +34,14 @@ Use este roteiro antes e depois de mudanças estruturais na apresentação. O ob
 - [ ] Ocultar a página dispara a persistência do progresso atual.
 - [ ] Redimensionar a janela recalcula o Canvas sem distorcer o campo.
 - [ ] Ícones, dialogs, placar, eventos e textos visíveis permanecem consistentes nas duas telas.
+
+## Apresentação (o que nenhum teste automatizado cobre)
+
+- [ ] Todo ícone aparece — em especial o da aba **Partida** e o do botão **voltar ao vivo**.
+- [ ] Com a partida rodando, dar foco por teclado a um jogador do roster: o foco continua no
+      mesmo botão depois de vários segundos, e Enter ainda seleciona.
+- [ ] Na aba **Análise** a tabela atualiza e os dois mapas animam; na aba **Jogadores** nenhuma
+      das duas coisas acontece.
+- [ ] O placar e o relógio continuam avançando enquanto a tela de Jogadores está aberta.
+- [ ] Um jogador chamado `<b>x</b>` aparece **literalmente assim** na tabela, no roster, no
+      painel de detalhe e no diálogo de edição.

@@ -7,9 +7,9 @@ import { AnimationLoop } from "./presentation/app/animation-loop";
 import { AppShell } from "./presentation/app/app-shell";
 import { render } from "./presentation/app/dom";
 import { html } from "./presentation/app/html";
-import { GameRenderer } from "./presentation/canvas/game-renderer";
-import { MatchScreen } from "./presentation/match/match-screen";
-import { PlayersScreen } from "./presentation/players/players-screen";
+import { MatchHeader } from "./presentation/match/match-header";
+import { matchScreenDefinition } from "./presentation/match/match-screen";
+import { playersScreenDefinition } from "./presentation/players/players-screen";
 import "./style.css";
 
 const root = document.querySelector<HTMLDivElement>("#app");
@@ -29,39 +29,17 @@ const boot = async (): Promise<void> => {
   render(root, html`<div class="boot-screen"><span class="brand-mark" aria-hidden="true"></span><p>Carregando o mundo…</p></div>`);
 
   const repository = createRepository();
-  const world = await bootstrapWorld(repository);
-  const application = new GameApplication(world, repository);
+  const application = new GameApplication(await bootstrapWorld(repository), repository);
+  const shell = new AppShell(root, [
+    matchScreenDefinition(application),
+    playersScreenDefinition(application),
+  ]);
+  const header = new MatchHeader(shell.statusSlot, application);
+  const loop = new AnimationLoop(application, () => shell.activeScreen, () => header.render());
 
-  const shell = new AppShell(root);
-  const canvas = shell.matchRoot.querySelector<HTMLCanvasElement>("#game-canvas");
-  if (!canvas) throw new Error("Canvas da partida não encontrado.");
-
-  const renderer = new GameRenderer(canvas);
-  const matchScreen = new MatchScreen(
-    shell.matchRoot,
-    shell.matchSettingsDialog,
-    application,
-    renderer,
-    (state, paused, teamNames) => {
-      shell.renderMatchHeader(state, paused);
-      shell.renderTeamNames(teamNames);
-    },
-  );
-  const playersScreen = new PlayersScreen(shell.playersRoot, shell.playerDialog, application);
-  const loop = new AnimationLoop(application, renderer, () => matchScreen.render());
-  const resizeObserver = new ResizeObserver(() => matchScreen.resize());
-
-  shell.onViewChanged((view) => {
-    if (view === "players") playersScreen.render();
-    else matchScreen.resize();
-  });
   document.addEventListener("visibilitychange", () => {
     if (document.hidden) application.persistMatchProgress();
   });
-  resizeObserver.observe(canvas);
-  matchScreen.resize();
-  playersScreen.render();
-  matchScreen.render();
   loop.start();
 
   // DEBUG (somente desenvolvimento): expõe o jogo no console para inspeção do estado.
@@ -69,6 +47,8 @@ const boot = async (): Promise<void> => {
   (window as unknown as { fv: unknown }).fv = {
     application,
     repository,
+    shell,
+    loop,
     get session() {
       return application.match;
     },
@@ -78,11 +58,6 @@ const boot = async (): Promise<void> => {
     get world() {
       return application.world;
     },
-    matchScreen,
-    playersScreen,
-    renderer,
-    loop,
-    shell,
   };
 };
 

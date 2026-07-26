@@ -50,13 +50,22 @@ infrastructure ----------┴----------┘
 
 ## Apresentação
 
-- `presentation/app/app-shell.ts`: estrutura global, cabeçalho e navegação entre telas.
-- `presentation/app/animation-loop.ts`: `requestAnimationFrame`, renderização, atualizações periódicas e autosave.
-- `presentation/match`: tela, configurações e view model da partida.
+- `presentation/app/html.ts`: tag template `html` que escapa por padrão. Único dono do escape.
+- `presentation/app/dom.ts`: `render` (único ponto que escreve `innerHTML`), `find`, `findAll`.
+- `presentation/app/icons.ts`: mapa de ícones e `icon(name)` tipado, serializado como SVG inline.
+- `presentation/app/section.ts`: trecho reconstruído só quando muda a assinatura das entradas.
+- `presentation/app/screen.ts`: contratos `Screen`, `ScreenContext`, `ScreenDefinition`.
+- `presentation/app/app-shell.ts`: layout, abas e diálogos, a partir de uma lista de telas.
+- `presentation/app/animation-loop.ts`: `requestAnimationFrame`, status da sessão e autosave.
+- `presentation/match`: tela, cabeçalho, roster, mapa tático e view model da partida.
 - `presentation/players`: tela, dialogs e view model do elenco.
 - `presentation/canvas`: renderer do campo.
 
-Cada tela consulta elementos apenas dentro do próprio container. Elementos globais pertencem ao shell. O loop acessa a aplicação para avançar e persistir a sessão, mas nenhum desses detalhes entra no domínio.
+Cada tela consulta elementos apenas dentro do próprio container. Uma tela nova é um
+`ScreenDefinition` — um arquivo e uma linha em `main.ts`; o shell não conhece nenhuma pelo nome,
+nem importa nada do domínio. O laço avança a sessão, atualiza o status no topo (que segue vivo em
+qualquer tela) e chama a tela ativa: `frame()` por quadro, `tick()` no ritmo da interface. Painel
+escondido não é montado, e o que muda a cada tique é escrito no lugar, nunca reconstruído.
 
 ## Pipeline da partida
 
@@ -168,5 +177,6 @@ por aí, refinando esse alvo por tipo de cobrança.
 
 Novas telas devem consumir comandos e consultas de application. Os próximos marcos são a
 recalibragem do 11x11 guiada por medição, os ajustes táticos ligados ao plano (mentalidade,
-saída, bloco, gatilhos), a migração da interface para React e os editores de jogadores e clubes
-— nenhum deles deve acoplar o motor ao armazenamento concreto.
+saída, bloco, gatilhos) e os editores de jogadores e clubes — nenhum deles deve acoplar o motor
+ao armazenamento concreto. A interface segue sem framework, por decisão: o custo está no
+contrato entre módulos, não na ausência de biblioteca.

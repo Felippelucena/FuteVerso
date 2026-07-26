@@ -1,21 +1,22 @@
 import type { GameApplication } from "../../application/game-application";
 import { SIMULATION_SPEEDS, type SimulationSpeed } from "../../application/match/match-session";
-import type { MatchState } from "../../domain/match";
 import type { AssignmentDuty } from "../../domain/match/model";
 import type { Team } from "../../domain/shared/model";
-import type { GameRenderer } from "../canvas/game-renderer";
+import { GameRenderer } from "../canvas/game-renderer";
 import { find, render } from "../app/dom";
 import { html, type Html } from "../app/html";
 import { DUTY_LABELS, formatClock, percentage, PHASE_LABELS, type TeamNames } from "../app/labels";
 import { icon } from "../app/icons";
+import type { Screen, ScreenDefinition } from "../app/screen";
 import { Section } from "../app/section";
 import { formatMatchEvent } from "./format-match-event";
 import { RosterList, rosterSignature } from "./match-roster";
 import { createContestMetric, createMatchHeaderViewModel, createMatchSummary, createPlayerDetailViewModel, playerDetailSignature, type PlayerDetailViewModel } from "./match-view-model";
 import { drawTacticalMap } from "./tactical-map";
+import { teamNamesOf } from "./team-names";
 
-export const matchScreenTemplate = (): Html => html`
-  <section id="match-view" class="workspace">
+const matchScreenTemplate = (): Html => html`
+  <section data-screen="match" class="workspace">
     <div class="field-panel">
       <div class="field-toolbar">
         <div class="toolbar-title"><strong>Partida autônoma</strong><span id="possession-label">Bola em disputa</span></div>
@@ -68,7 +69,7 @@ export const matchScreenTemplate = (): Html => html`
     </aside>
   </section>`;
 
-export const matchSettingsTemplate = (): Html => html`
+const matchSettingsTemplate = (): Html => html`
   <dialog id="match-settings-dialog" class="settings-dialog">
     <form method="dialog">
       <div class="dialog-heading"><div><span class="eyebrow">PARTIDA</span><h2>Configurações</h2></div><button class="icon-button" value="cancel" aria-label="Fechar configurações" title="Fechar">${icon("X")}</button></div>
@@ -97,10 +98,20 @@ export const matchSettingsTemplate = (): Html => html`
 
 type InspectorTab = "players" | "analysis" | "events";
 
-export class MatchScreen {
+export const matchScreenDefinition = (application: GameApplication): ScreenDefinition => ({
+  id: "match",
+  label: "Partida",
+  icon: "Goal",
+  template: matchScreenTemplate,
+  dialogs: matchSettingsTemplate,
+  mount: ({ root, dialogs }) => new MatchScreen(root, find(dialogs, "#match-settings-dialog"), application),
+});
+
+export class MatchScreen implements Screen {
   private selectedPlayerId: string;
   private activeTab: InspectorTab = "players";
   private detailModel: PlayerDetailViewModel | null = null;
+  private readonly renderer: GameRenderer;
   private readonly roster: RosterList;
   private readonly rosterSection: Section;
   private readonly detailSection: Section;
@@ -112,10 +123,10 @@ export class MatchScreen {
     private readonly root: HTMLElement,
     private readonly settingsDialog: HTMLDialogElement,
     private readonly application: GameApplication,
-    private readonly renderer: GameRenderer,
-    private readonly renderHeader: (state: MatchState, paused: boolean, teamNames: TeamNames) => void,
   ) {
     this.selectedPlayerId = application.state.players[0]?.profile.id ?? "";
+    this.renderer = new GameRenderer(this.find("#game-canvas"));
+    new ResizeObserver(() => this.resize()).observe(this.find("#game-canvas"));
     this.roster = new RosterList(this.find("#match-roster"));
     this.rosterSection = new Section(() => this.roster.rebuild(this.application.state.players, this.teamNames));
     this.detailSection = new Section(() => this.renderPlayerDetail());
@@ -129,22 +140,17 @@ export class MatchScreen {
     this.bindEvents();
   }
 
-  get canvas(): HTMLCanvasElement {
-    return this.find<HTMLCanvasElement>("#game-canvas");
+  private get teamNames(): TeamNames {
+    return teamNamesOf(this.application);
   }
 
-  /** Sigla dos clubes em campo. Recalculada a cada leitura porque a partida pode trocar de times. */
-  private get teamNames(): TeamNames {
-    return {
-      blue: this.application.clubOf("blue").shortName,
-      coral: this.application.clubOf("coral").shortName,
-    };
+  tick(): void {
+    this.render();
   }
 
   render(): void {
     const state = this.application.state;
     const header = createMatchHeaderViewModel(state, this.teamNames);
-    this.renderHeader(state, this.application.match.paused, this.teamNames);
     this.renderTeamNames();
     this.find("#possession-label").textContent = header.possessionLabel;
     this.find("#possession-blue").textContent = `${header.bluePossession}%`;
@@ -178,8 +184,13 @@ export class MatchScreen {
     this.detailSection.update(playerDetailSignature(this.detailModel));
   }
 
+  frame(): void {
+    this.renderer.render(this.application.state);
+  }
+
   resize(): void {
     this.renderer.resize();
+    this.frame();
   }
 
   private renderTeamNames(): void {
@@ -215,7 +226,6 @@ export class MatchScreen {
     pauseButton.addEventListener("click", () => {
       this.application.match.togglePaused();
       this.renderPauseButton();
-      this.renderHeader(this.application.state, this.application.match.paused, this.teamNames);
     });
     this.find("#reset-button").addEventListener("click", () => {
       this.application.restartMatch();

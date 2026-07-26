@@ -1,5 +1,5 @@
 import type { GameApplication } from "../../application/game-application";
-import type { GameRenderer } from "../canvas/game-renderer";
+import type { Screen } from "./screen";
 
 const UI_INTERVAL_MS = 140;
 const PERSISTENCE_INTERVAL_MS = 5000;
@@ -13,8 +13,8 @@ export class AnimationLoop {
 
   constructor(
     private readonly application: GameApplication,
-    private readonly renderer: GameRenderer,
-    private readonly renderUi: () => void,
+    private readonly activeScreen: () => Screen,
+    private readonly renderSessionStatus: () => void,
   ) {}
 
   start(): void {
@@ -36,14 +36,16 @@ export class AnimationLoop {
     const realDelta = (now - this.previousTime) / 1000;
     this.previousTime = now;
     const steps = this.application.match.advance(realDelta);
-    this.renderer.render(this.application.state);
-    // Só reconstrói o painel (roster, timeline, análise…) quando a simulação de
-    // fato avançou. Pausado/rebobinando/terminado o estado é idêntico, e reescrever
-    // o DOM várias vezes por segundo é puro desperdício. O canvas continua sendo
-    // repintado todo frame porque o resize limpa o backing store.
-    if (steps > 0 && now - this.lastUiUpdate > UI_INTERVAL_MS) {
-      this.renderUi();
+    const screen = this.activeScreen();
+    // O canvas é repintado todo frame porque o resize limpa o backing store.
+    screen.frame?.();
+    if (now - this.lastUiUpdate > UI_INTERVAL_MS) {
       this.lastUiUpdate = now;
+      // O status da sessão vai mesmo parado: é ele que mostra a pausa.
+      this.renderSessionStatus();
+      // O painel da tela, não: pausado/rebobinando/terminado o estado é idêntico,
+      // e reescrever o DOM várias vezes por segundo é puro desperdício.
+      if (steps > 0) screen.tick?.();
     }
     if (now - this.lastMemorySave > PERSISTENCE_INTERVAL_MS) {
       this.application.persistMatchProgress();

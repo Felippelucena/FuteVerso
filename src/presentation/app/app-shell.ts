@@ -1,81 +1,57 @@
-import type { MatchState } from "../../domain/match";
-import { matchScreenTemplate, matchSettingsTemplate } from "../match/match-screen";
-import { playerDialogTemplate, playersScreenTemplate } from "../players/players-screen";
-import { find, render } from "./dom";
+import { find, findAll, render } from "./dom";
 import { html } from "./html";
-import { formatMatchClock, type TeamNames } from "./labels";
 import { icon } from "./icons";
-
-export type AppView = "match" | "players";
+import type { Screen, ScreenDefinition } from "./screen";
 
 export class AppShell {
-  readonly matchRoot: HTMLElement;
-  readonly playersRoot: HTMLElement;
-  readonly matchSettingsDialog: HTMLDialogElement;
-  readonly playerDialog: HTMLDialogElement;
-  private viewChanged: ((view: AppView) => void) | null = null;
+  /** Faixa no topo, sempre visível: quem a preenche é o compositor, não o shell. */
+  readonly statusSlot: HTMLElement;
+  private readonly screens = new Map<string, Screen>();
+  private readonly roots = new Map<string, HTMLElement>();
+  private currentId: string;
 
-  constructor(private readonly root: HTMLDivElement) {
+  constructor(private readonly root: HTMLElement, definitions: readonly ScreenDefinition[]) {
+    const first = definitions[0];
+    if (!first) throw new Error("O shell precisa de ao menos uma tela.");
     render(root, html`
       <main class="app-shell">
         <header class="topbar">
           <div class="brand-lockup"><span class="brand-mark" aria-hidden="true"></span><div><h1>FuteVerso</h1><p>SIMULADOR de Futebol 2D</p></div></div>
-          <section class="scoreboard" aria-label="Placar">
-            <div class="score-team score-team--blue"><span id="score-name-blue">CASA</span><strong id="score-blue">0</strong></div>
-            <div class="match-clock"><span id="match-time">00:00</span><small id="match-state">EM CURSO</small></div>
-            <div class="score-team score-team--coral"><strong id="score-coral">0</strong><span id="score-name-coral">VISITANTE</span></div>
-          </section>
-          <div class="simulation-status"><span class="live-dot"></span><span>SIMULAÇÃO ATIVA</span></div>
+          <div class="session-status" id="session-status"></div>
         </header>
         <nav class="view-tabs" aria-label="Áreas do simulador">
-          <button type="button" class="is-active" data-view="match">${icon("Goal")}Partida</button>
-          <button type="button" data-view="players">${icon("Users")}Jogadores</button>
+          ${definitions.map((definition) => html`<button type="button" data-view="${definition.id}">${icon(definition.icon)}${definition.label}</button>`)}
         </nav>
-        ${matchScreenTemplate()}
-        ${playersScreenTemplate()}
+        ${definitions.map((definition) => definition.template())}
       </main>
-      ${playerDialogTemplate()}
-      ${matchSettingsTemplate()}
-    `);
-    this.matchRoot = this.find("#match-view");
-    this.playersRoot = this.find("#players-view");
-    this.matchSettingsDialog = this.find("#match-settings-dialog");
-    this.playerDialog = this.find("#player-dialog");
-    for (const button of this.root.querySelectorAll<HTMLButtonElement>("[data-view]")) {
-      button.addEventListener("click", () => this.setView(button.dataset.view as AppView));
+      <div class="dialog-host">${definitions.map((definition) => definition.dialogs?.())}</div>`);
+
+    this.statusSlot = find<HTMLElement>(root, "#session-status");
+    const dialogs = find<HTMLElement>(root, ".dialog-host");
+    for (const definition of definitions) {
+      const screenRoot = find<HTMLElement>(root, `[data-screen="${definition.id}"]`);
+      this.roots.set(definition.id, screenRoot);
+      this.screens.set(definition.id, definition.mount({ root: screenRoot, dialogs }));
     }
+    for (const tab of findAll<HTMLButtonElement>(root, "[data-view]")) {
+      tab.addEventListener("click", () => this.setView(tab.dataset.view!));
+    }
+    this.currentId = first.id;
+    this.setView(first.id);
   }
 
-  onViewChanged(listener: (view: AppView) => void): void {
-    this.viewChanged = listener;
+  get activeScreen(): Screen {
+    return this.screens.get(this.currentId)!;
   }
 
-  setView(view: AppView): void {
-    this.root.querySelectorAll<HTMLElement>("[data-view]").forEach((item) => {
-      item.classList.toggle("is-active", item.dataset.view === view);
-    });
-    this.matchRoot.hidden = view !== "match";
-    this.playersRoot.hidden = view !== "players";
-    this.viewChanged?.(view);
-  }
-
-  renderTeamNames(names: TeamNames): void {
-    this.find("#score-name-blue").textContent = names.blue;
-    this.find("#score-name-coral").textContent = names.coral;
-  }
-
-  renderMatchHeader(state: MatchState, paused: boolean): void {
-    this.find("#score-blue").textContent = String(state.stats.blue.goals);
-    this.find("#score-coral").textContent = String(state.stats.coral.goals);
-    this.find("#match-time").textContent = formatMatchClock(state);
-    this.find("#match-state").textContent = state.finished
-      ? "ENCERRADA"
-      : state.stoppage.awaitingEnd ? "ACRÉSCIMOS" : `${state.half}º TEMPO`;
-    this.find(".simulation-status span:last-child").textContent = paused ? "SIMULAÇÃO PAUSADA" : "SIMULAÇÃO ATIVA";
-    this.find(".live-dot").classList.toggle("is-paused", paused);
-  }
-
-  private find<T extends HTMLElement>(selector: string): T {
-    return find<T>(this.root, selector);
+  setView(id: string): void {
+    this.currentId = id;
+    for (const tab of findAll<HTMLElement>(this.root, "[data-view]")) {
+      tab.classList.toggle("is-active", tab.dataset.view === id);
+    }
+    for (const [screenId, element] of this.roots) element.hidden = screenId !== id;
+    const screen = this.activeScreen;
+    screen.resize?.();
+    screen.render();
   }
 }

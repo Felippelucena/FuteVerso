@@ -6,6 +6,9 @@ export const find = <T extends Element>(scope: ParentNode, selector: string): T 
   return element;
 };
 
+export const findAll = <T extends Element>(scope: ParentNode, selector: string): T[] =>
+  [...scope.querySelectorAll<T>(selector)];
+
 /** Único ponto do projeto que escreve innerHTML. Só aceita marcação vinda do `html`. */
 export const render = (target: Element, content: Html): void => {
   target.innerHTML = markup(content);

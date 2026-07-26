@@ -7,6 +7,7 @@ import { find, render } from "../app/dom";
 import { html, type Html } from "../app/html";
 import { POSITION_LABELS, POSITION_SHORT_LABELS, ROLE_LABELS } from "../app/labels";
 import { icon } from "../app/icons";
+import type { Screen, ScreenDefinition } from "../app/screen";
 import { createPlayersViewModel } from "./players-view-model";
 
 const SKILL_FIELDS: { key: keyof PlayerSkills; label: string }[] = [
@@ -41,14 +42,14 @@ const positionOptions = (): Html => html`${PLAYER_POSITIONS
 const countryOptions = (): Html => html`${COUNTRIES
   .map((country) => html`<option value="${country.code}">${country.name}</option>`)}`;
 
-export const playersScreenTemplate = (): Html => html`
-  <section id="players-view" class="manager-view" hidden>
+const playersScreenTemplate = (): Html => html`
+  <section data-screen="players" class="manager-view" hidden>
     <div class="manager-heading"><div><span class="eyebrow">CATÁLOGO</span><h2>Jogadores</h2></div><button id="add-player" class="primary-button" type="button">${icon("Plus")}Novo jogador</button></div>
     <p id="manager-message" class="manager-message" aria-live="polite"></p>
     <div class="players-section"><div class="section-heading"><h3>Todos os jogadores</h3><span id="player-count"></span></div><div id="players-table" class="players-table"></div></div>
   </section>`;
 
-export const playerDialogTemplate = (): Html => html`
+const playerDialogTemplate = (): Html => html`
   <dialog id="player-dialog" class="player-dialog">
     <form id="player-form" method="dialog">
       <div class="dialog-heading"><div><span class="eyebrow">PERFIL</span><h2 id="dialog-title">Novo jogador</h2></div><button class="icon-button" id="close-player" type="button" aria-label="Fechar" title="Fechar">${icon("X")}</button></div>
@@ -75,7 +76,16 @@ const commandMessage = (reason: CommandError): string => {
   return "Essa alteração deixaria um plano tático inválido.";
 };
 
-export class PlayersScreen {
+export const playersScreenDefinition = (application: GameApplication): ScreenDefinition => ({
+  id: "players",
+  label: "Jogadores",
+  icon: "Users",
+  template: playersScreenTemplate,
+  dialogs: playerDialogTemplate,
+  mount: ({ root, dialogs }) => new PlayersScreen(root, find(dialogs, "#player-dialog"), application),
+});
+
+export class PlayersScreen implements Screen {
   private editingPlayerId: string | null = null;
   private readonly playerForm: HTMLFormElement;
 
