@@ -68,13 +68,11 @@ describe.runIf(CALIBRATION)("caracterizacao deterministica", () => {
       short: hashFingerprint(actual.short),
       long: hashFingerprint(actual.long),
     };
-    // Re-baseline: a bola parada deixou de teleportar. Todo reinício virou uma fase viva restrita —
-    // a bola fica no ponto, o cobrador caminha até ela e só então a jogada volta (runtime/restart),
-    // com acréscimos e fim-com-contexto no relógio. Some o congelamento do kickoff (e um saque de
-    // RNG do antigo jitter de espera), muda a ordem do tick e o desfecho de cada saída de bola.
     // Rebaseline sob demanda: como o teste é gated (CALIBRATE=1), atualize estes hashes quando
-    // rodá-lo e o motor tiver mudado de propósito. Último baseline capturado durante a bola parada.
-    expect(hashes).toEqual({ short: "89a5981f", long: "ef0877c4" });
+    // rodá-lo e o motor tiver mudado de propósito. O hash anterior estava defasado de várias
+    // mudanças atrás — é o preço de um teste que ninguém roda, e a razão de o rebaseline vir
+    // sempre num commit só dele: só assim o diff do baseline é auditável.
+    expect(hashes).toEqual({ short: "f834f781", long: "ece8a6f9" });
     // Timeout explícito: com 22 jogadores em campo a simulação custa ~2,4× o que custava no
     // 5x5, e o padrão de 5s estourava quando a suíte roda em paralelo.
   }, 60_000);
