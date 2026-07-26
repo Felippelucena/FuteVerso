@@ -44,7 +44,9 @@ infrastructure ----------┴----------┘
 
 `MatchSession` é o limite entre a simulação determinística e o tempo real. Ela possui o `MatchState`, pausa, velocidade e acumulador do fixed timestep. `advance(realDeltaSeconds)` limita o delta, aplica o multiplicador e executa no máximo 140 ticks por chamada.
 
-`GameApplication` coordena `World`, `MatchSession` e a porta `WorldRepository`. Ela recebe o mundo já carregado por `bootstrapWorld`, monta a partida a partir de dois clubes e seus planos, persiste memórias e oferece os comandos de seed, aprendizado, escolha de clubes e CRUD de jogadores. Toda edição passa por `repairWorld`, então excluir um jogador escalado recompõe a escalação em vez de invalidá-la. Mudanças no catálogo são salvas imediatamente, mas uma partida em andamento só recebe o elenco novo quando reiniciada.
+`GameApplication` coordena `World`, `MatchSession` e a porta `WorldRepository`. Ela recebe o mundo já carregado por `bootstrapWorld`, persiste memórias e oferece os comandos de seed, aprendizado, escolha de clubes e CRUD de jogadores. Toda edição passa por `repairWorld`, então excluir um jogador escalado recompõe a escalação em vez de invalidá-la. Mudanças no catálogo são salvas imediatamente, mas uma partida em andamento só recebe o elenco novo quando reiniciada.
+
+A partida **não** nasce com a aplicação: `match` é `MatchSession | null`, e num ambiente de edição o catálogo pode nem ter dois clubes. `startMatch(setup)` a põe em campo, `leaveMatch()` a congela (segue viva e retomável enquanto a aba existir) e `endMatch()` a descarta. `requireMatch()` é para as telas que só existem dentro de uma partida; quem pode viver sem ela usa `match` e trata o `null`. Um clube não pode ocupar os dois lados — a regra é do comando, não da tela.
 
 `bootstrapWorld` é o único ponto que decide entre continuar e começar do zero: lê o repositório e, se estiver vazio, gera um catálogo com `generateCatalog` e o grava.
 
@@ -54,18 +56,29 @@ infrastructure ----------┴----------┘
 - `presentation/app/dom.ts`: `render` (único ponto que escreve `innerHTML`), `find`, `findAll`.
 - `presentation/app/icons.ts`: mapa de ícones e `icon(name)` tipado, serializado como SVG inline.
 - `presentation/app/section.ts`: trecho reconstruído só quando muda a assinatura das entradas.
-- `presentation/app/screen.ts`: contratos `Screen`, `ScreenContext`, `ScreenDefinition`.
-- `presentation/app/app-shell.ts`: layout, abas e diálogos, a partir de uma lista de telas.
+- `presentation/app/screen.ts`: contratos `Screen`, `ScreenContext`, `ScreenDefinition`, `Route`, `Navigation`.
+- `presentation/app/navigator.ts`: pilha de rotas, layout, trilha e diálogos, a partir de uma lista de telas.
 - `presentation/app/animation-loop.ts`: `requestAnimationFrame`, status da sessão e autosave.
+- `presentation/menu`: menu inicial.
+- `presentation/quick-game`: seleção de clubes e plano tático do fluxo de Jogo Rápido.
+- `presentation/editor`: casca do editor e o registro de entidades editáveis.
 - `presentation/match`: tela, cabeçalho, roster, mapa tático e view model da partida.
 - `presentation/players`: tela, dialogs e view model do elenco.
 - `presentation/canvas`: renderer do campo.
 
 Cada tela consulta elementos apenas dentro do próprio container. Uma tela nova é um
-`ScreenDefinition` — um arquivo e uma linha em `main.ts`; o shell não conhece nenhuma pelo nome,
-nem importa nada do domínio. O laço avança a sessão, atualiza o status no topo (que segue vivo em
-qualquer tela) e chama a tela ativa: `frame()` por quadro, `tick()` no ritmo da interface. Painel
-escondido não é montado, e o que muda a cada tique é escrito no lugar, nunca reconstruído.
+`ScreenDefinition` — um arquivo e uma linha em `main.ts`; o navegador não conhece nenhuma pelo nome,
+nem importa nada do domínio.
+
+A navegação é uma **pilha**, não um conjunto de abas: o jogo tem profundidade (menu → clubes → plano
+→ partida) e voltar significa subir um nível. Telas são montadas na primeira visita e descartadas ao
+sair da pilha — o que precisa sobreviver a sair de cena, a partida, vive na aplicação e não na tela.
+`suspend()` é o gancho de quem tem processo vivo. Cada definição declara seu `chrome`: só a partida
+pede o placar no topo, as demais mostram a trilha.
+
+O laço avança a sessão quando ela existe, atualiza o status no topo e chama a tela ativa: `frame()`
+por quadro, `tick()` no ritmo da interface. Painel escondido não é montado, e o que muda a cada tique
+é escrito no lugar, nunca reconstruído.
 
 ## Pipeline da partida
 
