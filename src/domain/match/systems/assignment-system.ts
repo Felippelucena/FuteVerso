@@ -1,6 +1,7 @@
 import { clamp, distance } from "../../shared/math";
+import { mentalityBias, type TacticalMentality } from "../../tactics/model";
 import { TACTICAL_GRID } from "../../tactics/slots";
-import { DEFENSE, FIELD, OFFSIDE } from "../config";
+import { DEFENSE, FIELD, MENTALITY, OFFSIDE } from "../config";
 import type {
   AssignmentDuty,
   AssignmentZone,
@@ -11,6 +12,7 @@ import type {
   PlayerAssignment,
   PlayerPosition,
   PlayerRuntime,
+  PressTrigger,
   TacticalPhase,
   Team,
   TeamCollectivePlan,
@@ -55,11 +57,16 @@ export interface AssignmentContext {
   phase: TacticalPhase;
   attackChannel: AttackChannel;
   defensiveBlock: DefensiveBlock;
+  /** Gatilho em vigor. Nulo é o time que não sai para a bola: ninguém recebe o dever `press`. */
+  pressTrigger: PressTrigger | null;
   risk: number;
   ballActorId: string | null;
   /** Último homem da atualização anterior; entra com vantagem para o papel não ficar trocando. */
   previousSafetyId: string | null;
 }
+
+/** Eixo de mentalidade deste time. A fonte é o estado tático — não há cópia em outro lugar. */
+const mentalityOf = (state: MatchState, team: Team): TacticalMentality => state.tactics[team].directives.mentality;
 
 export interface AssignmentResult {
   assignments: Record<string, PlayerAssignment>;
@@ -176,6 +183,10 @@ export const choosePresser = (state: MatchState, players: PlayerRuntime[]): Play
 /**
  * Segundo engajador: sai da linha para dividir quando a bola do adversário entra no nosso terço
  * defensivo e o portador não tem pressão real (o primeiro pressionador está longe).
+ *
+ * O eixo `pressing` entra aqui, e só aqui: ele move o teto do "nosso terço". Time disposto a
+ * pressionar longe do próprio gol manda o segundo homem já no meio-campo; time recuado só o
+ * solta na entrada da área.
  */
 const chooseSecondPresser = (
   state: MatchState,
@@ -185,7 +196,9 @@ const chooseSecondPresser = (
   carrier: PlayerRuntime | null,
 ): PlayerRuntime | null => {
   if (!carrier || carrier.team === team) return null;
-  if (attackingProgress(team, state.ball.position.x) >= DEFENSE.dangerZoneProgress) return null;
+  const dangerZone = DEFENSE.dangerZoneProgress
+    + mentalityBias(mentalityOf(state, team).pressing) * MENTALITY.pressDangerZone;
+  if (attackingProgress(team, state.ball.position.x) >= dangerZone) return null;
   const presserGap = presser ? distance(presser.position, state.ball.position) : Number.POSITIVE_INFINITY;
   if (presserGap <= DEFENSE.secondPresserUnpressuredGap * FIELD.width) return null;
   const carrierFuture = predictPlayerPosition(carrier, predictionHorizon(carrier, 0.7) * 0.4);
@@ -335,15 +348,19 @@ const assignOutOfPossession = (
   const carrier = state.players.find((player) => player.profile.id === context.ballActorId) ?? null;
   const carrierId = carrier && carrier.team !== team ? carrier.profile.id : null;
 
-  const presser = choosePresser(state, outfield);
+  // Sem gatilho em vigor ninguém sai para a bola: o time inteiro sustenta a zona e espera. É o
+  // que "gatilho desabilitado" quer dizer, e é o que dá sentido à lista vazia do plano.
+  const presser = context.pressTrigger ? choosePresser(state, outfield) : null;
   if (presser) duties.set(presser.profile.id, { duty: "press", priority: 0, targetPlayerId: carrierId });
-  const second = chooseSecondPresser(
-    state,
-    team,
-    outfield.filter((player) => !duties.has(player.profile.id)),
-    presser,
-    carrier,
-  );
+  const second = context.pressTrigger
+    ? chooseSecondPresser(
+      state,
+      team,
+      outfield.filter((player) => !duties.has(player.profile.id)),
+      presser,
+      carrier,
+    )
+    : null;
   if (second) duties.set(second.profile.id, { duty: "press", priority: 1, targetPlayerId: carrierId });
 
   // Marcação individual só para quem o treinador mandou marcar homem. O padrão é zona: o
@@ -420,13 +437,16 @@ const shapeDepthFor = (context: AssignmentContext): number => context.posture ==
  */
 const lineHeightFor = (state: MatchState, team: Team, context: AssignmentContext, depth: number): number => {
   const ballDepth = attackingProgress(team, state.ball.position.x) * 100;
+  // Eixo `defensiveLine`: o único ponto em que a ordem do treinador sobe ou desce a forma. Entra
+  // no fim, sobre as duas posturas, para "linha alta" significar o mesmo com e sem a bola.
+  const coach = mentalityBias(mentalityOf(state, team).defensiveLine) * MENTALITY.lineHeight;
   if (context.posture === "inPossession") {
     const behind = context.phase === "buildUp" ? 6 : context.phase === "counterAttack" ? 18 : 12;
-    return clamp(ballDepth - behind, LINE_HEIGHT_RANGE.lowest, LINE_HEIGHT_RANGE.highest);
+    return clamp(ballDepth - behind + coach, LINE_HEIGHT_RANGE.lowest, LINE_HEIGHT_RANGE.highest);
   }
   const ahead = isHighBlock(context) ? 16 : isLowBlock(context) ? 3 : 8;
   const front = ballDepth + ahead;
-  return clamp(front - SHAPE_SPAN * depth, LINE_HEIGHT_RANGE.lowest, LINE_HEIGHT_RANGE.highest);
+  return clamp(front - SHAPE_SPAN * depth + coach, LINE_HEIGHT_RANGE.lowest, LINE_HEIGHT_RANGE.highest);
 };
 
 /**
@@ -459,9 +479,13 @@ const forwardLimitFor = (state: MatchState, team: Team, context: AssignmentConte
   return clamp(Math.max(offsideLine, ballDepth) + OFFSIDE.runMarginProgress * 100, 32, 94);
 };
 
-const teamWidthFor = (context: AssignmentContext): number => context.posture === "inPossession"
-  ? context.phase === "finalThird" ? 0.78 : context.phase === "buildUp" ? 0.72 : 0.7
-  : isLowBlock(context) ? 0.38 : isHighBlock(context) ? 0.5 : 0.44;
+const teamWidthFor = (state: MatchState, team: Team, context: AssignmentContext): number => {
+  const base = context.posture === "inPossession"
+    ? context.phase === "finalThird" ? 0.78 : context.phase === "buildUp" ? 0.72 : 0.7
+    : isLowBlock(context) ? 0.38 : isHighBlock(context) ? 0.5 : 0.44;
+  // Eixo `width`: o único ponto em que o treinador abre ou fecha o time.
+  return clamp(base + mentalityBias(mentalityOf(state, team).width) * MENTALITY.teamWidth, 0.24, 0.96);
+};
 
 /** Deslizamento lateral do bloco: para o canal de ataque com a bola, para a bola sem ela. */
 const laneShift = (state: MatchState, context: AssignmentContext): number => {
@@ -547,7 +571,7 @@ export const placementFor = (state: MatchState, team: Team, context: AssignmentC
   const depth = shapeDepthFor(context);
   return {
     lineHeight: lineHeightFor(state, team, context, depth),
-    width: teamWidthFor(context),
+    width: teamWidthFor(state, team, context),
     depth,
     forwardLimit: forwardLimitFor(state, team, context),
   };

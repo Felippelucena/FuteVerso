@@ -1,5 +1,6 @@
-import { FIELD, MATCH_DURATION, POSSESSION, TACTICS } from "../config";
+import { FIELD, MATCH_DURATION, MENTALITY, POSSESSION, TACTICS } from "../config";
 import { clamp, distance } from "../../shared/math";
+import { mentalityBias, type TeamDirectives } from "../../tactics/model";
 import type {
   AttackChannel,
   BuildUpStyle,
@@ -26,8 +27,9 @@ export const createPhaseSeconds = (): Record<TacticalPhase, number> => Object.fr
   TACTICAL_PHASES.map((phase) => [phase, 0]),
 ) as Record<TacticalPhase, number>;
 
-export const createTacticalState = (team: Team): TeamTacticalState => ({
-  phase: team === "blue" ? "midBlock" : "midBlock",
+export const createTacticalState = (directives: TeamDirectives): TeamTacticalState => ({
+  directives,
+  phase: "midBlock",
   phaseStartedAt: 0,
   candidatePhase: "midBlock",
   candidatePhaseStartedAt: 0,
@@ -132,11 +134,20 @@ const chooseDefensiveBlock = (state: MatchState, team: Team, players: PlayerRunt
   return intensity > 77 ? "high" : intensity < 58 ? "low" : "mid";
 };
 
-const choosePressTrigger = (state: MatchState, team: Team): PressTrigger => {
+const proposePressTrigger = (state: MatchState, team: Team): PressTrigger => {
   if (!state.ball.controllerId && !state.pendingPass && !state.ball.dribbleOwnerId) return "looseBall";
   if (state.tactics[team].phase === "counterPress") return "counterPress";
   const edgeDistance = Math.min(state.ball.position.y, FIELD.height - state.ball.position.y);
   return edgeDistance < FIELD.height * 0.18 ? "touchline" : "compact";
+};
+
+/**
+ * A situação propõe o gatilho; o plano diz se ele vale. Gatilho desabilitado não cai para o
+ * seguinte — a situação simplesmente não dispara a nossa pressão, e ninguém sai da linha.
+ */
+const choosePressTrigger = (state: MatchState, team: Team, enabled: readonly PressTrigger[]): PressTrigger | null => {
+  const proposed = proposePressTrigger(state, team);
+  return enabled.includes(proposed) ? proposed : null;
 };
 
 /**
@@ -146,23 +157,38 @@ const choosePressTrigger = (state: MatchState, team: Team): PressTrigger => {
 
 const createCollectivePlan = (state: MatchState, team: Team): TeamCollectivePlan => {
   const tactical = state.tactics[team];
+  const { directives } = tactical;
   const players = state.players.filter((player) => player.team === team);
   const outfield = players.filter((player) => player.profile.position !== "goalkeeper");
   const opponents = state.players.filter((player) => player.team !== team);
   const actorId = activeBallPlayerId(state);
   const posture = collectivePosture(state, team);
   const attackChannel = selectAttackChannel(state, team, outfield, opponents);
-  const defensiveBlock = chooseDefensiveBlock(state, team, players);
+  // Regra uniforme dos estilos: `auto` é o que o motor decide sozinho, qualquer outro valor é
+  // ordem do treinador. Nenhum caso especial de permeio.
+  const defensiveBlock = directives.defensiveBlock === "auto"
+    ? chooseDefensiveBlock(state, team, players)
+    : directives.defensiveBlock;
+  const pressTrigger = choosePressTrigger(state, team, directives.pressTriggers);
   const scoreDifference = state.stats[team].goals - state.stats[team === "blue" ? "coral" : "blue"].goals;
   const urgency = clamp((state.elapsed - MATCH_DURATION * 0.65) / (MATCH_DURATION * 0.35), 0, 1);
   const personalityRisk = average(players, (player) => player.profile.mental.creativity * 0.45 + player.profile.mental.aggression * 0.35 + player.profile.mental.composure * 0.2) / 100;
-  const risk = clamp(personalityRisk + (scoreDifference < 0 ? urgency * 0.3 : scoreDifference > 0 ? -urgency * 0.2 : 0), 0.2, 0.95);
+  // Eixo `risk`: entra aqui, e só aqui. Rest defense, sobreposição do lateral e apetite de passe
+  // já leem este número — enviesá-lo na origem move os três de uma vez e sem contradição.
+  const risk = clamp(
+    personalityRisk
+    + (scoreDifference < 0 ? urgency * 0.3 : scoreDifference > 0 ? -urgency * 0.2 : 0)
+    + mentalityBias(directives.mentality.risk) * MENTALITY.risk,
+    0.2,
+    0.95,
+  );
 
   const { assignments, safetyId, placement } = buildAssignments(state, team, {
     posture,
     phase: tactical.phase,
     attackChannel,
     defensiveBlock,
+    pressTrigger,
     risk,
     ballActorId: actorId,
     previousSafetyId: tactical.safetyPlayerId,
@@ -177,11 +203,11 @@ const createCollectivePlan = (state: MatchState, team: Team): TeamCollectivePlan
     phase: tactical.phase,
     posture,
     ballActorId: actorId,
-    buildUpStyle: chooseBuildUpStyle(players),
+    buildUpStyle: directives.buildUpStyle === "auto" ? chooseBuildUpStyle(players) : directives.buildUpStyle,
     attackChannel,
     defensiveBlock,
     risk,
-    pressTrigger: choosePressTrigger(state, team),
+    pressTrigger,
     placement,
     assignments,
   };
@@ -227,6 +253,7 @@ export const updateTacticalContext = (state: MatchState, dt: number): void => {
         phase: tactical.phase,
         attackChannel: tactical.collectivePlan.attackChannel,
         defensiveBlock: tactical.collectivePlan.defensiveBlock,
+        pressTrigger: tactical.collectivePlan.pressTrigger,
         risk: tactical.collectivePlan.risk,
         ballActorId: tactical.collectivePlan.ballActorId,
         previousSafetyId: tactical.safetyPlayerId,

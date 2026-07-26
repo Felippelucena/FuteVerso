@@ -1,5 +1,5 @@
 import type { PlayerMemory, PlayerProfile } from "../roster/model";
-import type { PlayerInstruction } from "../tactics/model";
+import type { PlayerInstruction, TeamDirectives } from "../tactics/model";
 import type { TacticalSlotId } from "../tactics/slots";
 import type { AttackChannel, BuildUpStyle, DefensiveBlock, PressTrigger } from "../tactics/vocabulary";
 import type { Team, Vec2 } from "../shared/model";
@@ -18,7 +18,7 @@ export type {
 // O vocabulário tático é declarado por domain/tactics, que é quem oferece essas opções ao
 // treinador; o motor as consome e reexporta para manter sua superfície pública intacta.
 export type { AttackChannel, BuildUpStyle, DefensiveBlock, PressTrigger } from "../tactics/vocabulary";
-export type { PlayerInstruction } from "../tactics/model";
+export type { PlayerInstruction, TacticalMentality, TeamDirectives } from "../tactics/model";
 export type { TacticalSlotId } from "../tactics/slots";
 
 /**
@@ -52,6 +52,8 @@ export interface MatchConfig {
   seed: number;
   learningEnabled: boolean;
   participants: MatchParticipant[];
+  /** As diretrizes com que cada lado entra em campo. Ver `TeamDirectives`. */
+  teams: Record<Team, TeamDirectives>;
 }
 
 export type TeamPosture = "inPossession" | "outOfPossession";
@@ -419,6 +421,8 @@ export interface TeamShape {
 }
 
 export interface TeamTacticalState {
+  /** Diretrizes do treinador para este lado. Constantes durante a partida. */
+  directives: TeamDirectives;
   phase: TacticalPhase;
   phaseStartedAt: number;
   candidatePhase: TacticalPhase;
@@ -517,7 +521,8 @@ export interface TeamCollectivePlan {
   attackChannel: AttackChannel;
   defensiveBlock: DefensiveBlock;
   risk: number;
-  pressTrigger: PressTrigger;
+  /** Gatilho de pressão em vigor, ou nulo quando o que a situação propôs não está habilitado. */
+  pressTrigger: PressTrigger | null;
   /** Onde a forma do time está agora: altura da linha mais recuada e largura aberta. */
   placement: TeamShapePlacement;
   /**

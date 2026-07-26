@@ -215,6 +215,28 @@ export const TACTICS = {
   collectivePlanSeconds: 2.2,
   predictionMinSeconds: 0.5,
   predictionMaxSeconds: 1.8,
+  // Tempo que o portador leva acomodando a bola antes de considerar entregá-la. É o relógio da
+  // circulação: abaixo dele o jogador conduz mesmo que exista um passe melhor.
+  carrierSettleSeconds: 0.72,
+} as const;
+
+/**
+ * Viés que o plano tático aplica sobre o motor. Cada eixo de `TacticalMentality` entra em **um
+ * único ponto**, e o valor aqui é o quanto o extremo (0 ou 100) desloca esse ponto. O neutro (50)
+ * vale exatamente zero — é o que faz um plano neutro reproduzir a partida que o motor já produzia
+ * sozinho, e o que o teste de caracterização verifica.
+ */
+export const MENTALITY = {
+  /** `defensiveLine`: pontos de profundidade (%) somados à altura da linha mais recuada. */
+  lineHeight: 14,
+  /** `width`: fração da altura do campo somada à abertura da forma. */
+  teamWidth: 0.16,
+  /** `pressing`: até que altura do campo o segundo homem ainda sai da linha para dividir. */
+  pressDangerZone: 0.22,
+  /** `risk`: apetite somado ao risco que personalidade e placar já produzem. */
+  risk: 0.25,
+  /** `tempo`: fração de `TACTICS.carrierSettleSeconds` descontada do tempo de acomodação. */
+  tempo: 0.5,
 } as const;
 
 export const POSSESSION = {

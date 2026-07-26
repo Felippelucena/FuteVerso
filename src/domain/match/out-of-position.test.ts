@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { referenceParticipants } from "./__fixtures__/reference-match";
+import { referenceMatchConfig, referenceParticipants } from "./__fixtures__/reference-match";
 import { thinkingInterval } from "./ai";
 import { createMatchState } from "./index";
 import { positionFit } from "../tactics/position-fit";
@@ -13,7 +13,7 @@ import { findSlot } from "../tactics/slots";
  */
 describe("custo de jogar fora de posição", () => {
   it("dá encaixe pleno a quem está na posição natural", () => {
-    const state = createMatchState({ seed: 1, learningEnabled: false, participants: referenceParticipants() });
+    const state = createMatchState({ ...referenceMatchConfig(1), learningEnabled: false });
     for (const player of state.players) expect(player.positionFit).toBe(1);
   });
 
@@ -27,7 +27,7 @@ describe("custo de jogar fora de posição", () => {
     expect(winger.positionFit).toBeGreaterThan(0);
     expect(winger.positionFit).toBeLessThan(1);
 
-    const state = createMatchState({ seed: 1, learningEnabled: false, participants });
+    const state = createMatchState({ ...referenceMatchConfig(1), learningEnabled: false, participants });
     const improvised = state.players.find((p) => p.profile.id === winger.profile.id)!;
     expect(improvised.positionFit).toBe(winger.positionFit);
 

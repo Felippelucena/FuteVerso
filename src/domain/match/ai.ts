@@ -1,5 +1,6 @@
-import { COGNITION, CONDUCT, DEFENSE, DUEL, FIELD, OFFSIDE, PHYSICS, TACTICS } from "./config";
+import { COGNITION, CONDUCT, DEFENSE, DUEL, FIELD, MENTALITY, OFFSIDE, PHYSICS, TACTICS } from "./config";
 import { add, clamp, distance, dot, normalize, scale, subtract } from "../shared/math";
+import { mentalityBias, type FreedomInstruction } from "../tactics/model";
 import type { AgentDecision, AssignmentDuty, BallAction, DecisionReason, DribbleStyle, MatchState, PlanTarget, PlayerAssignment, PlayerPlan, PlayerRuntime, Vec2 } from "./model";
 import { activeBallPlayerId } from "./runtime/control";
 import { isRestartTaker, restartLayoutTarget } from "./runtime/restart";
@@ -260,6 +261,12 @@ const openDribbleLane = (player: PlayerRuntime, target: Vec2, opponents: PlayerR
   return Math.min(fieldX(24), ...blockers);
 };
 
+/**
+ * Quanto a instrução individual acrescenta à utilidade da ação. `normal` vale zero: o padrão do
+ * treinador não mexe em nada, e é isso que mantém o comportamento emergente como estava.
+ */
+const FREEDOM_APPETITE: Record<FreedomInstruction, number> = { rarely: -0.4, normal: 0, often: 0.4 };
+
 const carrierDecision = (
   player: PlayerRuntime,
   teammates: PlayerRuntime[],
@@ -310,7 +317,8 @@ const carrierDecision = (
   const shot = evaluateShotOpportunity(player, opponents, state);
   const clearChanceBonus = shot && !shot.blocked && shot.distance < fieldX(18) ? 1.45 : 0;
   const shotUtility = shot ? shot.utility + clearChanceBonus + finalThirdUrgency + aggression * 0.12
-    + composure * pressure * 0.1 + decisionNoise(player, state, 11) : -1;
+    + composure * pressure * 0.1 + FREEDOM_APPETITE[player.instruction.shootFreedom]
+    + decisionNoise(player, state, 11) : -1;
   const passUtility = pass ? pass.score + policy.pass * 0.52 + pressure * (0.58 + composure * 0.2)
     + edgeRisk(player.position) * 0.62 + teamwork * 0.14 + decisions * 0.1 + decisionNoise(player, state, 23) : -1;
   const controlAge = Math.max(0, state.elapsed - state.ball.controlStartedAt);
@@ -345,6 +353,7 @@ const carrierDecision = (
     + (breakEligible ? clamp(forwardRunway.distance / fieldX(45), 0, 1) * 0.54 : 0)
     + (activeBreak ? 0.32 : 0)
     + carryShotBonus
+    + FREEDOM_APPETITE[player.instruction.dribbleFreedom]
     + decisionNoise(player, state, 37);
   const clearShootingChance = Boolean(shot && !shot.blocked && shot.distance < fieldX(18));
   if (clearShootingChance && pass && passUtility > shotUtility + 0.18) {
@@ -373,7 +382,11 @@ const carrierDecision = (
   const passAdvantageRequired = pressure > 0.25
     ? 0.08 + escapeConfidence * 0.32 + creativity * 0.08 - teamwork * 0.1
     : 0.38 + creativity * 0.08 - teamwork * 0.12;
-  const hasSettledPossession = controlAge > 0.72 || pressure > 0.68 || player.profile.position === "goalkeeper";
+  // Eixo `tempo`: o único ponto em que o treinador acelera ou segura a circulação. Ele encurta o
+  // tempo que o portador leva acomodando a bola antes de considerar entregá-la.
+  const settleSeconds = TACTICS.carrierSettleSeconds
+    * (1 - mentalityBias(state.tactics[player.team].directives.mentality.tempo) * MENTALITY.tempo);
+  const hasSettledPossession = controlAge > settleSeconds || pressure > 0.68 || player.profile.position === "goalkeeper";
   if (pass && hasSettledPossession && passUtility >= dribbleUtility + passAdvantageRequired) {
     return { movementTarget: player.position, burst: false, posture: "inPossession", intent: "passing", reason: pass.reason, ballAction: pass.action };
   }
@@ -667,10 +680,14 @@ export const decideAll = (state: MatchState): Map<string, AgentDecision> => {
     // Quem pressiona vem do dever `press`: prioridade 0 é quem chega primeiro na bola,
     // prioridade 1 é o segundo que sai da linha para dividir.
     const pressers = dutyHolders(plan, "press");
-    // Sem plano coletivo (primeiro tick, cenário de teste), a mesma escolha do plano decide —
-    // uma fonte só para "quem vai na bola", e ela nunca escolhe o goleiro.
+    // O dever manda. Quando ninguém foi nomeado — sem plano ainda, ou bola solta com a posse
+    // creditada a nós —, o mais perto vai atrás dela pela mesma escolha que o plano usaria, que
+    // nunca escolhe o goleiro. Só o time cujo gatilho está desligado abre mão disso: é o que
+    // "não pressiono nessa situação" quer dizer.
     const presser = teammates.find((player) => player.profile.id === pressers[0])
-      ?? choosePresser(state, teammates.filter((player) => player.profile.position !== "goalkeeper"));
+      ?? (!plan || plan.pressTrigger
+        ? choosePresser(state, teammates.filter((player) => player.profile.position !== "goalkeeper"))
+        : null);
     const secondPresser = pressers[1] && pressers[1] !== presser?.profile.id
       ? teammates.find((player) => player.profile.id === pressers[1]) ?? null
       : null;

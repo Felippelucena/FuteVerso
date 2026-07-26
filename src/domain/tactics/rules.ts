@@ -1,12 +1,11 @@
 import type { PlayerProfile } from "../roster/model";
 import {
-  NEUTRAL_MENTALITY,
+  NEUTRAL_DIRECTIVES,
   TEAM_SIZE,
   type TeamTacticalPlan,
 } from "./model";
 import { positionFit } from "./position-fit";
 import { findSlot, GOALKEEPER_SLOT_ID, slotOrder, type TacticalSlotId } from "./slots";
-import { PRESS_TRIGGERS } from "./vocabulary";
 
 export type TacticalPlanIssueKind =
   | "wrong-size"
@@ -28,11 +27,8 @@ export const createEmptyPlan = (): TeamTacticalPlan => ({
   formationId: null,
   assignments: [],
   bench: [],
-  mentality: { ...NEUTRAL_MENTALITY },
-  buildUpStyle: "auto",
-  defensiveBlock: "auto",
-  pressTriggers: [...PRESS_TRIGGERS],
   instructions: {},
+  ...structuredClone(NEUTRAL_DIRECTIVES),
 });
 
 /**

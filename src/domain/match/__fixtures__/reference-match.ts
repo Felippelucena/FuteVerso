@@ -1,7 +1,7 @@
 import { createMentalAttributes } from "../../roster/personality";
 import type { PlayerProfile, PlayerSkills } from "../../roster/model";
 import { createMemory } from "../../roster/rules";
-import { DEFAULT_INSTRUCTION } from "../../tactics/model";
+import { DEFAULT_INSTRUCTION, NEUTRAL_DIRECTIVES } from "../../tactics/model";
 import { positionFit } from "../../tactics/position-fit";
 import { findSlot, type TacticalSlotId } from "../../tactics/slots";
 import type { Team } from "../../shared/model";
@@ -122,11 +122,22 @@ const buildParticipants = (lineups: Record<Team, readonly SlotAssignment[]>): Ma
 
 export const referenceParticipants = (): MatchParticipant[] => buildParticipants(ELEVEN);
 
+/**
+ * Os dois lados entram com diretrizes neutras — mentalidade 50 em todos os eixos, estilos em
+ * `auto` e todos os gatilhos ligados. É o plano que não pede nada: por desenho, o motor então se
+ * comporta como se comportava antes de existir plano tático, e é isso que a caracterização mede.
+ */
+const neutralTeams = (): MatchConfig["teams"] => ({
+  blue: structuredClone(NEUTRAL_DIRECTIVES),
+  coral: structuredClone(NEUTRAL_DIRECTIVES),
+});
+
 /** Partida no formato do jogo: onze contra onze. */
 export const referenceMatchConfig = (seed: number = DEFAULT_MATCH_SEED): MatchConfig => ({
   seed,
   learningEnabled: true,
   participants: referenceParticipants(),
+  teams: neutralTeams(),
 });
 
 /** Partida reduzida, para cenários de comportamento isolados. */
@@ -134,6 +145,7 @@ export const smallSidedMatchConfig = (seed: number = DEFAULT_MATCH_SEED): MatchC
   seed,
   learningEnabled: true,
   participants: buildParticipants(FIVE),
+  teams: neutralTeams(),
 });
 
 /**

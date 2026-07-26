@@ -136,7 +136,10 @@ export function createMatchState(config: MatchConfig): MatchState {
     lastControlledTeam: null,
     controlChangedAt: 0,
     contestedSeconds: 0,
-    tactics: { blue: createTacticalState("blue"), coral: createTacticalState("coral") },
+    tactics: {
+      blue: createTacticalState(clone(config.teams.blue)),
+      coral: createTacticalState(clone(config.teams.coral)),
+    },
     heatmaps: {
       blue: Array(ANALYTICS_GRID.columns * ANALYTICS_GRID.rows).fill(0) as number[],
       coral: Array(ANALYTICS_GRID.columns * ANALYTICS_GRID.rows).fill(0) as number[],

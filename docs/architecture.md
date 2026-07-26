@@ -183,6 +183,37 @@ teste:
 mais nada por conta própria. A marcação é zonal por padrão (`holdLine`: respondo por quem entra na
 minha célula) e vira individual (`trackRunner`) só onde o treinador pediu `marking: "man"`.
 
+### O que o plano manda no motor
+
+`MatchConfig.teams` carrega as **diretrizes** de cada lado (`TeamDirectives`): mentalidade, estilo
+de saída, bloco defensivo e gatilhos de pressão. Elas ficam em `state.tactics[team].directives` e
+não mudam durante a partida. O que é por jogador (`PlayerInstruction`) viaja junto de cada
+participante — o motor nunca vê um `TeamTacticalPlan`.
+
+Três regras uniformes governam a ponte, e é delas que sai a garantia de que **um plano neutro
+produz exatamente a partida que o motor produzia antes de existir plano**:
+
+- **estilos** — `auto` é o que o motor calcula sozinho (`chooseBuildUpStyle`, `chooseDefensiveBlock`); qualquer outro valor sobrepõe. Sem caso especial de permeio.
+- **gatilhos** — a situação **propõe** um gatilho e o plano diz se ele vale. Gatilho desabilitado não cai para o seguinte: aquela situação simplesmente não dispara a nossa pressão, e ninguém recebe o dever `press`. Lista vazia é o time que nunca sai para a bola.
+- **mentalidade** — cada eixo entra como viés em **um único ponto**, e `mentalityBias(50)` vale exatamente zero. A magnitude de cada extremo está em `MENTALITY` (`domain/match/config.ts`).
+
+| Eixo | Ponto único | O que move |
+| --- | --- | --- |
+| `defensiveLine` | `lineHeightFor` | sobe ou desce a linha mais recuada, com e sem a bola |
+| `width` | `teamWidthFor` | abre ou fecha a forma |
+| `pressing` | `chooseSecondPresser` | até que altura do campo o 2º homem ainda sai da linha |
+| `tempo` | `carrierDecision` | o tempo de acomodação antes de o portador considerar o passe |
+| `risk` | `createCollectivePlan` | `collectivePlan.risk`, que rest defense, sobreposição e apetite de passe já leem |
+
+`shootFreedom` e `dribbleFreedom` entram por uma tabela só (`FREEDOM_APPETITE`), somada às
+utilidades de chute e de drible; `normal` vale zero, como o neutro da mentalidade.
+
+Quem guarda a garantia é [characterization.test.ts](../src/domain/match/characterization.test.ts),
+que mede o fingerprint da partida de referência — e ela entra com diretrizes neutras. É gated por
+`CALIBRATE=1`: se um dos hashes mudar sem que o motor tenha mudado, um eixo vazou para o meio da
+régua. Que cada controle **chegue** ao jogo é assunto de
+[tactical-plan.test.ts](../src/domain/match/tactical-plan.test.ts), na suíte normal.
+
 ## Forma e colocação
 
 `runtime/formation-geometry.ts` é a única tradução entre a grade 7 x 5 do editor e o gramado, e
@@ -216,8 +247,8 @@ por aí, refinando esse alvo por tipo de cobrança.
 
 ## Evolução planejada
 
-Novas telas devem consumir comandos e consultas de application. Os próximos marcos são a
-recalibragem do 11x11 guiada por medição, os ajustes táticos ligados ao plano (mentalidade,
-saída, bloco, gatilhos) e os editores de jogadores e clubes — nenhum deles deve acoplar o motor
-ao armazenamento concreto. A interface segue sem framework, por decisão: o custo está no
-contrato entre módulos, não na ausência de biblioteca.
+Novas telas devem consumir comandos e consultas de application. Os próximos marcos são o editor
+de plano tático (campo com slots e arrasto, dando ao usuário os controles que o motor já lê) e a
+recalibragem do 11x11 guiada por medição — nenhum deles deve acoplar o motor ao armazenamento
+concreto. A interface segue sem framework, por decisão: o custo está no contrato entre módulos,
+não na ausência de biblioteca.
