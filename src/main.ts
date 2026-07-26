@@ -10,6 +10,7 @@ import { html } from "./presentation/app/html";
 import { MatchHeader } from "./presentation/match/match-header";
 import { matchScreenDefinition } from "./presentation/match/match-screen";
 import { playersScreenDefinition } from "./presentation/players/players-screen";
+import "@fontsource-variable/inter";
 import "./style.css";
 
 const root = document.querySelector<HTMLDivElement>("#app");
