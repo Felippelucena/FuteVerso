@@ -361,10 +361,7 @@ export class MatchScreen implements Screen {
     for (const team of ["blue", "coral"] as const) {
       const select = this.settingsFind<HTMLSelectElement>(`#settings-club-${team}`);
       const current = this.application.setup?.[team].clubId;
-      const opponent = this.application.setup?.[team === "blue" ? "coral" : "blue"].clubId;
-      // O adversário nem aparece na lista: `startMatch` recusa clubes iguais, e a tela só
-      // precisa não oferecer o que seria recusado.
-      render(select, html`${rows.filter(({ id }) => id !== opponent)
+      render(select, html`${rows
         .map((club) => html`<option value="${club.id}" ${club.id === current ? "selected" : ""}>${club.name}</option>`)}`);
     }
   }

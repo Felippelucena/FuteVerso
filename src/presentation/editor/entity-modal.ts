@@ -142,5 +142,4 @@ const MESSAGES: Record<string, string> = {
   "player-not-found": "O jogador não existe mais.",
   "club-not-found": "O clube não existe mais.",
   "invalid-plan": "Essa alteração deixaria um plano tático inválido.",
-  "same-club": "Um clube não pode ocupar os dois lados.",
 };

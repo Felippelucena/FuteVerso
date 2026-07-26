@@ -21,6 +21,7 @@ import {
   type DefensiveBlock,
   type PressTrigger,
 } from "../../domain/tactics/vocabulary";
+import { PITCH_RATIO, pitchMarkingsSvg } from "../canvas/pitch-markings";
 import { render } from "../app/dom";
 import { html, type Html } from "../app/html";
 import { icon } from "../app/icons";
@@ -141,10 +142,12 @@ export class PlanEditor {
       </div>
 
       <div class="plan-layout">
-        <div class="plan-field" aria-label="Campo tático">
+        <div class="plan-field" style="--pitch-ratio:${PITCH_RATIO}" aria-label="Campo tático">
+          ${pitchMarkingsSvg()}
           ${TACTICAL_GRID.rows.map((row) => TACTICAL_GRID.columns.map((column) => {
             const slot = slotByCell.get(`${column}:${row}`);
-            if (!slot) return html`<div class="plan-cell plan-cell--void"></div>`;
+            // Buraco da grade: a célula existe para segurar o lugar, sem slot e sem alvo.
+            if (!slot) return html`<div class="plan-cell"></div>`;
             const player = bySlot.get(slot.id) ?? null;
             return html`<div class="plan-cell ${player ? "is-filled" : ""} ${faultySlots.has(slot.id) ? "is-faulty" : ""}
               ${this.selectedSlot === slot.id ? "is-selected" : ""}" data-slot="${slot.id}">

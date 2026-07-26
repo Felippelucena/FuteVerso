@@ -3,6 +3,7 @@ import { clamp, distance, length } from "../../domain/shared/math";
 import { goalkeeperJumpHeight } from "../../domain/match/systems/goalkeeper-system";
 import { progressToX } from "../../domain/match/runtime/offside";
 import type { MatchState, OffsideCall, PlayerRuntime, Team, Vec2 } from "../../domain/match/model";
+import { PITCH_MARKINGS, PITCH_SPOT_RADIUS } from "./pitch-markings";
 
 const COLORS: Record<Team, { fill: string; dark: string; light: string }> = {
   blue: { fill: "#3b82f6", dark: "#172b4d", light: "#dbeafe" },
@@ -139,66 +140,33 @@ export class GameRenderer {
 
     ctx.strokeStyle = "rgba(235, 247, 238, 0.85)";
     ctx.lineWidth = Math.max(1.5, this.scale * 0.18);
-    ctx.strokeRect(left, top, width, height);
+    ctx.fillStyle = "rgba(235, 247, 238, 0.9)";
+    const spotRadius = Math.max(1.2, PITCH_SPOT_RADIUS * this.scale);
 
-    const markFill = "rgba(235, 247, 238, 0.9)";
-    const spotRadius = Math.max(1.2, this.scale * 0.34);
-    const centerX = this.x(FIELD.width / 2);
-    const centerY = this.y(FIELD.height / 2);
-
-    ctx.beginPath();
-    ctx.moveTo(centerX, top);
-    ctx.lineTo(centerX, top + height);
-    ctx.stroke();
-    ctx.beginPath();
-    ctx.arc(centerX, centerY, FIELD.centerCircleRadius * this.scale, 0, Math.PI * 2);
-    ctx.stroke();
-    ctx.fillStyle = markFill;
-    ctx.beginPath();
-    ctx.arc(centerX, centerY, spotRadius, 0, Math.PI * 2);
-    ctx.fill();
-
-    for (const side of [0, FIELD.width]) {
-      const direction = side === 0 ? 1 : -1;
-      const box = (depth: number, boxWidth: number) => {
-        ctx.strokeRect(
-          this.x(direction > 0 ? side : side - depth),
-          this.y((FIELD.height - boxWidth) / 2),
-          depth * this.scale,
-          boxWidth * this.scale,
-        );
-      };
-      box(FIELD.penaltyDepth, FIELD.penaltyWidth);
-      box(FIELD.goalAreaDepth, FIELD.goalAreaWidth);
-
-      // Marca do pênalti e a meia-lua: o arco é o pedaço do círculo de 9,15 m que sobra fora
-      // da grande área, por isso o ângulo sai da distância entre a marca e a linha da área.
-      const spotX = side + direction * FIELD.penaltySpotDistance;
-      ctx.fillStyle = markFill;
+    // O que desenhar sai de `pitch-markings`, junto com o campo do editor tático. Aqui só se
+    // decide como: régua, escala e pincel.
+    for (const mark of PITCH_MARKINGS) {
       ctx.beginPath();
-      ctx.arc(this.x(spotX), centerY, spotRadius, 0, Math.PI * 2);
-      ctx.fill();
-
-      const arcReach = FIELD.penaltyDepth - FIELD.penaltySpotDistance;
-      if (arcReach < FIELD.centerCircleRadius) {
-        const half = Math.acos(arcReach / FIELD.centerCircleRadius);
-        const axis = direction > 0 ? 0 : Math.PI;
-        ctx.beginPath();
-        ctx.arc(this.x(spotX), centerY, FIELD.centerCircleRadius * this.scale, axis - half, axis + half);
-        ctx.stroke();
+      switch (mark.kind) {
+        case "rect":
+          ctx.strokeRect(this.x(mark.x), this.y(mark.y), mark.width * this.scale, mark.height * this.scale);
+          continue;
+        case "line":
+          ctx.moveTo(this.x(mark.x1), this.y(mark.y1));
+          ctx.lineTo(this.x(mark.x2), this.y(mark.y2));
+          break;
+        case "circle":
+          ctx.arc(this.x(mark.x), this.y(mark.y), mark.radius * this.scale, 0, Math.PI * 2);
+          break;
+        case "arc":
+          ctx.arc(this.x(mark.x), this.y(mark.y), mark.radius * this.scale, mark.from, mark.to);
+          break;
+        case "spot":
+          ctx.arc(this.x(mark.x), this.y(mark.y), spotRadius, 0, Math.PI * 2);
+          ctx.fill();
+          continue;
       }
-    }
-
-    // Arcos de escanteio: um quarto de círculo em cada quina, virado para dentro.
-    for (const cornerX of [0, FIELD.width]) {
-      for (const cornerY of [0, FIELD.height]) {
-        const towardsCenterX = cornerX === 0 ? 1 : -1;
-        const towardsCenterY = cornerY === 0 ? 1 : -1;
-        const start = towardsCenterX > 0 ? (towardsCenterY > 0 ? 0 : -Math.PI / 2) : (towardsCenterY > 0 ? Math.PI / 2 : Math.PI);
-        ctx.beginPath();
-        ctx.arc(this.x(cornerX), this.y(cornerY), FIELD.cornerArcRadius * this.scale, start, start + Math.PI / 2);
-        ctx.stroke();
-      }
+      ctx.stroke();
     }
   }
 

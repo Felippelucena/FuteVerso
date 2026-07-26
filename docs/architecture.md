@@ -52,7 +52,15 @@ infrastructure ----------┴----------┘
 
 A apresentação recebe `queries: ReadonlyCatalog` — lê à vontade, mas gravar é privilégio dos comandos, que são quem mantém a integridade. O tipo impede o atalho.
 
-A partida **não** nasce com a aplicação: `match` é `MatchSession | null`, e num ambiente de edição o catálogo pode nem ter dois clubes. `startMatch(setup)` a põe em campo, `leaveMatch()` a congela (segue viva e retomável enquanto a aba existir) e `endMatch()` a descarta. `requireMatch()` é para as telas que só existem dentro de uma partida; quem pode viver sem ela usa `match` e trata o `null`. Um clube não pode ocupar os dois lados — a regra é do comando, não da tela.
+A partida **não** nasce com a aplicação: `match` é `MatchSession | null`, e num ambiente de edição o catálogo pode nem ter dois clubes. `startMatch(setup)` a põe em campo, `leaveMatch()` a congela (segue viva e retomável enquanto a aba existir) e `endMatch()` a descarta. `requireMatch()` é para as telas que só existem dentro de uma partida; quem pode viver sem ela usa `match` e trata o `null`.
+
+**Clube contra ele mesmo** é permitido — é como se testa um plano contra outro sem trocar o elenco.
+O motor identifica quem está em campo pelo id do perfil, então os dois lados não podem ser os
+mesmos onze ids: o visitante entra com **cópias** (`match/mirror-side.ts`), os mesmos atletas com
+identidade própria nesta partida. Elas herdam a memória do original e aprendem, mas o que aprendem
+não volta ao catálogo — seriam duas memórias para o mesmo atleta e o desempate ficaria por conta da
+ordem de gravação. O `currentSetup` guarda os planos **do contexto**, não os que entraram, para que
+a tela e o ajuste em jogo falem com os ids que estão realmente em campo.
 
 **Ajuste com a bola rolando.** `adjustPlan(team, plan)` leva ao motor o que o treinador grita da
 beira: diretrizes e instruções valem na hora, e os onze podem trocar de posição entre si. Quem
@@ -125,10 +133,19 @@ mudança e se o banco está travado. É essa terceira condição que impede o co
 acoplado a um formulário com Salvar: na beira do gramado não existe Salvar, e o mesmo `changed`
 serve para guardar num rascunho ou aplicar no motor na hora.
 
-O campo é a grade 7x5 de `TACTICAL_GRID`, desenhada com o próprio gol à esquerda — a orientação do
-gramado na partida. O arrasto é por **Pointer Events**, sem biblioteca e sem HTML5 DnD, que não
-funciona no toque; mover e soltar são ouvidos na `window`, porque o dedo sai da caixa do editor o
-tempo todo durante um arrasto.
+O campo é a grade 7x5 de `TACTICAL_GRID` sobre o gramado desenhado, com o próprio gol à esquerda —
+a orientação da partida. Ele respeita a **proporção oficial** (`PITCH_RATIO`, derivada de `FIELD`)
+em vez de esticar até onde a tela deixar: um campo deformado ensina uma distância que não existe.
+Quando a altura é o limite, é a largura que cede.
+
+As marcações vêm de `canvas/pitch-markings.ts`, que descreve os riscos em coordenadas de campo — a
+**descrição**, não o desenho. O canvas da partida e o SVG do editor leem a mesma lista e só decidem
+como pintá-la; é isso que impede os dois de divergirem, em vez de um comentário pedindo que sejam
+mantidos iguais.
+
+O arrasto é por **Pointer Events**, sem biblioteca e sem HTML5 DnD, que não funciona no toque;
+mover e soltar são ouvidos na `window`, porque o dedo sai da caixa do editor o tempo todo durante
+um arrasto.
 
 **Uma regra só para todo movimento:** quem chega ocupa o destino, e quem estava lá vai para a
 origem de quem chegou. Campo com campo é troca de posição; campo com lista é entrada e saída da

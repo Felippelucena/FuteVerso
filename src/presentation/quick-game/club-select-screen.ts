@@ -70,13 +70,13 @@ export class ClubSelectScreen implements Screen {
 
   private renderColumn(team: Team, clubs: Club[]): void {
     const selected = this.chosen[team];
-    const opponent = this.chosen[team === "blue" ? "coral" : "blue"];
+    // O mesmo clube dos dois lados é permitido: é como se testa um plano contra outro sem trocar
+    // o elenco. O visitante entra com cópias — quem cuida disso é a aplicação.
     this.find(`#clubs-chosen-${team}`).textContent = clubs.find(({ id }) => id === selected)?.name ?? "—";
     render(this.find(`#clubs-list-${team}`), html`${clubs.map((club) => html`
       <button type="button" role="option" data-club="${club.id}"
         class="club-option ${club.id === selected ? "is-selected" : ""}"
-        aria-selected="${club.id === selected ? "true" : "false"}"
-        ${club.id === opponent ? html`disabled` : ""}>
+        aria-selected="${club.id === selected ? "true" : "false"}">
         <span class="club-crest" style="--crest:${club.colors.primary};--crest-alt:${club.colors.secondary}"></span>
         <span class="club-option-name"><strong>${club.shortName}</strong>${club.name}</span>
         <span class="club-option-meta">${club.city} · ${countryName(club.nationality)} · REP ${club.reputation}</span>

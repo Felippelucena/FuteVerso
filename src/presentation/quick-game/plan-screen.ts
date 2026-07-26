@@ -31,7 +31,6 @@ const planTemplate = (): Html => html`
   </section>`;
 
 const commandMessage = (reason: CommandError): string => {
-  if (reason === "same-club") return "Os dois lados não podem ser o mesmo clube.";
   if (reason === "club-not-found") return "Um dos clubes não existe mais.";
   if (reason === "invalid-plan") return "A escalação de um dos times está incompleta.";
   return "Não foi possível iniciar a partida.";

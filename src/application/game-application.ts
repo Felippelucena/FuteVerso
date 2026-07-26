@@ -14,6 +14,7 @@ import type { WorldSettings } from "../domain/world/model";
 import { repairPlan } from "../domain/world/rules";
 import { buildMatchConfig, buildTeamAdjustment, type MatchContext, type MatchSetup, type MatchSide } from "./match/build-match-config";
 import { MatchSession } from "./match/match-session";
+import { isMirrored, mirrorSide } from "./match/mirror-side";
 import type { Catalog, ReadonlyCatalog } from "./ports/catalog";
 
 export type CommandError =
@@ -22,8 +23,6 @@ export type CommandError =
   | "player-not-found"
   | "club-not-found"
   | "invalid-plan"
-  /** Um clube não tem elenco para os dois lados; a regra é do comando, não da tela. */
-  | "same-club"
   /** Com a bola rolando, trocar quem está em campo seria substituição — que ainda não existe. */
   | "lineup-locked";
 export type CommandResult = { ok: true } | { ok: false; reason: CommandError };
@@ -116,14 +115,18 @@ export class GameApplication {
 
   /** Põe uma partida em campo, criando a sessão ou reaproveitando a que existe. */
   async startMatch(setup: MatchSetup): Promise<CommandResult> {
-    if (setup.blue.clubId === setup.coral.clubId) return { ok: false, reason: "same-club" };
     const context = await this.resolveContext(setup);
     if (!context) return { ok: false, reason: "club-not-found" };
     if (inspectPlan(context.blue.plan, context.blue.squad).length > 0
       || inspectPlan(context.coral.plan, context.coral.squad).length > 0) {
       return { ok: false, reason: "invalid-plan" };
     }
-    this.currentSetup = setup;
+    // O setup guarda os planos do contexto, e não os que entraram: num clube contra ele mesmo o
+    // visitante joga com cópias, e é com elas que a tela e o ajuste em jogo precisam falar.
+    this.currentSetup = {
+      blue: { clubId: setup.blue.clubId, plan: context.blue.plan },
+      coral: { clubId: setup.coral.clubId, plan: context.coral.plan },
+    };
     this.currentContext = context;
     const config = buildMatchConfig(context);
     if (this.currentMatch) this.currentMatch.restart(config);
@@ -180,8 +183,9 @@ export class GameApplication {
     }
     this.currentSettings.learningEnabled = liveState.learningEnabled;
     // Autosave não bloqueia o laço de animação; falha de gravação não pode parar a partida. São
-    // 22 memórias, e não o catálogo inteiro — é isto que torna o autosave barato.
-    void this.catalog.memories.put(memories).catch(() => undefined);
+    // 22 memórias, e não o catálogo inteiro — é isto que torna o autosave barato. As cópias de um
+    // clube contra si mesmo ficam de fora: gravá-las seria disputar o mesmo registro do original.
+    void this.catalog.memories.put(memories.filter(({ playerId }) => !isMirrored(playerId))).catch(() => undefined);
     void this.catalog.saveSettings(this.currentSettings).catch(() => undefined);
   }
 
@@ -251,14 +255,18 @@ export class GameApplication {
   private async resolveContext(setup: MatchSetup): Promise<MatchContext | null> {
     const sides: Partial<Record<Team, MatchSide>> = {};
     const memories: Record<string, PlayerMemory> = {};
+    const mirror = setup.blue.clubId === setup.coral.clubId;
     for (const team of ["blue", "coral"] as const) {
       const club = await this.catalog.clubs.get(setup[team].clubId);
       if (!club) return null;
       const { players, contracts } = await this.squadOfClub(club.id);
-      sides[team] = { club, squad: players, contracts, plan: setup[team].plan };
       for (const memory of await this.catalog.memories.getMany(players.map((player) => player.id))) {
         memories[memory.playerId] = memory;
       }
+      const side: MatchSide = { club, squad: players, contracts, plan: setup[team].plan };
+      // Clube contra si mesmo: o visitante entra com cópias, senão os dois lados seriam os
+      // mesmos onze ids e o motor não saberia de quem é a bola.
+      sides[team] = mirror && team === "coral" ? mirrorSide(side, memories) : side;
     }
     return {
       blue: sides.blue!,

@@ -62,10 +62,26 @@ describe("GameApplication", () => {
     expect(application.match).not.toBeNull();
   });
 
-  it("recusa o mesmo clube dos dois lados", async () => {
-    const { application, world } = context;
+  it("põe um clube contra ele mesmo, com o visitante em cópias", async () => {
+    const { application, catalog, world } = context;
     const only = world.clubs[0];
-    expect(await application.selectClubs(only.id, only.id)).toEqual({ ok: false, reason: "same-club" });
+    expect(await application.selectClubs(only.id, only.id)).toEqual({ ok: true });
+
+    const players = application.state.players;
+    expect(players).toHaveLength(TEAM_SIZE * 2);
+    // A identidade em campo é única: sem isso o motor não saberia de quem é a bola.
+    expect(new Set(players.map(({ profile }) => profile.id)).size).toBe(TEAM_SIZE * 2);
+    // E são os mesmos atletas dos dois lados.
+    const names = (team: "blue" | "coral") => players
+      .filter((player) => player.team === team).map(({ profile }) => profile.name).sort();
+    expect(names("coral")).toEqual(names("blue"));
+
+    // O que as cópias aprendem não vira registro novo no catálogo.
+    application.persistMatchProgress();
+    await Promise.resolve();
+    const stored = (await catalog.memories.page({ limit: 0 })).rows;
+    const known = new Set((await catalog.players.page({ limit: 0 })).rows.map(({ id }) => id));
+    expect(stored.every(({ playerId }) => known.has(playerId))).toBe(true);
   });
 
   it("aceita o ajuste tático com a bola rolando, mas não a substituição", () => {
