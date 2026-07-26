@@ -42,13 +42,23 @@ export interface CollectContext<TDraft> {
 export interface EntityTab<TDraft> {
   readonly id: string;
   readonly label: string;
-  render(draft: TDraft): Html;
+  /**
+   * Repinta o painel a partir do rascunho. Ausente na aba que hospeda um componente próprio: o
+   * componente é dono do painel e se pinta em `activate`, e repintar por cima o arrancaria.
+   */
+  render?(draft: TDraft): Html;
   /**
    * Liga os eventos do painel. Roda uma vez por montagem, então os handlers precisam ser
    * delegados: `refresh` reescreve a marcação interna e levaria embora qualquer listener
    * pendurado direto no campo.
    */
   bind?(context: BindContext<TDraft>): void;
+  /**
+   * Chamado quando a aba entra em cena. Existe para a aba cujo conteúdo depende do que outra
+   * editou — a tática precisa do elenco que a aba de elenco acabou de mudar, e sem isto ela
+   * mostraria quem já foi dispensado.
+   */
+  activate?(context: BindContext<TDraft>): void;
   /** Lê os campos do painel para dentro do rascunho. Roda antes de salvar e antes de repintar. */
   collect?(context: CollectContext<TDraft>): void;
 }

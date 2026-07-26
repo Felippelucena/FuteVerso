@@ -68,6 +68,34 @@ describe("GameApplication", () => {
     expect(await application.selectClubs(only.id, only.id)).toEqual({ ok: false, reason: "same-club" });
   });
 
+  it("aceita o ajuste tático com a bola rolando, mas não a substituição", () => {
+    const { application } = context;
+    const plan = structuredClone(application.setup!.blue.plan);
+    plan.mentality.pressing = 100;
+    plan.buildUpStyle = "direct";
+
+    expect(application.adjustPlan("blue", plan)).toEqual({ ok: true });
+    const tactics = application.match!.liveState.tactics;
+    expect(tactics.blue.directives.mentality.pressing).toBe(100);
+    expect(tactics.blue.directives.buildUpStyle).toBe("direct");
+    // O outro lado não ouviu ordem nenhuma.
+    expect(tactics.coral.directives.buildUpStyle).toBe("auto");
+    // O ajuste fica no setup: reiniciar a partida entra com o que o treinador mandou.
+    expect(application.setup!.blue.plan.mentality.pressing).toBe(100);
+
+    // Pôr um reserva em campo é substituição, e o motor ainda não a tem.
+    const entrando = plan.bench[0];
+    const vaga = plan.assignments.find(({ slotId }) => slotId !== "gol")!;
+    const substituicao = {
+      ...plan,
+      assignments: plan.assignments.map((assignment) =>
+        assignment === vaga ? { ...assignment, playerId: entrando } : assignment),
+      bench: plan.bench.filter((id) => id !== entrando),
+    };
+    expect(inspectPlan(substituicao, application.squadInPlay("blue"))).toEqual([]);
+    expect(application.adjustPlan("blue", substituicao)).toEqual({ ok: false, reason: "lineup-locked" });
+  });
+
   it("congela a partida ao sair, sem descartá-la", () => {
     const { application } = context;
     application.leaveMatch();

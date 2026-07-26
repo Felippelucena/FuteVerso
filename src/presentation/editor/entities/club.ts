@@ -7,12 +7,11 @@ import type { Contract, ContractStatus } from "../../../domain/contract/model";
 import { nextFreeShirtNumber } from "../../../domain/contract/queries";
 import type { PlayerProfile } from "../../../domain/roster/model";
 import { playerOverall } from "../../../domain/roster/rating";
-import { NEUTRAL_MENTALITY } from "../../../domain/tactics/model";
 import { createEmptyPlan } from "../../../domain/tactics/rules";
-import { PRESS_TRIGGERS } from "../../../domain/tactics/vocabulary";
 import { html } from "../../app/html";
 import { icon } from "../../app/icons";
 import { POSITION_SHORT_LABELS } from "../../app/labels";
+import { PlanEditor } from "../../tactics/plan-editor";
 import type { EntityDescriptor } from "../entity";
 import { colorField, numberField, readNumber, readText, selectField, textField } from "../fields";
 
@@ -53,11 +52,13 @@ const blankClub = (): Club => ({
   colors: { primary: "#1d4ed8", secondary: "#f8fafc", text: "#ffffff" },
   founded: 1950,
   reputation: 50,
-  defaultPlan: { ...createEmptyPlan(), mentality: { ...NEUTRAL_MENTALITY }, pressTriggers: [...PRESS_TRIGGERS] },
+  defaultPlan: createEmptyPlan(),
 });
 
 export const clubDescriptor = (application: GameApplication): EntityDescriptor<ClubRow, ClubDraft> => {
   const loadSquad = async (clubId: string) => application.squadOfClub(clubId);
+  /** Montado uma vez com o modal, junto do painel que ele ocupa. */
+  let planEditor: PlanEditor | null = null;
 
   const CANDIDATES = 12;
   const SCAN_PAGE = 40;
@@ -315,6 +316,26 @@ export const clubDescriptor = (application: GameApplication): EntityDescriptor<C
             ? { ...contract, id: `contract-${contract.playerId}` }
             : contract);
         },
+      },
+      {
+        id: "tactics",
+        label: "Tática",
+        // Sem `render`: o painel é do `PlanEditor`, o mesmo componente do jogo rápido e o da
+        // beira do gramado. Ele se pinta quando a aba entra em cena.
+        bind: ({ panel, draft: currentDraft }) => {
+          planEditor = new PlanEditor(panel, {
+            plan: () => currentDraft().club.defaultPlan,
+            // Quem foi dispensado no rascunho já não está no elenco desta aba.
+            squad: () => {
+              const draft = currentDraft();
+              const bound = new Set(draft.contracts.map((contract) => contract.playerId));
+              return draft.squad.filter((player) => bound.has(player.id));
+            },
+            changed: (plan) => { currentDraft().club = { ...currentDraft().club, defaultPlan: plan }; },
+          });
+        },
+        // O elenco pode ter mudado na outra aba enquanto esta estava escondida.
+        activate: () => planEditor?.render(),
       },
     ],
 

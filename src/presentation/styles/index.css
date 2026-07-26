@@ -36,6 +36,8 @@
 @import "./quick-game/club-select.css";
 @import "./quick-game/plan.css";
 
+@import "./tactics/plan-editor.css";
+
 @import "./editor/editor-screen.css";
 @import "./editor/data-table.css";
 @import "./editor/entity-dialog.css";

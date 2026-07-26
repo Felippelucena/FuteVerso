@@ -54,6 +54,21 @@ A apresentação recebe `queries: ReadonlyCatalog` — lê à vontade, mas grava
 
 A partida **não** nasce com a aplicação: `match` é `MatchSession | null`, e num ambiente de edição o catálogo pode nem ter dois clubes. `startMatch(setup)` a põe em campo, `leaveMatch()` a congela (segue viva e retomável enquanto a aba existir) e `endMatch()` a descarta. `requireMatch()` é para as telas que só existem dentro de uma partida; quem pode viver sem ela usa `match` e trata o `null`. Um clube não pode ocupar os dois lados — a regra é do comando, não da tela.
 
+**Ajuste com a bola rolando.** `adjustPlan(team, plan)` leva ao motor o que o treinador grita da
+beira: diretrizes e instruções valem na hora, e os onze podem trocar de posição entre si. Quem
+entra e quem sai, não — isso é substituição, ainda inexistente, e o comando recusa com
+`lineup-locked` em vez de aplicar pela metade. `buildTeamAdjustment` é a mesma tradução de
+`buildMatchConfig` sem o que exigiria refazer os participantes (perfil, memória, camisa), e
+`applyTeamAdjustment` (domain) recalcula o que o slot decide sobre o atleta: âncora de
+recomposição e encaixe. O plano coletivo em cache é descartado — ele foi decidido sob as
+diretrizes antigas.
+
+`MatchSession.adjust` reancora a visão ao vivo (ordem é para agora) e **abre um keyframe**. Isso
+não é zelo: reconstruir o passado re-simula a partir do keyframe anterior, e isso só reproduz a
+história enquanto o trecho entre dois keyframes for função pura do primeiro. Mudar o plano quebra
+essa pureza; o keyframe novo a restabelece. Vale para qualquer coisa que altere o curso do jogo
+fora do `stepMatch`.
+
 `bootstrapCatalog` é o único ponto que decide entre continuar e começar do zero: lê as configurações e, se o banco estiver vazio, gera um catálogo com `generateCatalog`, o repara e o grava.
 
 `Catalog` expõe quatro `Store<T>` iguais — jogadores, clubes, contratos e memórias — com `page`, `get`, `getMany`, `put` e `remove`. É a mesma interface que a tabela do editor consome, então acrescentar Estádio é acrescentar um store, não um caminho novo. A semântica de paginação (filtro, ordenação, desempate pela chave primária) vive num lugar só, em `infrastructure/persistence/paging.ts`, e os dois adapters são comparados diretamente por teste: divergência aqui é do tipo que passa despercebida — uma linha que some entre duas páginas.
@@ -69,6 +84,7 @@ A partida **não** nasce com a aplicação: `match` é `MatchSession | null`, e 
 - `presentation/app/animation-loop.ts`: `requestAnimationFrame`, status da sessão e autosave.
 - `presentation/menu`: menu inicial.
 - `presentation/quick-game`: seleção de clubes e plano tático do fluxo de Jogo Rápido.
+- `presentation/tactics`: editor de plano tático, compartilhado pelo clube, pelo jogo rápido e pela partida.
 - `presentation/editor`: tabela, modal e os descritores de entidade.
 - `presentation/match`: tela, cabeçalho, roster, mapa tático e view model da partida.
 - `presentation/canvas`: renderer do campo.
@@ -90,9 +106,41 @@ digitado.
 rascunho, e os handlers que pendura disparam depois. Um getter resolveria igual até alguém
 desestruturar o contexto e capturar `null` sem perceber.
 
+`render` é **opcional** na aba. A regra: a aba comum é repintada a partir do rascunho; a aba que
+hospeda um componente próprio — a Tática do clube — entrega o painel a ele e se pinta em
+`activate`. Repintar por cima arrancaria o componente e os eventos dele. `activate` existe para a
+aba cujo conteúdo depende do que outra editou: dispensar um jogador no Elenco tem de aparecer na
+Tática, e enquanto escondida ela não é montada.
+
 Coluna só ordena se tiver campo indexado. Camisa e clube não têm — vêm do contrato, e o banco
 não cruza índices. Idade ordena por `birthYear` com a direção invertida, porque idade cresce
 quando o ano de nascimento diminui.
+
+## Editor de plano tático
+
+`presentation/tactics/plan-editor.ts` é um componente só, usado em **três** lugares: a aba Tática
+do clube, o passo do Jogo Rápido e o diálogo da partida em andamento. Ele não sabe qual dos três o
+hospeda — tudo que muda entre eles cabe em `PlanEditorSource`: de onde vem o plano, para onde vai a
+mudança e se o banco está travado. É essa terceira condição que impede o componente de nascer
+acoplado a um formulário com Salvar: na beira do gramado não existe Salvar, e o mesmo `changed`
+serve para guardar num rascunho ou aplicar no motor na hora.
+
+O campo é a grade 7x5 de `TACTICAL_GRID`, desenhada com o próprio gol à esquerda — a orientação do
+gramado na partida. O arrasto é por **Pointer Events**, sem biblioteca e sem HTML5 DnD, que não
+funciona no toque; mover e soltar são ouvidos na `window`, porque o dedo sai da caixa do editor o
+tempo todo durante um arrasto.
+
+**Uma regra só para todo movimento:** quem chega ocupa o destino, e quem estava lá vai para a
+origem de quem chegou. Campo com campo é troca de posição; campo com lista é entrada e saída da
+escalação; "disponível" é a ausência de vínculo, e não uma lista guardada no plano. Não há caso
+particular por par de listas. Durante o arrasto cada slot mostra o encaixe daquele jogador ali
+(`positionFit`) e `blocked` recusa a soltura — a regra já existia, a tela só a torna visível antes
+de o treinador soltar.
+
+`formationId` não é digitado: sai de `matchFormation`, que devolve o preset cujo conjunto de slots
+é exatamente o atual. Voltou ao desenho de um preset, volta a ter o nome dele; saiu, vira
+personalizada. `applyFormation` troca o desenho **preservando quem joga** — reescalar do zero é o
+outro botão (`autoPickPlan`).
 
 Cada tela consulta elementos apenas dentro do próprio container. Uma tela nova é um
 `ScreenDefinition` — um arquivo e uma linha em `main.ts`; o navegador não conhece nenhuma pelo nome,
@@ -247,8 +295,9 @@ por aí, refinando esse alvo por tipo de cobrança.
 
 ## Evolução planejada
 
-Novas telas devem consumir comandos e consultas de application. Os próximos marcos são o editor
-de plano tático (campo com slots e arrasto, dando ao usuário os controles que o motor já lê) e a
-recalibragem do 11x11 guiada por medição — nenhum deles deve acoplar o motor ao armazenamento
-concreto. A interface segue sem framework, por decisão: o custo está no contrato entre módulos,
-não na ausência de biblioteca.
+Novas telas devem consumir comandos e consultas de application. Os próximos marcos são as
+**substituições** — a única peça que falta para o plano ser inteiro em jogo, e que destravaria o
+banco no editor da beira do gramado —, a recalibragem do 11x11 guiada por medição e as entidades
+novas do editor (Estádio, Competição), cada uma um descritor. Nenhum deles deve acoplar o motor ao
+armazenamento concreto. A interface segue sem framework, por decisão: o custo está no contrato
+entre módulos, não na ausência de biblioteca.

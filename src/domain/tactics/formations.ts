@@ -23,6 +23,18 @@ export const DEFAULT_FORMATION_ID = "4-3-3";
 export const findFormation = (id: string): Formation | null =>
   FORMATIONS.find((formation) => formation.id === id) ?? null;
 
+/**
+ * O preset cujo conjunto de slots é exatamente este, se houver. É como um plano reconhece a si
+ * mesmo depois de o treinador arrastar um jogador: voltou ao desenho de um preset, volta a ter
+ * o nome dele; saiu dele, vira personalizada. Sem isto o rótulo mentiria nos dois sentidos.
+ */
+export const matchFormation = (slotIds: readonly string[]): Formation | null => {
+  const wanted = new Set(slotIds);
+  if (wanted.size !== slotIds.length) return null;
+  return FORMATIONS.find((formation) =>
+    formation.slots.length === wanted.size && formation.slots.every((slot) => wanted.has(slot))) ?? null;
+};
+
 export const defaultFormation = (): Formation => findFormation(DEFAULT_FORMATION_ID) ?? FORMATIONS[0];
 
 // Guarda contra erro de digitação nos presets acima: um preset com 10 ou 12 slots geraria

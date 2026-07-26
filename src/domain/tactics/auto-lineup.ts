@@ -71,3 +71,20 @@ export const autoPickPlan = (
 
   return { ...base, formationId: formation.id, assignments, bench };
 };
+
+/**
+ * Troca o desenho preservando quem joga: os mesmos titulares se redistribuem pelos slots do
+ * preset novo, pelo melhor encaixe, e o banco fica intocado. Mudar a formação não pode custar a
+ * escalação que o treinador montou — quem quer reescalar do zero chama `autoPickPlan`.
+ */
+export const applyFormation = (
+  plan: TeamTacticalPlan,
+  formation: Formation,
+  squad: PlayerProfile[],
+): TeamTacticalPlan => {
+  const byId = new Map(squad.map((player) => [player.id, player]));
+  const starters = plan.assignments
+    .map(({ playerId }) => byId.get(playerId))
+    .filter((player): player is PlayerProfile => player !== undefined);
+  return { ...autoPickPlan(starters, formation, plan), bench: [...plan.bench] };
+};

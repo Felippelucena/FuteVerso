@@ -7,7 +7,11 @@ import {
 } from "./runtime/formation-geometry";
 import { kickoffTeamOfHalf } from "./runtime/kickoff";
 import { ANALYTICS_GRID, DEFAULT_MATCH_SEED, FIELD, RESTART } from "./config";
-import type { MatchConfig, MatchParticipant, MatchState, PlayerRuntime } from "./model";
+import { DEFAULT_INSTRUCTION } from "../tactics/model";
+import { positionFit } from "../tactics/position-fit";
+import { findSlot } from "../tactics/slots";
+import type { Team } from "../shared/model";
+import type { MatchConfig, MatchParticipant, MatchState, PlayerRuntime, TeamAdjustment } from "./model";
 import { createPhaseSeconds, createTacticalState } from "./systems/tactics-system";
 
 const clone = <T>(value: T): T => JSON.parse(JSON.stringify(value)) as T;
@@ -153,3 +157,26 @@ export function createMatchState(config: MatchConfig): MatchState {
 }
 
 export const extractPlayerMemories = (state: MatchState) => state.players.map((player) => clone(player.memory));
+
+/**
+ * Aplica o ajuste do treinador a uma partida em andamento. Trocar de posição recalcula o que o
+ * slot decide sobre o atleta — a âncora de recomposição e o encaixe —, senão ele obedeceria à
+ * função nova com a referência da antiga.
+ */
+export const applyTeamAdjustment = (state: MatchState, team: Team, adjustment: TeamAdjustment): void => {
+  state.tactics[team].directives = clone(adjustment.directives);
+  // O plano coletivo em cache foi decidido sob as diretrizes antigas. Descartá-lo faz a próxima
+  // atualização já sair com as novas, em vez de o time passar alguns segundos obedecendo ao
+  // treinador anterior.
+  state.tactics[team].collectivePlan = null;
+  for (const player of state.players) {
+    if (player.team !== team) continue;
+    const slot = findSlot(adjustment.slotByPlayer[player.profile.id] ?? player.slotId);
+    if (slot) {
+      player.slotId = slot.id;
+      player.positionFit = positionFit(player.profile, slot).rating;
+      player.homeAnchor = formationAnchor(player);
+    }
+    player.instruction = { ...(adjustment.instructionBySlot[player.slotId] ?? DEFAULT_INSTRUCTION) };
+  }
+};

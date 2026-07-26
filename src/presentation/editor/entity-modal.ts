@@ -1,7 +1,7 @@
 import { find, findAll, render } from "../app/dom";
 import { html, type Html } from "../app/html";
 import { icon } from "../app/icons";
-import type { EntityDescriptor, EntityTab } from "./entity";
+import type { BindContext, EntityDescriptor, EntityTab } from "./entity";
 
 const template = (descriptor: EntityDescriptor<unknown, unknown>): Html => html`
   <dialog class="entity-dialog">
@@ -59,13 +59,15 @@ export class EntityModal<TRow, TDraft> {
     this.at("cancel").addEventListener("click", () => this.dialog.close());
     this.form.addEventListener("submit", (event) => this.submit(event));
 
-    for (const tab of descriptor.tabs) {
-      tab.bind?.({
-        panel: this.panelOf(tab),
-        draft: () => this.draft as TDraft,
-        refresh: () => this.refresh(tab),
-      });
-    }
+    for (const tab of descriptor.tabs) tab.bind?.(this.contextOf(tab));
+  }
+
+  private contextOf(tab: EntityTab<TDraft>): BindContext<TDraft> {
+    return {
+      panel: this.panelOf(tab),
+      draft: () => this.draft as TDraft,
+      refresh: () => this.refresh(tab),
+    };
   }
 
   async open(id: string | null): Promise<void> {
@@ -74,13 +76,15 @@ export class EntityModal<TRow, TDraft> {
     this.at("eyebrow").textContent = this.descriptor.singular.toUpperCase();
     this.at("title").textContent = `${this.creating ? "Novo" : "Editar"} ${this.descriptor.singular.toLowerCase()}`;
     this.setMessage("");
-    for (const tab of this.descriptor.tabs) render(this.panelOf(tab), tab.render(this.draft));
+    for (const tab of this.descriptor.tabs) {
+      if (tab.render) render(this.panelOf(tab), tab.render(this.draft));
+    }
     this.activate(this.descriptor.tabs[0].id);
     this.dialog.showModal();
   }
 
   private refresh(tab: EntityTab<TDraft>): void {
-    if (!this.draft) return;
+    if (!this.draft || !tab.render) return;
     const panel = this.panelOf(tab);
     // Recolhe antes de repintar: o que estava digitado neste painel morreria com a marcação.
     tab.collect?.({ panel, draft: this.draft, data: new FormData(this.form) });
@@ -96,6 +100,8 @@ export class EntityModal<TRow, TDraft> {
     for (const panel of findAll<HTMLElement>(this.dialog, "[data-panel]")) {
       panel.hidden = panel.dataset.panel !== id;
     }
+    const active = this.descriptor.tabs.find((tab) => tab.id === id);
+    if (active && this.draft) active.activate?.(this.contextOf(active));
   }
 
   private submit(event: SubmitEvent): void {

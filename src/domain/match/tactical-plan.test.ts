@@ -1,11 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { smallSidedMatchConfig, startOpenPlay } from "./__fixtures__/reference-match";
+import { referenceMatchConfig, smallSidedMatchConfig, startOpenPlay } from "./__fixtures__/reference-match";
 import { decideAll } from "./ai";
 import { FIELD } from "./config";
-import { createMatchState } from "./index";
+import { applyTeamAdjustment, createMatchState } from "./index";
 import { dutyHolders } from "./systems/assignment-system";
 import { updateTacticalContext } from "./systems/tactics-system";
 import { BUILD_UP_STYLES, DEFENSIVE_BLOCKS } from "../tactics/vocabulary";
+import { DEFAULT_INSTRUCTION, NEUTRAL_DIRECTIVES } from "../tactics/model";
 import type { FreedomInstruction, TacticalMentality, TeamDirectives } from "../tactics/model";
 import type { MatchState, PlayerRuntime, TeamCollectivePlan } from "./model";
 
@@ -181,5 +182,34 @@ describe("o plano tático chega ao motor", () => {
     };
 
     expect(looksTaken("often")).toBeGreaterThan(looksTaken("rarely"));
+  });
+
+  it("obedece ao treinador no meio do jogo, e a instrução fica com o slot", () => {
+    const state = createMatchState(referenceMatchConfig(7));
+    startOpenPlay(state);
+    updateTacticalContext(state, 0);
+    const ponta = state.players.find((player) => player.team === "blue" && player.slotId === "pe")!;
+    const outroPonta = state.players.find((player) => player.team === "blue" && player.slotId === "pd")!;
+    const anchorAntes = { ...ponta.homeAnchor };
+    const fitAntes = ponta.positionFit;
+
+    applyTeamAdjustment(state, "blue", {
+      directives: { ...NEUTRAL_DIRECTIVES, mentality: { ...NEUTRAL_DIRECTIVES.mentality, pressing: 90 } },
+      // Os dois pontas trocam de lado — o mesmo time, posições diferentes.
+      slotByPlayer: { [ponta.profile.id]: "pd", [outroPonta.profile.id]: "pe" },
+      instructionBySlot: { pd: { ...DEFAULT_INSTRUCTION, marking: "man" } },
+    });
+
+    expect(ponta.slotId).toBe("pd");
+    expect(outroPonta.slotId).toBe("pe");
+    expect(ponta.homeAnchor).not.toEqual(anchorAntes);
+    expect(ponta.positionFit).not.toBe(fitAntes);
+    // A instrução é do slot: quem assume a vaga assume a ordem dada a ela.
+    expect(ponta.instruction.marking).toBe("man");
+    expect(outroPonta.instruction.marking).toBe("zone");
+    expect(state.tactics.blue.directives.mentality.pressing).toBe(90);
+    // O plano coletivo em cache foi decidido sob as diretrizes antigas e não pode sobreviver.
+    expect(state.tactics.blue.collectivePlan).toBeNull();
+    expect(state.tactics.coral.directives.mentality.pressing).toBe(50);
   });
 });

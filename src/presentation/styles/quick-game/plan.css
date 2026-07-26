@@ -1,54 +1,35 @@
-.plan-lineup {
-  min-height: 0;
+/* Abas de time do passo de plano. O conteúdo de cada uma é o `.plan-editor`, compartilhado. */
+.plan-teams {
   display: flex;
-  flex-direction: column;
-  gap: 2px;
-  overflow-y: auto;
+  gap: 6px;
 }
 
-.plan-formation {
-  margin-bottom: 6px;
-  color: var(--lime);
-  font-size: var(--type-sm);
-  font-weight: 800;
-  letter-spacing: 0.5px;
-}
-
-.plan-row {
-  padding: 6px 8px;
-  display: grid;
-  grid-template-columns: 44px minmax(0, 1fr) auto;
+.plan-teams button {
+  display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
+  padding: 8px 14px;
+  border: 1px solid var(--line);
+  border-bottom-width: 3px;
   border-radius: var(--radius-sm);
-  background: var(--surface-0);
+  background: var(--surface-1);
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.plan-teams button:hover,
+.plan-teams button:focus-visible {
+  background: var(--surface-2);
+  outline: none;
+}
+
+.plan-teams button.is-active {
+  color: var(--text);
+}
+
+.plan-teams [data-team="blue"].is-active { border-bottom-color: var(--blue); }
+.plan-teams [data-team="coral"].is-active { border-bottom-color: var(--coral); }
+
+.plan-teams strong {
   font-size: var(--type-md);
-}
-
-.plan-slot {
-  color: var(--text-muted);
-  font-size: var(--type-xs);
-  font-weight: 800;
-}
-
-.plan-position {
-  color: var(--text-soft);
-  font-size: var(--type-xs);
-  font-weight: 750;
-}
-
-.plan-bench {
-  margin-top: 8px;
-  padding-top: 8px;
-  border-top: 1px solid var(--line);
-  color: var(--text-muted);
-  font-size: var(--type-xs);
-  line-height: 1.5;
-}
-
-.plan-bench small {
-  display: block;
-  margin-bottom: 3px;
-  font-weight: 800;
-  letter-spacing: 0.5px;
 }

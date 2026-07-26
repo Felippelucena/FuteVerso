@@ -1,6 +1,6 @@
 import type { Club } from "../../domain/club/model";
 import type { Contract } from "../../domain/contract/model";
-import type { MatchConfig, MatchParticipant } from "../../domain/match/model";
+import type { MatchConfig, MatchParticipant, TeamAdjustment } from "../../domain/match/model";
 import type { PlayerMemory, PlayerProfile } from "../../domain/roster/model";
 import { createMemory } from "../../domain/roster/rules";
 import { directivesOf, instructionFor, type TeamDirectives, type TeamTacticalPlan } from "../../domain/tactics/model";
@@ -80,3 +80,13 @@ export const buildMatchConfig = (context: MatchContext): MatchConfig => {
 
   return { seed: context.seed, learningEnabled: context.learningEnabled, participants, teams };
 };
+
+/**
+ * O recorte de um plano que cabe numa partida já em andamento. É a mesma tradução de
+ * `buildMatchConfig`, sem o que exigiria refazer os participantes — perfil, memória e camisa.
+ */
+export const buildTeamAdjustment = (plan: TeamTacticalPlan): TeamAdjustment => ({
+  directives: directivesOf(plan),
+  slotByPlayer: Object.fromEntries(plan.assignments.map(({ playerId, slotId }) => [playerId, slotId])),
+  instructionBySlot: clone(plan.instructions),
+});

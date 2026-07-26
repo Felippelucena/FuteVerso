@@ -1,6 +1,7 @@
 import { FIXED_STEP } from "../../domain/match/config";
-import { createMatchState, stepMatch } from "../../domain/match";
-import type { MatchConfig, MatchState } from "../../domain/match";
+import { applyTeamAdjustment, createMatchState, stepMatch } from "../../domain/match";
+import type { MatchConfig, MatchState, TeamAdjustment } from "../../domain/match";
+import type { Team } from "../../domain/shared/model";
 
 export const SIMULATION_SPEEDS = [0.5, 1, 2, 4, 8] as const;
 export type SimulationSpeed = typeof SIMULATION_SPEEDS[number];
@@ -194,6 +195,20 @@ export class MatchSession {
 
   setLearningEnabled(enabled: boolean): void {
     this.frontier.learningEnabled = enabled;
+  }
+
+  /**
+   * Ajuste do treinador com a bola rolando. Só faz sentido ao vivo — ordem é para agora —, então
+   * a visão volta à fronteira antes de aplicar.
+   *
+   * O keyframe no fim não é zelo: reconstruir o passado re-simula a partir do keyframe anterior,
+   * e isso só reproduz a história enquanto o trecho entre dois keyframes for função pura do
+   * primeiro. Mudar o plano quebra essa pureza — abrir um keyframe aqui a restabelece.
+   */
+  adjust(team: Team, adjustment: TeamAdjustment): void {
+    this.resumeLive();
+    applyTeamAdjustment(this.frontier, team, adjustment);
+    this.recordKeyframe();
   }
 
   restart(config: MatchConfig): void {

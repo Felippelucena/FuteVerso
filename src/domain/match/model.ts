@@ -56,6 +56,18 @@ export interface MatchConfig {
   teams: Record<Team, TeamDirectives>;
 }
 
+/**
+ * Ajuste de meio de jogo — o que o treinador grita da beira. Diretrizes e instruções valem na
+ * hora, e os onze podem trocar de posição entre si. Quem entra e quem sai, não: isso é
+ * substituição, outra regra, que o motor ainda não tem.
+ */
+export interface TeamAdjustment {
+  directives: TeamDirectives;
+  /** Novo slot de quem já está em campo, por id. Quem não aparecer fica onde está. */
+  slotByPlayer: Record<string, TacticalSlotId>;
+  instructionBySlot: Partial<Record<TacticalSlotId, PlayerInstruction>>;
+}
+
 export type TeamPosture = "inPossession" | "outOfPossession";
 export type InPossessionPhase = "buildUp" | "progression" | "finalThird" | "counterAttack";
 export type OutOfPossessionPhase = "highPress" | "midBlock" | "lowBlock" | "counterPress" | "recovery";

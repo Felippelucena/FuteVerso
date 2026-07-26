@@ -8,10 +8,11 @@ import { extractPlayerMemories, type MatchState } from "../domain/match";
 import type { PlayerMemory, PlayerProfile } from "../domain/roster/model";
 import { createMemory, isValidProfile } from "../domain/roster/rules";
 import type { Team } from "../domain/shared/model";
+import type { TeamTacticalPlan } from "../domain/tactics/model";
 import { inspectPlan } from "../domain/tactics/rules";
 import type { WorldSettings } from "../domain/world/model";
 import { repairPlan } from "../domain/world/rules";
-import { buildMatchConfig, type MatchContext, type MatchSetup, type MatchSide } from "./match/build-match-config";
+import { buildMatchConfig, buildTeamAdjustment, type MatchContext, type MatchSetup, type MatchSide } from "./match/build-match-config";
 import { MatchSession } from "./match/match-session";
 import type { Catalog, ReadonlyCatalog } from "./ports/catalog";
 
@@ -22,7 +23,9 @@ export type CommandError =
   | "club-not-found"
   | "invalid-plan"
   /** Um clube não tem elenco para os dois lados; a regra é do comando, não da tela. */
-  | "same-club";
+  | "same-club"
+  /** Com a bola rolando, trocar quem está em campo seria substituição — que ainda não existe. */
+  | "lineup-locked";
 export type CommandResult = { ok: true } | { ok: false; reason: CommandError };
 
 const clone = <T>(value: T): T => structuredClone(value);
@@ -81,6 +84,11 @@ export class GameApplication {
     return this.currentContext?.[team].club ?? null;
   }
 
+  /** Elenco de um lado desta partida, já em memória. Inclui o banco, não só os onze em campo. */
+  squadInPlay(team: Team): PlayerProfile[] {
+    return this.currentContext?.[team].squad ?? [];
+  }
+
   /** Elenco do clube. `Contract` continua a única fonte da verdade; isto só o resolve. */
   async squadOfClub(clubId: string): Promise<Squad> {
     const { rows } = await this.catalog.contracts.page({ filter: { field: "clubId", value: clubId } });
@@ -120,6 +128,29 @@ export class GameApplication {
     const config = buildMatchConfig(context);
     if (this.currentMatch) this.currentMatch.restart(config);
     else this.currentMatch = new MatchSession(config);
+    return { ok: true };
+  }
+
+  /**
+   * Ajusta o plano de um lado com a bola rolando. O plano fica também no setup e no contexto,
+   * para que reiniciar a partida ou trocar a semente preserve o que o treinador ajustou — do
+   * contrário o motor obedeceria a uma coisa e a tela mostraria outra.
+   */
+  adjustPlan(team: Team, plan: TeamTacticalPlan): CommandResult {
+    const side = this.currentContext?.[team];
+    if (!side || !this.currentMatch) return { ok: false, reason: "club-not-found" };
+    if (inspectPlan(plan, side.squad).length > 0) return { ok: false, reason: "invalid-plan" };
+    // Substituição não existe: os onze de campo são os mesmos, podendo apenas trocar de posição.
+    const inPlay = new Set(this.currentMatch.liveState.players
+      .filter((player) => player.team === team)
+      .map((player) => player.profile.id));
+    if (plan.assignments.some(({ playerId }) => !inPlay.has(playerId))) {
+      return { ok: false, reason: "lineup-locked" };
+    }
+    const adjusted = clone(plan);
+    side.plan = adjusted;
+    if (this.currentSetup) this.currentSetup[team] = { ...this.currentSetup[team], plan: adjusted };
+    this.currentMatch.adjust(team, buildTeamAdjustment(adjusted));
     return { ok: true };
   }
 

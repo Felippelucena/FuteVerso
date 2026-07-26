@@ -1,7 +1,10 @@
-import type { GameApplication } from "../../application/game-application";
+import type { CommandError, GameApplication } from "../../application/game-application";
 import { MatchSession, SIMULATION_SPEEDS, type SimulationSpeed } from "../../application/match/match-session";
 import type { AssignmentDuty, MatchState } from "../../domain/match/model";
 import type { Team } from "../../domain/shared/model";
+import type { TeamTacticalPlan } from "../../domain/tactics/model";
+import { createEmptyPlan } from "../../domain/tactics/rules";
+import { PlanEditor } from "../tactics/plan-editor";
 import { GameRenderer } from "../canvas/game-renderer";
 import { find, render } from "../app/dom";
 import { html, type Html } from "../app/html";
@@ -21,6 +24,7 @@ const matchScreenTemplate = (): Html => html`
       <div class="field-toolbar">
         <div class="toolbar-title"><strong>Partida autônoma</strong><span id="possession-label">Bola em disputa</span></div>
         <div class="toolbar-actions">
+          <button class="icon-button" id="open-match-plan" type="button" aria-label="Ajustar o plano tático" title="Plano tático">${icon("Wand2")}</button>
           <button class="icon-button mobile-settings-button" data-open-match-settings type="button" aria-label="Abrir configurações da partida" title="Configurações">${icon("SlidersHorizontal")}</button>
           <button class="icon-button" id="pause-button" type="button" aria-label="Pausar simulação" title="Pausar simulação">${icon("Pause")}</button>
           <button class="icon-button" id="reset-button" type="button" aria-label="Reiniciar partida" title="Reiniciar partida">${icon("RotateCcw")}</button>
@@ -96,6 +100,31 @@ const matchSettingsTemplate = (): Html => html`
     </form>
   </dialog>`;
 
+/**
+ * Ajuste tático com a bola rolando. Diálogo, e não aba do inspetor, porque o campo do editor
+ * precisa da largura que a barra lateral não tem — e porque a partida segue correndo atrás.
+ */
+const matchPlanTemplate = (): Html => html`
+  <dialog id="match-plan-dialog" class="entity-dialog">
+    <div class="dialog-heading">
+      <div><span class="eyebrow">PARTIDA</span><h2>Plano tático</h2></div>
+      <button class="icon-button" type="button" data-role="close" aria-label="Fechar" title="Fechar">${icon("X")}</button>
+    </div>
+    <nav class="dialog-tabs" role="tablist" aria-label="Time a ajustar">
+      ${(["blue", "coral"] as const).map((team) => html`<button type="button" role="tab" data-plan-team="${team}"
+        class="${team === "blue" ? "is-active" : ""}" aria-selected="${team === "blue" ? "true" : "false"}"
+        data-plan-club="${team}">${team === "blue" ? "Casa" : "Visitante"}</button>`)}
+    </nav>
+    <div class="dialog-panels"><section class="dialog-panel"><div id="match-plan-editor"></div></section></div>
+    <p class="dialog-message" data-role="plan-message" aria-live="polite"></p>
+  </dialog>`;
+
+const PLAN_ADJUST_MESSAGES: Partial<Record<CommandError, string>> = {
+  "lineup-locked": "Trocar quem está em campo é substituição — ainda não dá com a bola rolando.",
+  "invalid-plan": "A escalação ficou inválida; o ajuste não foi aplicado.",
+  "club-not-found": "A partida não está mais em andamento.",
+};
+
 type InspectorTab = "players" | "analysis" | "events";
 
 export const matchScreenDefinition = (application: GameApplication): ScreenDefinition => ({
@@ -104,8 +133,8 @@ export const matchScreenDefinition = (application: GameApplication): ScreenDefin
   icon: "Goal",
   chrome: "match",
   template: matchScreenTemplate,
-  dialogs: matchSettingsTemplate,
-  mount: ({ root, dialogs }) => new MatchScreen(root, find(dialogs, "#match-settings-dialog"), application),
+  dialogs: () => html`${matchSettingsTemplate()}${matchPlanTemplate()}`,
+  mount: ({ root, dialogs }) => new MatchScreen(root, dialogs, application),
 });
 
 export class MatchScreen implements Screen {
@@ -119,12 +148,24 @@ export class MatchScreen implements Screen {
   private readonly eventsSection: Section;
   private readonly analysisSection: Section;
   private readonly panels: Record<InspectorTab, () => void>;
+  private readonly settingsDialog: HTMLDialogElement;
+  private readonly planDialog: HTMLDialogElement;
+  private readonly planEditor: PlanEditor;
+  private planTeam: Team = "blue";
 
   constructor(
     private readonly root: HTMLElement,
-    private readonly settingsDialog: HTMLDialogElement,
+    dialogs: ParentNode,
     private readonly application: GameApplication,
   ) {
+    this.settingsDialog = find<HTMLDialogElement>(dialogs, "#match-settings-dialog");
+    this.planDialog = find<HTMLDialogElement>(dialogs, "#match-plan-dialog");
+    this.planEditor = new PlanEditor(find(this.planDialog, "#match-plan-editor"), {
+      plan: () => this.application.setup?.[this.planTeam].plan ?? createEmptyPlan(),
+      squad: () => this.application.squadInPlay(this.planTeam),
+      changed: (plan) => this.applyPlan(plan),
+      benchLocked: true,
+    });
     this.selectedPlayerId = application.requireMatch().state.players[0]?.profile.id ?? "";
     this.renderer = new GameRenderer(this.find("#game-canvas"));
     new ResizeObserver(() => this.resize()).observe(this.find("#game-canvas"));
@@ -274,6 +315,45 @@ export class MatchScreen implements Screen {
       this.renderPlayersPanel();
     });
     this.bindSettings();
+    this.bindPlanDialog();
+  }
+
+  private bindPlanDialog(): void {
+    this.find("#open-match-plan").addEventListener("click", () => {
+      this.renderPlanTeams();
+      this.planEditor.render();
+      this.planDialog.showModal();
+    });
+    find(this.planDialog, "[data-role=\"close\"]").addEventListener("click", () => this.planDialog.close());
+    for (const button of this.planDialog.querySelectorAll<HTMLButtonElement>("[data-plan-team]")) {
+      button.addEventListener("click", () => {
+        this.planTeam = button.dataset.planTeam as Team;
+        this.renderPlanTeams();
+        this.planEditor.render();
+      });
+    }
+  }
+
+  private renderPlanTeams(): void {
+    const names = this.teamNames;
+    for (const button of this.planDialog.querySelectorAll<HTMLButtonElement>("[data-plan-team]")) {
+      const team = button.dataset.planTeam as Team;
+      const active = team === this.planTeam;
+      button.textContent = names[team];
+      button.classList.toggle("is-active", active);
+      button.setAttribute("aria-selected", String(active));
+    }
+  }
+
+  /**
+   * O ajuste vale na hora: não há Salvar aqui, como não há na beira do gramado. O plano do lado
+   * também vive no setup, então reiniciar a partida entra com o que foi ajustado.
+   */
+  private applyPlan(plan: TeamTacticalPlan): void {
+    const result = this.application.adjustPlan(this.planTeam, plan);
+    const message = find(this.planDialog, "[data-role=\"plan-message\"]");
+    message.textContent = result.ok ? "" : PLAN_ADJUST_MESSAGES[result.reason] ?? "Não foi possível ajustar o plano.";
+    message.classList.toggle("is-error", !result.ok);
   }
 
   private async renderClubSelectors(): Promise<void> {

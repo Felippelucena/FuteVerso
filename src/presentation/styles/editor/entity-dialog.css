@@ -12,7 +12,9 @@
 }
 
 .entity-dialog {
-  width: min(860px, calc(100vw - 28px));
+  /* Largo o bastante para o campo tático caber inteiro ao lado do banco: sete colunas de slot
+     mais a coluna das listas. As abas de formulário só ganham mais campos por linha. */
+  width: min(1120px, calc(100vw - 28px));
   max-height: calc(100vh - 28px);
   padding: 0;
   border: 1px solid var(--line-strong);

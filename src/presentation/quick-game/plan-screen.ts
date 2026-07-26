@@ -4,15 +4,12 @@ import type { Club } from "../../domain/club/model";
 import type { PlayerProfile } from "../../domain/roster/model";
 import type { Team } from "../../domain/shared/model";
 import type { TeamTacticalPlan } from "../../domain/tactics/model";
-import { autoPickPlan } from "../../domain/tactics/auto-lineup";
-import { defaultFormation, findFormation } from "../../domain/tactics/formations";
-import { createEmptyPlan, orderedAssignments } from "../../domain/tactics/rules";
-import { findSlot } from "../../domain/tactics/slots";
-import { find, render } from "../app/dom";
+import { createEmptyPlan } from "../../domain/tactics/rules";
+import { find, findAll } from "../app/dom";
 import { html, type Html } from "../app/html";
 import { icon } from "../app/icons";
-import { POSITION_SHORT_LABELS } from "../app/labels";
 import type { Navigation, Screen, ScreenDefinition } from "../app/screen";
+import { PlanEditor } from "../tactics/plan-editor";
 
 const TEAM_LABELS: Record<Team, string> = { blue: "Casa", coral: "Visitante" };
 
@@ -22,17 +19,15 @@ const planTemplate = (): Html => html`
       <div><span class="eyebrow">JOGO RÁPIDO</span><h2>Plano tático</h2></div>
       <button type="button" class="primary-button" id="plan-start">${icon("Play")}Iniciar partida</button>
     </div>
-    <p id="plan-message" class="manager-message" aria-live="polite"></p>
-    <div class="plan-grid">
+    <div class="plan-teams" role="tablist" aria-label="Time a editar">
       ${(["blue", "coral"] as const).map((team) => html`
-        <div class="plan-column plan-column--${team}">
-          <div class="section-heading">
-            <h3 id="plan-club-${team}">${TEAM_LABELS[team]}</h3>
-            <button type="button" class="secondary-button" data-auto-pick="${team}">${icon("Wand2")}Escalação automática</button>
-          </div>
-          <div class="plan-lineup" id="plan-lineup-${team}"></div>
-        </div>`)}
+        <button type="button" role="tab" data-team="${team}" class="${team === "blue" ? "is-active" : ""}"
+          aria-selected="${team === "blue" ? "true" : "false"}">
+          <span class="club-crest" data-crest="${team}"></span><strong data-club="${team}">${TEAM_LABELS[team]}</strong>
+        </button>`)}
     </div>
+    <p id="plan-message" class="manager-message" aria-live="polite"></p>
+    <div id="plan-editor-host"></div>
   </section>`;
 
 const commandMessage = (reason: CommandError): string => {
@@ -52,13 +47,14 @@ export const planScreenDefinition = (application: GameApplication): ScreenDefini
 
 /**
  * Edita o plano dos dois times antes do apito. Os planos são cópias: o clube nunca é alterado
- * por uma partida. O campo com slots e o arrasto chegam na fase seguinte — a estrutura que os
- * receberá (uma cópia editável por time, entregue a `startMatch`) já é esta.
+ * por uma partida. O campo, as listas e os controles são o `PlanEditor` — o mesmo componente da
+ * aba do clube e o da beira do gramado; aqui só existe um por vez, alternado pelas abas de time.
  */
 export class PlanScreen implements Screen {
   private readonly plans: Partial<Record<Team, TeamTacticalPlan>> = {};
-  private readonly clubs: Partial<Record<Team, Club>> = {};
   private readonly squads: Record<Team, PlayerProfile[]> = { blue: [], coral: [] };
+  private team: Team = "blue";
+  private readonly editor: PlanEditor;
 
   constructor(
     private readonly root: HTMLElement,
@@ -66,8 +62,13 @@ export class PlanScreen implements Screen {
     private readonly navigation: Navigation,
     private readonly application: GameApplication,
   ) {
-    for (const button of this.root.querySelectorAll<HTMLButtonElement>("[data-auto-pick]")) {
-      button.addEventListener("click", () => this.autoPick(button.dataset.autoPick as Team));
+    this.editor = new PlanEditor(this.find("#plan-editor-host"), {
+      plan: () => this.plans[this.team] ?? createEmptyPlan(),
+      squad: () => this.squads[this.team],
+      changed: (plan) => { this.plans[this.team] = plan; },
+    });
+    for (const button of findAll<HTMLButtonElement>(this.root, "[data-team]")) {
+      button.addEventListener("click", () => this.selectTeam(button.dataset.team as Team));
     }
     this.find("#plan-start").addEventListener("click", () => this.start());
   }
@@ -80,39 +81,28 @@ export class PlanScreen implements Screen {
   private async load(): Promise<void> {
     for (const team of ["blue", "coral"] as const) {
       const club = await this.application.queries.clubs.get(this.params[team]);
-      this.clubs[team] = club ?? undefined;
       this.squads[team] = club ? (await this.application.squadOfClub(club.id)).players : [];
       this.plans[team] ??= structuredClone(club?.defaultPlan ?? createEmptyPlan());
-      this.find(`#plan-club-${team}`).textContent = `${TEAM_LABELS[team]} · ${club?.name ?? "—"}`;
-      this.renderLineup(team);
+      this.renderTab(team, club);
     }
+    this.editor.render();
   }
 
-  private renderLineup(team: Team): void {
-    const squad = new Map(this.squads[team].map((player) => [player.id, player]));
-    const plan = this.plans[team] ?? createEmptyPlan();
-    const formation = plan.formationId ? findFormation(plan.formationId) : null;
-    render(this.find(`#plan-lineup-${team}`), html`
-      <div class="plan-formation">${formation?.name ?? "Personalizada"}</div>
-      ${orderedAssignments(plan).map((assignment) => {
-        const player = squad.get(assignment.playerId);
-        const slot = findSlot(assignment.slotId);
-        return html`<div class="plan-row">
-          <span class="plan-slot">${slot?.label ?? assignment.slotId}</span>
-          <strong>${player?.name ?? "—"}</strong>
-          <span class="plan-position">${player ? POSITION_SHORT_LABELS[player.position] : ""}</span>
-        </div>`;
-      })}
-      <div class="plan-bench"><small>RESERVAS</small>${plan.bench.length === 0 ? "nenhum" : plan.bench
-        .map((playerId) => squad.get(playerId)?.name ?? "—").join(" · ")}</div>`);
+  private renderTab(team: Team, club: Club | null): void {
+    this.find(`[data-club="${team}"]`).textContent = `${TEAM_LABELS[team]} · ${club?.name ?? "—"}`;
+    const crest = this.find<HTMLElement>(`[data-crest="${team}"]`);
+    crest.style.setProperty("--crest", club?.colors.primary ?? "transparent");
+    crest.style.setProperty("--crest-alt", club?.colors.secondary ?? "transparent");
   }
 
-  private autoPick(team: Team): void {
-    const plan = this.plans[team] ?? createEmptyPlan();
-    // Reescalar mantém a formação do plano; só o preenchimento dos slots é refeito.
-    const formation = (plan.formationId ? findFormation(plan.formationId) : null) ?? defaultFormation();
-    this.plans[team] = autoPickPlan(this.squads[team], formation, plan);
-    this.renderLineup(team);
+  private selectTeam(team: Team): void {
+    this.team = team;
+    for (const button of findAll<HTMLButtonElement>(this.root, "[data-team]")) {
+      const active = button.dataset.team === team;
+      button.classList.toggle("is-active", active);
+      button.setAttribute("aria-selected", String(active));
+    }
+    this.editor.render();
   }
 
   private start(): void {

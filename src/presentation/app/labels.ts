@@ -2,6 +2,15 @@ import { HALF_DURATION } from "../../domain/match/config";
 import type { AssignmentDuty, DecisionReason, DribbleRangeReason, DribbleTouchRange, MatchState, MovementPace, PassPurpose, ShotTechnique, TacticalPhase } from "../../domain/match/model";
 import type { PlayerPosition, PlayerRole } from "../../domain/roster/model";
 import type { Team } from "../../domain/shared/model";
+import type {
+  FreedomInstruction,
+  MarkingInstruction,
+  SupportInstruction,
+  TacticalMentality,
+} from "../../domain/tactics/model";
+import type { PositionFitLevel } from "../../domain/tactics/position-fit";
+import type { TacticalPlanIssueKind } from "../../domain/tactics/rules";
+import type { BuildUpStyle, DefensiveBlock, PressTrigger } from "../../domain/tactics/vocabulary";
 
 export const POSITION_LABELS: Record<PlayerPosition, string> = {
   goalkeeper: "Goleiro",
@@ -156,6 +165,76 @@ export const REASON_LABELS: Record<DecisionReason, string> = {
   smotherLoose: "Recolher bola solta",
   recoverShape: "Recompor em disparada",
   overlapRun: "Sobreposição do lateral",
+};
+
+/**
+ * Eixos de mentalidade na ordem em que o editor os mostra, com o que cada ponta significa. A
+ * ordem é a do plano: o que o time faz sem a bola, depois com ela.
+ */
+export const MENTALITY_AXES: readonly { key: keyof TacticalMentality; label: string; low: string; high: string }[] = [
+  { key: "defensiveLine", label: "Linha", low: "recuada", high: "adiantada" },
+  { key: "pressing", label: "Pressão", low: "espera", high: "sufoca" },
+  { key: "width", label: "Amplitude", low: "por dentro", high: "aberto" },
+  { key: "tempo", label: "Ritmo", low: "segura", high: "acelera" },
+  { key: "risk", label: "Risco", low: "seguro", high: "ousado" },
+];
+
+export const BUILD_UP_LABELS: Record<BuildUpStyle | "auto", string> = {
+  auto: "O time decide",
+  short: "Saída curta",
+  balanced: "Equilibrado",
+  direct: "Jogo direto",
+};
+
+export const DEFENSIVE_BLOCK_LABELS: Record<DefensiveBlock | "auto", string> = {
+  auto: "O time decide",
+  high: "Bloco alto",
+  mid: "Bloco médio",
+  low: "Bloco baixo",
+};
+
+export const PRESS_TRIGGER_LABELS: Record<PressTrigger, string> = {
+  looseBall: "Bola solta",
+  counterPress: "Perda da posse",
+  touchline: "Perto da linha",
+  compact: "Bloco formado",
+};
+
+export const SUPPORT_LABELS: Record<SupportInstruction, string> = {
+  hold: "Segura a posição",
+  balanced: "Equilibrado",
+  attack: "Acompanha o ataque",
+};
+
+export const MARKING_LABELS: Record<MarkingInstruction, string> = {
+  zone: "Por zona",
+  man: "Individual",
+};
+
+export const FREEDOM_LABELS: Record<FreedomInstruction, string> = {
+  rarely: "Raramente",
+  normal: "Normal",
+  often: "Sempre que der",
+};
+
+export const POSITION_FIT_LABELS: Record<PositionFitLevel, string> = {
+  natural: "Posição natural",
+  accomplished: "Joga bem na função",
+  secondary: "Posição secundária",
+  awkward: "Improviso leve",
+  makeshift: "Improviso pesado",
+  blocked: "Não pode jogar aqui",
+};
+
+export const PLAN_ISSUE_LABELS: Record<TacticalPlanIssueKind, string> = {
+  "wrong-size": "A escalação precisa de onze titulares.",
+  "unknown-slot": "Um titular está num slot que não existe.",
+  "duplicate-slot": "Dois titulares ocupam o mesmo slot.",
+  "duplicate-player": "O mesmo jogador foi escalado duas vezes.",
+  "unknown-player": "Alguém do plano não está mais no elenco.",
+  "missing-goalkeeper": "Falta o goleiro.",
+  "blocked-position": "Alguém foi escalado numa posição que não pode ocupar.",
+  "bench-conflict": "Alguém está no banco e em campo ao mesmo tempo.",
 };
 
 /** Nome de cada lado nesta partida. Vem dos clubes escolhidos, não do time do motor. */
