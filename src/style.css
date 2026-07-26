@@ -21,8 +21,9 @@ html,
 body,
 #app {
   min-width: 320px;
-  min-height: 100%;
+  height: 100%;
   margin: 0;
+  overflow: hidden;
 }
 
 body {
@@ -544,9 +545,10 @@ input {
 }
 
 .app-shell {
-  min-height: 100vh;
+  height: 100dvh;
   display: flex;
   flex-direction: column;
+  overflow: hidden;
 }
 
 .topbar {
@@ -707,13 +709,14 @@ p {
   min-height: 0;
   display: grid;
   grid-template-columns: minmax(0, 1fr) 330px;
+  overflow: hidden;
 }
 
 .field-panel {
   min-width: 0;
   min-height: 0;
   display: grid;
-  grid-template-rows: auto minmax(360px, 1fr) auto auto;
+  grid-template-rows: auto minmax(0, 1fr) auto auto;
   background: #101512;
 }
 
@@ -862,7 +865,6 @@ p {
 #game-canvas {
   width: 100%;
   height: 100%;
-  min-height: 360px;
   display: block;
 }
 
@@ -1007,7 +1009,9 @@ p {
 
 .inspector {
   min-height: 0;
-  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
   border-left: 1px solid var(--line);
   background: var(--panel);
 }
@@ -1181,50 +1185,6 @@ p {
     grid-column: 2;
     grid-row: 1;
   }
-
-  .workspace {
-    grid-template-columns: 1fr;
-  }
-
-  .inspector {
-    display: grid;
-    grid-template-columns: minmax(320px, 0.9fr) minmax(0, 1.1fr);
-    align-items: start;
-    border-top: 1px solid var(--line);
-    border-left: 0;
-    overflow: visible;
-  }
-
-  .inspector-heading {
-    grid-column: 1 / -1;
-  }
-
-  .inspector .match-roster {
-    grid-column: 1;
-    grid-row: 2 / span 2;
-    grid-template-columns: 1fr 1fr;
-    border-right: 1px solid var(--line);
-  }
-
-  .inspector .roster-team + .roster-team {
-    border-top: 0;
-    border-left: 1px solid var(--line);
-  }
-
-  .player-detail {
-    grid-column: 2;
-    grid-row: 2;
-  }
-
-  .analysis-section {
-    grid-column: 2;
-    grid-row: 3;
-  }
-
-  .events-section {
-    grid-column: 2;
-    grid-row: 4;
-  }
 }
 
 @media (max-width: 580px) {
@@ -1284,11 +1244,6 @@ p {
     width: 34px;
   }
 
-  .canvas-wrap,
-  #game-canvas {
-    min-height: 300px;
-  }
-
   .match-strip {
     padding: 10px 12px;
     gap: 8px;
@@ -1298,60 +1253,6 @@ p {
     flex-direction: column;
     gap: 0;
   }
-
-  .inspector {
-    display: block;
-  }
-
-  .inspector .match-roster,
-  .player-detail,
-  .analysis-section,
-  .events-section {
-    grid-column: auto;
-    grid-row: auto;
-  }
-
-  .inspector .match-roster {
-    grid-template-columns: 1fr;
-    border-right: 0;
-  }
-
-  .inspector .roster-team + .roster-team {
-    border-top: 1px solid var(--line);
-    border-left: 0;
-  }
-}
-
-/* Viewport layout: the match stays fixed while dense data is compartmentalized. */
-html,
-body,
-#app {
-  height: 100%;
-  overflow: hidden;
-}
-
-.app-shell {
-  height: 100dvh;
-  min-height: 0;
-  overflow: hidden;
-}
-
-.workspace {
-  overflow: hidden;
-}
-
-.field-panel {
-  grid-template-rows: auto minmax(0, 1fr) auto auto;
-}
-
-#game-canvas {
-  min-height: 0;
-}
-
-.inspector {
-  display: grid;
-  grid-template-rows: auto auto minmax(0, 1fr);
-  overflow: hidden;
 }
 
 .inspector-heading .icon-button {
@@ -1394,6 +1295,7 @@ body,
 }
 
 .inspector-panel {
+  flex: 1;
   min-height: 0;
   overflow-y: auto;
   overscroll-behavior: contain;
@@ -1503,28 +1405,14 @@ body,
     display: grid;
   }
 
-  .workspace {
-    grid-template-columns: minmax(0, 1fr);
-    grid-template-rows: minmax(0, 1fr) minmax(190px, 34vh);
-  }
-
   .inspector {
-    grid-template-columns: minmax(0, 1fr);
-    grid-template-rows: auto auto minmax(0, 1fr);
-    align-items: stretch;
     border-top: 1px solid var(--line);
     border-left: 0;
   }
 
-  .inspector-heading,
-  .inspector-tabs,
-  .inspector-panel,
-  .inspector .match-roster,
-  .inspector .player-detail,
-  .inspector .analysis-section,
-  .inspector .events-section {
-    grid-column: auto;
-    grid-row: auto;
+  .workspace {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr) minmax(190px, 34vh);
   }
 
   .inspector-heading {
