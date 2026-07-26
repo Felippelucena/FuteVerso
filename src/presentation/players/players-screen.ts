@@ -3,7 +3,9 @@ import { COUNTRIES, countryName } from "../../content/countries";
 import type { PlayerMentalAttributes, PlayerPosition, PlayerProfile, PlayerRole, PlayerSkills } from "../../domain/roster/model";
 import { createMentalAttributes, dominantMentalTraits, MENTAL_PRESET_LABELS, MENTAL_PRESETS, type MentalPreset } from "../../domain/roster/personality";
 import { PLAYER_POSITIONS } from "../../domain/roster/positions";
-import { escapeHtml, POSITION_LABELS, POSITION_SHORT_LABELS, ROLE_LABELS } from "../app/labels";
+import { find, render } from "../app/dom";
+import { html, type Html } from "../app/html";
+import { POSITION_LABELS, POSITION_SHORT_LABELS, ROLE_LABELS } from "../app/labels";
 import { hydrateIcons } from "../app/icons";
 import { createPlayersViewModel } from "./players-view-model";
 
@@ -25,30 +27,28 @@ const MENTAL_FIELDS: { key: keyof PlayerMentalAttributes; label: string }[] = [
 
 const DEFAULT_AGE = 24;
 
-const skillInputs = (): string => SKILL_FIELDS.map(({ key, label }) => `
+const skillInputs = (): Html => html`${SKILL_FIELDS.map(({ key, label }) => html`
   <label class="skill-field"><span>${label}</span><input name="${key}" type="number" min="1" max="100" value="65" required /></label>
-`).join("");
+`)}`;
 
-const mentalInputs = (): string => MENTAL_FIELDS.map(({ key, label }) => `
+const mentalInputs = (): Html => html`${MENTAL_FIELDS.map(({ key, label }) => html`
   <label class="skill-field"><span>${label}</span><input name="mental-${key}" type="number" min="1" max="100" value="65" required /></label>
-`).join("");
+`)}`;
 
-const positionOptions = (): string => PLAYER_POSITIONS
-  .map((position) => `<option value="${position}">${POSITION_SHORT_LABELS[position]} · ${POSITION_LABELS[position]}</option>`)
-  .join("");
+const positionOptions = (): Html => html`${PLAYER_POSITIONS
+  .map((position) => html`<option value="${position}">${POSITION_SHORT_LABELS[position]} · ${POSITION_LABELS[position]}</option>`)}`;
 
-const countryOptions = (): string => COUNTRIES
-  .map((country) => `<option value="${country.code}">${escapeHtml(country.name)}</option>`)
-  .join("");
+const countryOptions = (): Html => html`${COUNTRIES
+  .map((country) => html`<option value="${country.code}">${country.name}</option>`)}`;
 
-export const playersScreenTemplate = (): string => `
+export const playersScreenTemplate = (): Html => html`
   <section id="players-view" class="manager-view" hidden>
     <div class="manager-heading"><div><span class="eyebrow">CATÁLOGO</span><h2>Jogadores</h2></div><button id="add-player" class="primary-button" type="button"><i data-lucide="plus"></i>Novo jogador</button></div>
     <p id="manager-message" class="manager-message" aria-live="polite"></p>
     <div class="players-section"><div class="section-heading"><h3>Todos os jogadores</h3><span id="player-count"></span></div><div id="players-table" class="players-table"></div></div>
   </section>`;
 
-export const playerDialogTemplate = (): string => `
+export const playerDialogTemplate = (): Html => html`
   <dialog id="player-dialog" class="player-dialog">
     <form id="player-form" method="dialog">
       <div class="dialog-heading"><div><span class="eyebrow">PERFIL</span><h2 id="dialog-title">Novo jogador</h2></div><button class="icon-button" id="close-player" type="button" aria-label="Fechar" title="Fechar"><i data-lucide="x"></i></button></div>
@@ -58,11 +58,11 @@ export const playerDialogTemplate = (): string => `
         <label><span>Idade</span><input name="age" type="number" min="15" max="45" required /></label>
         <label><span>Nacionalidade</span><select name="nationality">${countryOptions()}</select></label>
         <label><span>Posição</span><select name="position">${positionOptions()}</select></label>
-        <label><span>Função</span><select name="role">${Object.entries(ROLE_LABELS).map(([value, label]) => `<option value="${value}">${label}</option>`).join("")}</select></label>
+        <label><span>Função</span><select name="role">${Object.entries(ROLE_LABELS).map(([value, label]) => html`<option value="${value}">${label}</option>`)}</select></label>
       </div>
       <div class="skills-heading"><strong>Atributos</strong><span>1–100</span></div><div class="skills-grid">${skillInputs()}</div>
       <div class="skills-heading"><strong>Personalidade</strong><span>1–100</span></div>
-      <label class="mental-preset"><span>Preset mental</span><select id="mental-preset" name="mentalPreset">${Object.entries(MENTAL_PRESET_LABELS).map(([value, label]) => `<option value="${value}">${label}</option>`).join("")}<option value="custom">Personalizado</option></select></label>
+      <label class="mental-preset"><span>Preset mental</span><select id="mental-preset" name="mentalPreset">${Object.entries(MENTAL_PRESET_LABELS).map(([value, label]) => html`<option value="${value}">${label}</option>`)}<option value="custom">Personalizado</option></select></label>
       <div class="skills-grid mental-grid">${mentalInputs()}</div>
       <div class="dialog-actions"><button type="button" class="secondary-button" id="cancel-player">Cancelar</button><button type="submit" class="primary-button"><i data-lucide="save"></i>Salvar jogador</button></div>
     </form>
@@ -91,14 +91,14 @@ export class PlayersScreen {
   render(): void {
     const viewModel = createPlayersViewModel(this.application.world);
     this.find("#player-count").textContent = viewModel.countLabel;
-    this.find("#players-table").innerHTML = viewModel.rows.map((row) => {
+    render(this.find("#players-table"), html`${viewModel.rows.map((row) => {
       const secondary = row.secondaryPositions.map((position) => POSITION_SHORT_LABELS[position]).join("/");
       const player = this.application.world.players.find(({ id }) => id === row.id)!;
-      return `
-      <div class="player-table-row"><span class="shirt shirt--neutral">${row.shirtNumber ?? "–"}</span><div class="player-table-name"><strong>${escapeHtml(row.name)}</strong><span>${escapeHtml(row.clubName)} · ${POSITION_SHORT_LABELS[row.position]}${secondary ? ` (${secondary})` : ""} · ${ROLE_LABELS[row.role]} · ${row.age} anos · ${escapeHtml(countryName(row.nationality))} · ${dominantMentalTraits(player.mental).join(" / ")}</span></div>
+      return html`
+      <div class="player-table-row"><span class="shirt shirt--neutral">${row.shirtNumber ?? "–"}</span><div class="player-table-name"><strong>${row.name}</strong><span>${row.clubName} · ${POSITION_SHORT_LABELS[row.position]}${secondary ? ` (${secondary})` : ""} · ${ROLE_LABELS[row.role]} · ${row.age} anos · ${countryName(row.nationality)} · ${dominantMentalTraits(player.mental).join(" / ")}</span></div>
         <div class="player-rating"><span>GER <strong>${row.overall}</strong></span><span>CON <strong>${player.skills.control}</strong></span><span>PAS <strong>${player.skills.passing}</strong></span><span>VEL <strong>${player.skills.sprintSpeed}</strong></span></div>
-        <div class="row-actions"><button class="icon-button" type="button" data-edit-player="${row.id}" aria-label="Editar ${escapeHtml(row.name)}" title="Editar"><i data-lucide="pencil"></i></button><button class="icon-button icon-button--danger" type="button" data-delete-player="${row.id}" aria-label="Excluir ${escapeHtml(row.name)}" title="Excluir"><i data-lucide="trash-2"></i></button></div></div>`;
-    }).join("");
+        <div class="row-actions"><button class="icon-button" type="button" data-edit-player="${row.id}" aria-label="Editar ${row.name}" title="Editar"><i data-lucide="pencil"></i></button><button class="icon-button icon-button--danger" type="button" data-delete-player="${row.id}" aria-label="Excluir ${row.name}" title="Excluir"><i data-lucide="trash-2"></i></button></div></div>`;
+    })}`);
     hydrateIcons();
   }
 
@@ -208,14 +208,10 @@ export class PlayersScreen {
   }
 
   private find<T extends HTMLElement>(selector: string): T {
-    const element = this.root.querySelector<T>(selector);
-    if (!element) throw new Error(`Elemento ${selector} não encontrado na tela de jogadores.`);
-    return element;
+    return find<T>(this.root, selector);
   }
 
   private dialogFind<T extends HTMLElement>(selector: string): T {
-    const element = this.dialog.querySelector<T>(selector);
-    if (!element) throw new Error(`Elemento ${selector} não encontrado no formulário de jogador.`);
-    return element;
+    return find<T>(this.dialog, selector);
   }
 }

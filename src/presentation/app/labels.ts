@@ -158,11 +158,6 @@ export const REASON_LABELS: Record<DecisionReason, string> = {
   overlapRun: "Sobreposição do lateral",
 };
 
-export const escapeHtml = (value: string): string => value.replace(
-  /[&<>"]/g,
-  (character) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[character]!,
-);
-
 /** Nome de cada lado nesta partida. Vem dos clubes escolhidos, não do time do motor. */
 export type TeamNames = Record<Team, string>;
 

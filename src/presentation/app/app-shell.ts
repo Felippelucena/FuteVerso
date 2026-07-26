@@ -1,6 +1,8 @@
 import type { MatchState } from "../../domain/match";
 import { matchScreenTemplate, matchSettingsTemplate } from "../match/match-screen";
 import { playerDialogTemplate, playersScreenTemplate } from "../players/players-screen";
+import { find, render } from "./dom";
+import { html } from "./html";
 import { formatMatchClock, type TeamNames } from "./labels";
 import { hydrateIcons } from "./icons";
 
@@ -14,7 +16,7 @@ export class AppShell {
   private viewChanged: ((view: AppView) => void) | null = null;
 
   constructor(private readonly root: HTMLDivElement) {
-    root.innerHTML = `
+    render(root, html`
       <main class="app-shell">
         <header class="topbar">
           <div class="brand-lockup"><span class="brand-mark" aria-hidden="true"></span><div><h1>FuteVerso</h1><p>SIMULADOR de Futebol 2D</p></div></div>
@@ -34,7 +36,7 @@ export class AppShell {
       </main>
       ${playerDialogTemplate()}
       ${matchSettingsTemplate()}
-    `;
+    `);
     this.matchRoot = this.find("#match-view");
     this.playersRoot = this.find("#players-view");
     this.matchSettingsDialog = this.find("#match-settings-dialog");
@@ -75,8 +77,6 @@ export class AppShell {
   }
 
   private find<T extends HTMLElement>(selector: string): T {
-    const element = this.root.querySelector<T>(selector);
-    if (!element) throw new Error(`Elemento ${selector} não encontrado.`);
-    return element;
+    return find<T>(this.root, selector);
   }
 }

@@ -5,6 +5,8 @@ import { IndexedDbWorldRepository } from "./infrastructure/persistence/indexeddb
 import { MemoryWorldRepository } from "./infrastructure/persistence/memory-world-repository";
 import { AnimationLoop } from "./presentation/app/animation-loop";
 import { AppShell } from "./presentation/app/app-shell";
+import { render } from "./presentation/app/dom";
+import { html } from "./presentation/app/html";
 import { GameRenderer } from "./presentation/canvas/game-renderer";
 import { MatchScreen } from "./presentation/match/match-screen";
 import { PlayersScreen } from "./presentation/players/players-screen";
@@ -24,7 +26,7 @@ const createRepository = (): WorldRepository => {
 };
 
 const boot = async (): Promise<void> => {
-  root.innerHTML = `<div class="boot-screen"><span class="brand-mark" aria-hidden="true"></span><p>Carregando o mundo…</p></div>`;
+  render(root, html`<div class="boot-screen"><span class="brand-mark" aria-hidden="true"></span><p>Carregando o mundo…</p></div>`);
 
   const repository = createRepository();
   const world = await bootstrapWorld(repository);
@@ -86,5 +88,5 @@ const boot = async (): Promise<void> => {
 
 void boot().catch((error: unknown) => {
   console.error(error);
-  root.innerHTML = `<div class="boot-screen"><p>Não foi possível iniciar o jogo.</p><pre>${String(error)}</pre></div>`;
+  render(root, html`<div class="boot-screen"><p>Não foi possível iniciar o jogo.</p><pre>${String(error)}</pre></div>`);
 });
