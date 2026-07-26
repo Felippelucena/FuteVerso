@@ -1,34 +1,18 @@
 import type { GameApplication } from "../../application/game-application";
 import { SIMULATION_SPEEDS, type SimulationSpeed } from "../../application/match/match-session";
-import { ANALYTICS_GRID, FIELD } from "../../domain/match/config";
 import type { MatchState } from "../../domain/match";
-import type { AssignmentDuty, PlayerRuntime } from "../../domain/match/model";
-import { goalkeeperQuality } from "../../domain/match/systems/goalkeeper-system";
+import type { AssignmentDuty } from "../../domain/match/model";
 import type { Team } from "../../domain/shared/model";
 import type { GameRenderer } from "../canvas/game-renderer";
 import { find, render } from "../app/dom";
 import { html, type Html } from "../app/html";
-import { DRIBBLE_RANGE_REASON_LABELS, DRIBBLE_TOUCH_LABELS, DUTY_LABELS, formatClock, INTENT_LABELS, PACE_LABELS, PASS_PURPOSE_LABELS, percentage, PHASE_LABELS, POSITION_LABELS, REASON_LABELS, ROLE_LABELS, SHOT_TECHNIQUE_LABELS, type TeamNames } from "../app/labels";
+import { DUTY_LABELS, formatClock, percentage, PHASE_LABELS, type TeamNames } from "../app/labels";
 import { icon } from "../app/icons";
+import { Section } from "../app/section";
 import { formatMatchEvent } from "./format-match-event";
-import { createContestMetric, createMatchHeaderViewModel, createMatchSummary } from "./match-view-model";
-
-const intentLabel = (state: MatchState, player: PlayerRuntime): string => {
-  if (player.intent !== "knockingOn") return INTENT_LABELS[player.intent];
-  const range = state.ball.dribbleOwnerId === player.profile.id
-    ? state.ball.dribbleTouchRange
-    : player.plan?.ballAction.kind === "dribble" ? player.plan.ballAction.touchRange : null;
-  return range ? DRIBBLE_TOUCH_LABELS[range] : INTENT_LABELS.knockingOn;
-};
-
-// Duas barras no painel lateral: fôlego (longa) e pique (volátil). Sem overlay no campo.
-const staminaMeter = (player: PlayerRuntime): Html => {
-  const long = Math.round(player.stamina * 100);
-  const volatile = Math.round(player.sprintEnergy * 100);
-  const bar = (kind: "long" | "volatile", value: number): Html =>
-    html`<span class="stamina-meter-bar"><span class="stamina-meter-fill stamina-meter-fill--${kind}${value <= 30 ? " is-low" : ""}" style="width:${Math.max(0, Math.min(100, value))}%"></span></span>`;
-  return html`<span class="stamina-meter" title="Fôlego ${long}% · Pique ${volatile}%">${bar("long", long)}${bar("volatile", volatile)}</span>`;
-};
+import { RosterList, rosterSignature } from "./match-roster";
+import { createContestMetric, createMatchHeaderViewModel, createMatchSummary, createPlayerDetailViewModel, playerDetailSignature, type PlayerDetailViewModel } from "./match-view-model";
+import { drawTacticalMap } from "./tactical-map";
 
 export const matchScreenTemplate = (): Html => html`
   <section id="match-view" class="workspace">
@@ -111,8 +95,18 @@ export const matchSettingsTemplate = (): Html => html`
     </form>
   </dialog>`;
 
+type InspectorTab = "players" | "analysis" | "events";
+
 export class MatchScreen {
   private selectedPlayerId: string;
+  private activeTab: InspectorTab = "players";
+  private detailModel: PlayerDetailViewModel | null = null;
+  private readonly roster: RosterList;
+  private readonly rosterSection: Section;
+  private readonly detailSection: Section;
+  private readonly eventsSection: Section;
+  private readonly analysisSection: Section;
+  private readonly panels: Record<InspectorTab, () => void>;
 
   constructor(
     private readonly root: HTMLElement,
@@ -122,6 +116,16 @@ export class MatchScreen {
     private readonly renderHeader: (state: MatchState, paused: boolean, teamNames: TeamNames) => void,
   ) {
     this.selectedPlayerId = application.state.players[0]?.profile.id ?? "";
+    this.roster = new RosterList(this.find("#match-roster"));
+    this.rosterSection = new Section(() => this.roster.rebuild(this.application.state.players, this.teamNames));
+    this.detailSection = new Section(() => this.renderPlayerDetail());
+    this.eventsSection = new Section(() => this.renderEvents());
+    this.analysisSection = new Section(() => this.renderAnalysisTable());
+    this.panels = {
+      players: () => this.renderPlayersPanel(),
+      analysis: () => this.renderAnalysis(),
+      events: () => this.eventsSection.update(this.eventsSignature()),
+    };
     this.bindEvents();
   }
 
@@ -147,13 +151,31 @@ export class MatchScreen {
     this.find("#possession-coral").textContent = `${header.coralPossession}%`;
     this.find<HTMLSpanElement>("#possession-fill").style.width = `${header.bluePossession}%`;
     this.renderTimeline();
-    this.renderMatchRoster();
-    this.renderAnalysis();
     this.find<HTMLButtonElement>("#pause-button").disabled = state.finished;
-    render(this.find<HTMLOListElement>("#event-list"), html`${state.events.map((event) => {
+    // Só a aba visível é montada: as outras duas nascem `hidden` e reconstruí-las é desperdício.
+    this.panels[this.activeTab]();
+  }
+
+  private eventsSignature(): string {
+    return `${this.application.state.eventCounter}|${this.teamNames.blue}|${this.teamNames.coral}`;
+  }
+
+  private renderEvents(): void {
+    render(this.find<HTMLOListElement>("#event-list"), html`${this.application.state.events.map((event) => {
       const team = "team" in event ? event.team : null;
       return html`<li class="event-item ${team ? `event-item--${team}` : ""}"><time>${formatClock(event.time)}</time><span>${formatMatchEvent(event, this.application.world.players, this.teamNames)}</span></li>`;
     })}`);
+  }
+
+  private renderPlayersPanel(): void {
+    const state = this.application.state;
+    this.rosterSection.update(rosterSignature(state.players, this.teamNames));
+    this.roster.patch(state, this.selectedPlayerId);
+    const selected = state.players.find((player) => player.profile.id === this.selectedPlayerId) ?? state.players[0];
+    if (!selected) return;
+    this.selectedPlayerId = selected.profile.id;
+    this.detailModel = createPlayerDetailViewModel(state, selected);
+    this.detailSection.update(playerDetailSignature(this.detailModel));
   }
 
   resize(): void {
@@ -222,7 +244,7 @@ export class MatchScreen {
       const button = (event.target as HTMLElement).closest<HTMLButtonElement>("[data-inspect-player]");
       if (!button) return;
       this.selectedPlayerId = button.dataset.inspectPlayer!;
-      this.renderMatchRoster();
+      this.renderPlayersPanel();
     });
     this.bindSettings();
   }
@@ -306,131 +328,38 @@ export class MatchScreen {
   }
 
   private activateInspectorTab(button: HTMLButtonElement): void {
-    const tab = button.dataset.inspectorTab;
+    this.activeTab = button.dataset.inspectorTab as InspectorTab;
     this.root.querySelectorAll<HTMLButtonElement>("[data-inspector-tab]").forEach((item) => {
       const active = item === button;
       item.classList.toggle("is-active", active);
       item.setAttribute("aria-selected", String(active));
     });
     this.root.querySelectorAll<HTMLElement>("[data-inspector-panel]").forEach((panel) => {
-      const active = panel.dataset.inspectorPanel === tab;
+      const active = panel.dataset.inspectorPanel === this.activeTab;
       panel.hidden = !active;
       panel.classList.toggle("is-active", active);
     });
+    // A aba recém-aberta pode estar desatualizada: enquanto escondida ela não é montada.
+    this.panels[this.activeTab]();
   }
 
   private resetSelection(): void {
     this.selectedPlayerId = this.application.state.players[0]?.profile.id ?? "";
   }
 
-  private renderMatchRoster(): void {
-    const state = this.application.state;
-    render(this.find("#match-roster"), html`${(["blue", "coral"] as const).map((team) => html`
-      <div class="roster-team"><span class="roster-team-name roster-team-name--${team}">${this.teamNames[team]}</span>
-        ${state.players.filter((player) => player.team === team).map((player) => html`
-          <button type="button" class="roster-player ${this.selectedPlayerId === player.profile.id ? "is-selected" : ""}" data-inspect-player="${player.profile.id}">
-            <span class="shirt shirt--${team}">${player.shirtNumber}</span><span><strong>${player.profile.name}</strong><small>${POSITION_LABELS[player.profile.position]} · ${intentLabel(state, player)}</small></span>${staminaMeter(player)}
-          </button>`)}
-      </div>`)}`);
-    const selected = state.players.find((player) => player.profile.id === this.selectedPlayerId) ?? state.players[0];
-    if (!selected) return;
-    this.selectedPlayerId = selected.profile.id;
-    const stats = selected.memory.stats;
-    const planAge = selected.plan ? Math.max(0, state.elapsed - selected.plan.startedAt) : 0;
-    const pendingPass = state.pendingPass;
-    const receptionDiagnostic = pendingPass
-      && (pendingPass.receiverId === selected.profile.id || pendingPass.passerId === selected.profile.id)
-      ? html`<div class="decision-explanation"><small>RECEPÇÃO</small><strong>${PASS_PURPOSE_LABELS[pendingPass.purpose ?? "feet"]} · ${pendingPass.range === "long" ? "Longo" : "Curto"} ${pendingPass.trajectory === "air" ? "aéreo" : "rasteiro"}<br>Ponto ${pendingPass.landingPoint.x.toFixed(1)}, ${pendingPass.landingPoint.y.toFixed(1)} · ETA ${pendingPass.receiverEta.toFixed(2)}s / rival ${pendingPass.opponentEta.toFixed(2)}s</strong></div>`
-      : null;
-    const dribbleAction = selected.plan?.ballAction.kind === "dribble" ? selected.plan.ballAction : null;
-    const dribbleDiagnostic = dribbleAction?.runway !== undefined
-      ? html`<div class="decision-explanation"><small>CONDUÇÃO</small><strong>${dribbleAction.touchRange ? DRIBBLE_TOUCH_LABELS[dribbleAction.touchRange] : "Sem pique"} · ${DRIBBLE_RANGE_REASON_LABELS[dribbleAction.rangeReason ?? "insufficientRunway"]}<br>Corredor ${dribbleAction.runway.toFixed(1)} · ETA ${dribbleAction.carrierEta?.toFixed(2) ?? "–"}s / rival ${Number.isFinite(dribbleAction.opponentEta) ? dribbleAction.opponentEta?.toFixed(2) : "livre"}s</strong></div>`
-      : null;
-    const prepared = selected.plan?.preparedReceptionAction;
-    const preparedDiagnostic = prepared
-      ? html`<div class="decision-explanation"><small>PREPARAÇÃO</small><strong>${prepared.kind === "shot" || prepared.kind === "redirect" ? SHOT_TECHNIQUE_LABELS[prepared.technique ?? "redirect"] : prepared.kind === "pass" ? "Passe de primeira" : prepared.fallback === "protectBall" ? "Proteger a bola" : "Domínio orientado"}<br>Altura ${prepared.expectedHeight.toFixed(2)} · velocidade ${prepared.expectedSpeed.toFixed(1)} · valor ${prepared.score.toFixed(2)}</strong></div>`
-      : null;
-    const shotAction = selected.plan?.ballAction.kind === "shot" ? selected.plan.ballAction : null;
-    const shotDiagnostic = shotAction
-      ? html`<div class="decision-explanation"><small>FINALIZAÇÃO</small><strong>${SHOT_TECHNIQUE_LABELS[shotAction.technique ?? "power"]} · valor ${shotAction.utility?.toFixed(2) ?? "–"}<br>Linha ${shotAction.blocked ? "bloqueada" : "livre"} · espaço do goleiro ${shotAction.goalkeeperGap?.toFixed(1) ?? "–"}</strong></div>`
-      : null;
-    const saveAttempt = selected.goalkeeperAttempt;
-    // A qualidade do contato (contactQuality) só existe no instante em que a bola é tocada;
-    // durante o voo mostramos a qualidade de base do goleiro (a mesma que alimenta a fórmula),
-    // e acrescentamos a qualidade do lance assim que ele se resolve.
-    const saveActionLabel = saveAttempt
-      ? saveAttempt.launchedAt === null ? "Ajustando posição" : saveAttempt.action === "standingSave" ? "Em pé" : saveAttempt.action === "lowDive" ? "Mergulho baixo" : saveAttempt.action === "highDive" ? "Mergulho alto" : saveAttempt.action === "verticalJump" ? "Salto vertical" : saveAttempt.action === "punch" ? "Soco" : "Saída aérea"
-      : "";
-    const saveFormula = saveAttempt
-      ? saveAttempt.launchedAt === null ? "Ainda no chão" : `Impulso ${saveAttempt.launchSpeed.toFixed(1)} · salto ${saveAttempt.launchVertical.toFixed(1)}${saveAttempt.desperate ? " · desesperado" : ""}`
-      : "";
-    const saveQuality = saveAttempt
-      ? `qualidade do goleiro ${goalkeeperQuality(selected).toFixed(2)}${saveAttempt.contactQuality !== null ? ` · lance ${saveAttempt.contactQuality.toFixed(2)}` : ""}`
-      : "";
-    const saveDiagnostic = saveAttempt
-      ? html`<div class="decision-explanation"><small>DEFESA</small><strong>${saveActionLabel} · ${saveAttempt.outcome ?? "em andamento"}<br>${saveFormula} · ${saveQuality}</strong></div>`
-      : null;
+  private renderPlayerDetail(): void {
+    const detail = this.detailModel;
+    if (!detail) return;
     render(this.find("#player-detail"), html`
-      <div class="detail-title"><div><strong>${selected.profile.name}</strong><span>${POSITION_LABELS[selected.profile.position]} · ${ROLE_LABELS[selected.profile.role]}</span></div><span class="intent intent--${selected.team}">${intentLabel(state, selected)}</span></div>
-      <div class="decision-explanation"><small>POR QUÊ</small><strong>${REASON_LABELS[selected.decisionReason]}</strong></div>
-      ${receptionDiagnostic}
-      ${preparedDiagnostic}
-      ${dribbleDiagnostic}
-      ${shotDiagnostic}
-      ${saveDiagnostic}
-      <div class="detail-metrics"><span><small>POSTURA</small><strong>${selected.posture === "inPossession" ? "COM POSSE" : "SEM POSSE"}</strong></span><span><small>RITMO</small><strong>${PACE_LABELS[selected.pace]}</strong></span><span><small>PLANO</small><strong>${planAge.toFixed(1)}s</strong></span><span><small>GOLS</small><strong>${stats.goals}</strong></span><span><small>PASSES</small><strong>${stats.completedPasses}</strong></span></div>`);
+      <div class="detail-title"><div><strong>${detail.name}</strong><span>${detail.position}</span></div><span class="intent intent--${detail.team}">${detail.intent}</span></div>
+      <div class="decision-explanation"><small>POR QUÊ</small><strong>${detail.reason}</strong></div>
+      ${detail.diagnostics.map((item) => html`<div class="decision-explanation"><small>${item.label}</small><strong>${item.headline}<br>${item.detail}</strong></div>`)}
+      <div class="detail-metrics">${detail.metrics.map((item) => html`<span><small>${item.label}</small><strong>${item.value}</strong></span>`)}</div>`);
   }
 
   private averageShape(team: Team, key: "widthIntegral" | "depthIntegral" | "compactnessIntegral"): number {
     const stats = this.application.state.stats[team];
     return stats.spatialSeconds > 0 ? stats[key] / stats.spatialSeconds : 0;
-  }
-
-  private renderTacticalMap(team: Team): void {
-    const state = this.application.state;
-    const canvas = this.find<HTMLCanvasElement>(`#tactical-map-${team}`);
-    const context = canvas.getContext("2d");
-    if (!context) return;
-    const { width, height } = canvas;
-    context.clearRect(0, 0, width, height);
-    context.fillStyle = "#1d4f36";
-    context.fillRect(0, 0, width, height);
-    const cells = state.heatmaps[team];
-    const maximum = Math.max(1, ...cells);
-    const cellWidth = width / ANALYTICS_GRID.columns;
-    const cellHeight = height / ANALYTICS_GRID.rows;
-    const color = team === "blue" ? "59,130,246" : "243,111,86";
-    for (let index = 0; index < cells.length; index += 1) {
-      const alpha = cells[index] / maximum * 0.58;
-      if (alpha < 0.02) continue;
-      context.fillStyle = `rgba(${color},${alpha})`;
-      context.fillRect(index % ANALYTICS_GRID.columns * cellWidth, Math.floor(index / ANALYTICS_GRID.columns) * cellHeight, cellWidth + 0.5, cellHeight + 0.5);
-    }
-    context.strokeStyle = "rgba(235,247,238,.42)";
-    context.lineWidth = 1;
-    context.strokeRect(0.5, 0.5, width - 1, height - 1);
-    context.beginPath(); context.moveTo(width / 2, 0); context.lineTo(width / 2, height); context.stroke();
-    const players = state.players.filter((player) => player.team === team);
-    const byId = new Map(players.map((player) => [player.profile.id, player]));
-    const connections = Object.entries(state.passNetwork[team]);
-    const strongest = Math.max(1, ...connections.map(([, count]) => count));
-    for (const [key, count] of connections) {
-      const [fromId, toId] = key.split(">");
-      const from = byId.get(fromId); const to = byId.get(toId);
-      if (!from || !to) continue;
-      context.strokeStyle = `rgba(255,255,255,${0.18 + count / strongest * 0.52})`;
-      context.lineWidth = 0.7 + count / strongest * 2.1;
-      context.beginPath();
-      context.moveTo(from.position.x / FIELD.width * width, from.position.y / FIELD.height * height);
-      context.lineTo(to.position.x / FIELD.width * width, to.position.y / FIELD.height * height);
-      context.stroke();
-    }
-    for (const player of players) {
-      context.fillStyle = team === "blue" ? "#7fb0ff" : "#ff9b87";
-      context.beginPath();
-      context.arc(player.position.x / FIELD.width * width, player.position.y / FIELD.height * height, player.profile.position === "goalkeeper" ? 2.2 : 2.8, 0, Math.PI * 2);
-      context.fill();
-    }
   }
 
   private renderAnalysis(): void {
@@ -456,10 +385,23 @@ export class MatchScreen {
           .sort(([, first], [, second]) => second - first)
           .map(([duty, count]) => `${count} ${DUTY_LABELS[duty as AssignmentDuty]}`)
           .join(" · ");
-      this.renderTacticalMap(team);
+      drawTacticalMap(this.find<HTMLCanvasElement>(`#tactical-map-${team}`), state, team);
     }
-    const blue = state.stats.blue; const coral = state.stats.coral;
-    const rows = [
+    this.analysisSection.update(this.analysisRows().flat().join("|") + this.teamNames.blue + this.teamNames.coral);
+    this.find("#contest-metric").textContent = createContestMetric(state);
+    this.find("#analysis-title").textContent = state.finished ? "Relatório final" : "Relatório ao vivo";
+    this.find("#match-summary").textContent = createMatchSummary(state, this.teamNames);
+  }
+
+  private renderAnalysisTable(): void {
+    render(this.find("#analysis-table"), html`<div class="analysis-row analysis-row--head"><span>MÉTRICA</span><strong>${this.teamNames.blue}</strong><strong>${this.teamNames.coral}</strong></div>${this.analysisRows().map(([label, blueValue, coralValue]) => html`<div class="analysis-row"><span>${label}</span><strong>${blueValue}</strong><strong>${coralValue}</strong></div>`)}`);
+  }
+
+  /** As próprias linhas servem de assinatura da seção: são exatamente o conteúdo exibido. */
+  private analysisRows(): (string | number)[][] {
+    const blue = this.application.state.stats.blue;
+    const coral = this.application.state.stats.coral;
+    return [
       ["Passes certos", `${blue.completedPasses}/${blue.passes}`, `${coral.completedPasses}/${coral.passes}`],
       ["Precisão", percentage(blue.completedPasses, blue.passes), percentage(coral.completedPasses, coral.passes)],
       ["Passes longos", `${blue.completedLongPasses}/${blue.longPasses}`, `${coral.completedLongPasses}/${coral.longPasses}`],
@@ -475,10 +417,6 @@ export class MatchScreen {
       ["Largura média", Math.round(this.averageShape("blue", "widthIntegral")), Math.round(this.averageShape("coral", "widthIntegral"))],
       ["Compactação média", Math.round(this.averageShape("blue", "compactnessIntegral")), Math.round(this.averageShape("coral", "compactnessIntegral"))],
     ];
-    render(this.find("#analysis-table"), html`<div class="analysis-row analysis-row--head"><span>MÉTRICA</span><strong>${this.teamNames.blue}</strong><strong>${this.teamNames.coral}</strong></div>${rows.map(([label, blueValue, coralValue]) => html`<div class="analysis-row"><span>${label}</span><strong>${blueValue}</strong><strong>${coralValue}</strong></div>`)}`);
-    this.find("#contest-metric").textContent = createContestMetric(state);
-    this.find("#analysis-title").textContent = state.finished ? "Relatório final" : "Relatório ao vivo";
-    this.find("#match-summary").textContent = createMatchSummary(state, this.teamNames);
   }
 
   private find<T extends HTMLElement>(selector: string): T {
