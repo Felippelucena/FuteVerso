@@ -1,0 +1,128 @@
+.squad-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.squad-head,
+.squad-row {
+  display: grid;
+  grid-template-columns: 52px minmax(0, 1.6fr) 108px 74px 74px 88px auto;
+  align-items: center;
+  gap: 8px;
+}
+
+.squad-head {
+  padding: 0 8px 4px;
+  border-bottom: 1px solid var(--line);
+  color: var(--text-muted);
+  font-size: var(--type-xs);
+  font-weight: 800;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+}
+
+.squad-row {
+  padding: 5px 8px;
+  border-radius: var(--radius-sm);
+  background: var(--surface-0);
+}
+
+.squad-row input,
+.squad-row select {
+  width: 100%;
+  min-height: 32px;
+  padding: 0 7px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-xs);
+  background: var(--surface-1);
+  color: var(--text);
+  font-size: var(--type-md);
+  font-variant-numeric: tabular-nums;
+}
+
+.squad-row input:focus,
+.squad-row select:focus {
+  border-color: var(--lime);
+  outline: none;
+}
+
+.squad-shirt {
+  text-align: center;
+}
+
+.squad-name {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.squad-name strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--type-md);
+}
+
+.squad-name em {
+  color: var(--text-muted);
+  font-style: normal;
+  font-size: var(--type-xs);
+}
+
+
+.candidate-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: 5px;
+}
+
+.candidate {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  column-gap: 8px;
+  padding: 7px 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface-0);
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+}
+
+.candidate:hover,
+.candidate:focus-visible {
+  border-color: var(--lime);
+  outline: none;
+}
+
+.candidate svg {
+  grid-row: 1 / -1;
+  width: 14px;
+  height: 14px;
+  color: var(--lime);
+}
+
+.candidate strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--type-md);
+}
+
+.candidate em {
+  grid-column: 2;
+  color: var(--text-muted);
+  font-style: normal;
+  font-size: var(--type-xs);
+}
+
+@media (max-width: 780px) {
+  .squad-head { display: none; }
+
+  .squad-row {
+    grid-template-columns: 52px minmax(0, 1fr) auto;
+  }
+}

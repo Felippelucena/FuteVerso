@@ -13,6 +13,7 @@
 @import "./app/entity-tabs.css";
 
 @import "./components/brand-mark.css";
+@import "./components/club-crest.css";
 @import "./components/heading-row.css";
 @import "./components/button.css";
 @import "./components/shirt.css";
@@ -36,7 +37,8 @@
 @import "./quick-game/plan.css";
 
 @import "./editor/editor-screen.css";
-@import "./players/players-screen.css";
-@import "./players/player-dialog.css";
+@import "./editor/data-table.css";
+@import "./editor/entity-dialog.css";
+@import "./editor/squad-tab.css";
 
 @import "./boot.css";

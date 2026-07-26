@@ -1,0 +1,139 @@
+.data-table {
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.data-table.is-loading .data-body {
+  opacity: 0.45;
+}
+
+.data-table-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.data-search {
+  flex: 1;
+  min-width: 0;
+  min-height: 32px;
+  padding: 0 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface-1);
+  color: var(--text);
+  font-size: var(--type-md);
+}
+
+.data-search:focus {
+  border-color: var(--lime);
+  outline: none;
+}
+
+.data-total {
+  color: var(--text-muted);
+  font-size: var(--type-sm);
+  font-weight: 750;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.data-head,
+.data-row {
+  display: grid;
+  grid-template-columns: var(--columns);
+  align-items: center;
+  gap: 10px;
+}
+
+.data-head {
+  padding: 0 10px 6px;
+  border-bottom: 1px solid var(--line);
+  color: var(--text-muted);
+  font-size: var(--type-xs);
+  font-weight: 800;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+}
+
+.data-head button {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  letter-spacing: inherit;
+  text-transform: inherit;
+  cursor: pointer;
+}
+
+.data-head button:hover,
+.data-head button:focus-visible {
+  color: var(--text);
+  outline: none;
+}
+
+.data-head button.is-sorted {
+  color: var(--lime);
+}
+
+.data-head em {
+  font-size: 7px;
+  font-style: normal;
+}
+
+.data-head .is-end {
+  justify-content: end;
+  justify-self: end;
+}
+
+.data-body {
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.data-row {
+  padding: 7px 10px;
+  border-bottom: 1px solid var(--line);
+  font-size: var(--type-md);
+}
+
+.data-row:hover {
+  background: var(--surface-1);
+}
+
+.data-row > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.data-row .is-end {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.data-row em {
+  color: var(--text-muted);
+  font-style: normal;
+  font-size: var(--type-xs);
+}
+
+.data-row .row-actions {
+  display: flex;
+  gap: 2px;
+  overflow: visible;
+}
+
+.data-empty {
+  padding: 24px 10px;
+  color: var(--text-muted);
+  font-size: var(--type-md);
+  text-align: center;
+}

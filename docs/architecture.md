@@ -69,10 +69,30 @@ A partida **não** nasce com a aplicação: `match` é `MatchSession | null`, e 
 - `presentation/app/animation-loop.ts`: `requestAnimationFrame`, status da sessão e autosave.
 - `presentation/menu`: menu inicial.
 - `presentation/quick-game`: seleção de clubes e plano tático do fluxo de Jogo Rápido.
-- `presentation/editor`: casca do editor e o registro de entidades editáveis.
+- `presentation/editor`: tabela, modal e os descritores de entidade.
 - `presentation/match`: tela, cabeçalho, roster, mapa tático e view model da partida.
-- `presentation/players`: tela, dialogs e view model do elenco.
 - `presentation/canvas`: renderer do campo.
+
+## Editor
+
+Uma entidade editável é um **descritor** (`presentation/editor/entity.ts`): colunas da lista,
+abas do modal, como carregar uma página, como abrir um rascunho e os comandos de salvar e
+excluir. `DataTable` e `EntityModal` não conhecem entidade nenhuma, então acrescentar Estádio ou
+Competição é acrescentar um arquivo em `editor/entities` e uma linha na lista de descritores.
+
+O modal trabalha sobre um **rascunho** — cópia da entidade —, e só o Salvar comita. Para o clube
+o rascunho é um agregado (`{ club, contracts, squad }`), porque a aba de elenco edita vínculos:
+Cancelar descarta os três juntos e Salvar comita numa transação só. Todos os painéis são
+montados de uma vez e os inativos ficam escondidos — trocar de aba não pode custar o que já foi
+digitado.
+
+`bind` recebe o rascunho como **função**, não como valor: ele roda na montagem, antes de existir
+rascunho, e os handlers que pendura disparam depois. Um getter resolveria igual até alguém
+desestruturar o contexto e capturar `null` sem perceber.
+
+Coluna só ordena se tiver campo indexado. Camisa e clube não têm — vêm do contrato, e o banco
+não cruza índices. Idade ordena por `birthYear` com a direção invertida, porque idade cresce
+quando o ano de nascimento diminui.
 
 Cada tela consulta elementos apenas dentro do próprio container. Uma tela nova é um
 `ScreenDefinition` — um arquivo e uma linha em `main.ts`; o navegador não conhece nenhuma pelo nome,

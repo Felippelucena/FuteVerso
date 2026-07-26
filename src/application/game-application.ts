@@ -1,3 +1,5 @@
+import { generateSquad } from "../content/generators/generate-squad";
+import { createRandom } from "../content/generators/random";
 import type { Club } from "../domain/club/model";
 import { isValidClub } from "../domain/club/rules";
 import type { Contract } from "../domain/contract/model";
@@ -264,10 +266,43 @@ export class GameApplication {
     return { ok: true };
   }
 
-  async saveClub(club: Club): Promise<CommandResult> {
+  /**
+   * Clube e vínculos numa transação só. O elenco é editado junto do clube — a aba de elenco é
+   * do modal do clube —, então reparar o plano duas vezes seria trabalho jogado fora.
+   */
+  async saveClub(
+    club: Club,
+    contracts: readonly Contract[] = [],
+    removedContractIds: readonly string[] = [],
+  ): Promise<CommandResult> {
     if (!isValidClub(club)) return { ok: false, reason: "invalid-club" };
     await this.catalog.clubs.put([clone(club)]);
+    if (removedContractIds.length > 0) await this.catalog.contracts.remove(removedContractIds);
+    if (contracts.length > 0) await this.catalog.contracts.put(contracts.map(clone));
     await this.repairClubPlan(club.id);
+    return { ok: true };
+  }
+
+  /**
+   * Preenche o clube com um elenco gerado. Os jogadores anteriores não são apagados: perdem o
+   * vínculo e viram agentes livres, como em qualquer dispensa.
+   */
+  async generateSquadFor(clubId: string, seed: number): Promise<CommandResult> {
+    const club = await this.catalog.clubs.get(clubId);
+    if (!club) return { ok: false, reason: "club-not-found" };
+    const previous = await this.catalog.contracts.page({ filter: { field: "clubId", value: clubId } });
+    const generated = generateSquad(createRandom(seed), {
+      clubId,
+      // Elenco um pouco abaixo da reputação: reputação é o tamanho do clube, não a média do time.
+      quality: club.reputation - 4,
+      nationality: club.nationality,
+      currentYear: this.currentSettings.currentYear,
+    });
+    await this.catalog.contracts.remove(previous.rows.map((contract) => contract.id));
+    await this.catalog.players.put(generated.players);
+    await this.catalog.memories.put(generated.players.map(createMemory));
+    await this.catalog.contracts.put(generated.contracts);
+    await this.repairClubPlan(clubId);
     return { ok: true };
   }
 
@@ -277,18 +312,6 @@ export class GameApplication {
     const { rows } = await this.catalog.contracts.page({ filter: { field: "clubId", value: clubId } });
     await this.catalog.contracts.remove(rows.map((contract) => contract.id));
     await this.catalog.clubs.remove([clubId]);
-    return { ok: true };
-  }
-
-  async saveContracts(contracts: readonly Contract[], removedIds: readonly string[] = []): Promise<CommandResult> {
-    const clubIds = new Set(contracts.map((contract) => contract.clubId));
-    if (removedIds.length > 0) {
-      const existing = await this.catalog.contracts.getMany(removedIds);
-      for (const contract of existing) clubIds.add(contract.clubId);
-      await this.catalog.contracts.remove(removedIds);
-    }
-    await this.catalog.contracts.put(contracts.map(clone));
-    for (const clubId of clubIds) await this.repairClubPlan(clubId);
     return { ok: true };
   }
 

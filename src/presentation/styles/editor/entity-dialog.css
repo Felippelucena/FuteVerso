@@ -1,0 +1,187 @@
+.entity-view {
+  min-height: 0;
+  padding: 16px 24px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  overflow: hidden;
+}
+
+.entity-view .data-table {
+  flex: 1;
+}
+
+.entity-dialog {
+  width: min(860px, calc(100vw - 28px));
+  max-height: calc(100vh - 28px);
+  padding: 0;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-lg);
+  background: var(--surface-2);
+  color: var(--text);
+  /* Sem isto o conteúdo rolado passa por cima do canto arredondado. */
+  overflow: hidden;
+}
+
+/* O flex só entra com o diálogo aberto: `display` aqui venceria o `display: none` que mantém
+   o diálogo fechado escondido. */
+.entity-dialog[open] {
+  display: flex;
+  flex-direction: column;
+}
+
+.entity-dialog::backdrop { background: var(--scrim); }
+
+.entity-dialog form {
+  min-height: 0;
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.dialog-tabs {
+  display: flex;
+  gap: 4px;
+  border-bottom: 1px solid var(--line);
+}
+
+.dialog-tabs button {
+  height: 34px;
+  padding: 0 12px;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: var(--type-md);
+  font-weight: 750;
+  cursor: pointer;
+}
+
+.dialog-tabs button:hover,
+.dialog-tabs button:focus-visible,
+.dialog-tabs button.is-active {
+  color: var(--text);
+  border-bottom-color: var(--lime);
+  outline: none;
+}
+
+.dialog-panels {
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.dialog-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.dialog-message {
+  min-height: 16px;
+  color: var(--text-muted);
+  font-size: var(--type-md);
+}
+
+.dialog-message.is-error {
+  color: var(--coral);
+}
+
+.field-heading {
+  margin-top: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.field-heading strong {
+  font-size: var(--type-lg);
+}
+
+.field-heading span {
+  color: var(--text-muted);
+  font-size: var(--type-xs);
+  font-weight: 700;
+}
+
+.field-grid {
+  display: grid;
+  gap: 9px;
+}
+
+.field-grid--identity { grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); }
+
+.field-grid--scale { grid-template-columns: repeat(auto-fit, minmax(128px, 1fr)); }
+
+.field-grid--colors { grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); }
+
+.field {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.field > span {
+  color: var(--text-muted);
+  font-size: var(--type-xs);
+  font-weight: 700;
+}
+
+.field input,
+.field select {
+  width: 100%;
+  min-height: 34px;
+  padding: 0 9px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-xs);
+  background: var(--surface-1);
+  color: var(--text);
+  font-size: var(--type-md);
+}
+
+.field input:focus,
+.field select:focus {
+  border-color: var(--lime);
+  outline: none;
+}
+
+.field--color input {
+  padding: 2px;
+  cursor: pointer;
+}
+
+.checkbox-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.checkbox-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 9px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-pill);
+  font-size: var(--type-sm);
+  font-weight: 750;
+  cursor: pointer;
+}
+
+.checkbox-chip:has(input:checked) {
+  border-color: var(--lime);
+  color: var(--lime);
+}
+
+.checkbox-chip:has(input:disabled) {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+@media (max-width: 680px) {
+  .entity-dialog form { padding: 16px; }
+
+  .entity-view { padding-inline: 12px; }
+}

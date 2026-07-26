@@ -11,7 +11,6 @@ import { editorScreenDefinition } from "./presentation/editor/editor-screen";
 import { MatchHeader } from "./presentation/match/match-header";
 import { matchScreenDefinition } from "./presentation/match/match-screen";
 import { menuScreenDefinition } from "./presentation/menu/menu-screen";
-import { playersEntity } from "./presentation/players/players-screen";
 import { clubSelectScreenDefinition } from "./presentation/quick-game/club-select-screen";
 import { planScreenDefinition } from "./presentation/quick-game/plan-screen";
 import "@fontsource-variable/inter";
@@ -40,7 +39,7 @@ const boot = async (): Promise<void> => {
     clubSelectScreenDefinition(application),
     planScreenDefinition(application),
     matchScreenDefinition(application),
-    editorScreenDefinition(application, [playersEntity]),
+    editorScreenDefinition(application),
   ], { screenId: "menu" });
   const header = new MatchHeader(navigator.statusSlot, application);
   const loop = new AnimationLoop(application, () => navigator.activeScreen, () => header.render());
