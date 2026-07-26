@@ -4,7 +4,10 @@
       "mcp__chrome-devtools__performance_start_trace",
       "mcp__chrome-devtools__list_network_requests",
       "Bash(npx tsc *)",
-      "Bash(npx vitest *)"
+      "Bash(npx vitest *)",
+      "mcp__chrome-devtools__evaluate_script",
+      "mcp__chrome-devtools__take_screenshot",
+      "Bash(npm test *)"
     ]
   }
 }
