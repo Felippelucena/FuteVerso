@@ -41,14 +41,26 @@
   max-height: calc(100vh - 28px);
   padding: 0;
   border: 1px solid var(--line-strong);
-  border-radius: var(--radius-pill);
+  border-radius: var(--radius-lg);
   background: var(--surface-2);
   color: var(--text);
+  /* Sem isto o conteúdo rolado passa por cima do canto arredondado. */
+  overflow: hidden;
+}
+
+/* O flex só entra com o diálogo aberto: `display` em `.player-dialog` venceria o
+   `display: none` que mantém o diálogo fechado escondido. */
+.player-dialog[open] {
+  display: flex;
+  flex-direction: column;
 }
 
 .player-dialog::backdrop { background: var(--scrim); }
 
-.player-dialog form { padding: 20px; }
+.player-dialog form {
+  padding: 20px;
+  overflow-y: auto;
+}
 
 .identity-fields {
   margin-top: 18px;

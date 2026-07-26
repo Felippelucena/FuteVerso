@@ -49,6 +49,8 @@
   --radius-xs: 3px;
   --radius-sm: 4px;
   --radius-md: 8px;
+  /* Superfícies grandes (diálogos, painéis). Raio de pílula numa caixa larga come os cantos. */
+  --radius-lg: 14px;
   --radius-pill: 999px;
   --radius-round: 50%;
 
