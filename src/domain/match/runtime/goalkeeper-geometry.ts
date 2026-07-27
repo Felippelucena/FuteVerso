@@ -33,3 +33,33 @@ export const goalkeeperGuardPost = (goalkeeper: PlayerRuntime, ball: Vec2): Vec2
     y: clamp(post.y, FIELD.goalTop, FIELD.goalBottom),
   };
 };
+
+/**
+ * Onde o goleiro se coloca para distribuir a bola que está nas mãos. Mesma pergunta da posição de
+ * guarda — onde ele fica —, e por isso mora aqui.
+ *
+ * Ele sai de perto da própria linha e leva a bola até a frente da pequena área. Com um adversário
+ * dentro do alcance de ameaça, vai para o canto da pequena área **oposto** a ele: é o passo que
+ * abre o ângulo de saída, e é geometria do campo, não uma distância inventada. Sem ameaça por
+ * perto, apenas avança na própria faixa.
+ */
+export const goalkeeperReleasePost = (keeper: PlayerRuntime, opponents: readonly PlayerRuntime[]): Vec2 => {
+  const direction = attackDirection(keeper.team);
+  const advance = FIELD.goalAreaDepth;
+  const top = (FIELD.height - FIELD.goalAreaWidth) / 2;
+  const bottom = top + FIELD.goalAreaWidth;
+  const nearest = opponents.reduce<PlayerRuntime | null>(
+    (closest, opponent) => !closest || length(subtract(opponent.position, keeper.position)) < length(subtract(closest.position, keeper.position))
+      ? opponent
+      : closest,
+    null,
+  );
+  const threatened = nearest !== null
+    && length(subtract(nearest.position, keeper.position)) <= GOALKEEPING.looseClaimThreatRange;
+  return {
+    x: direction > 0 ? advance : FIELD.width - advance,
+    y: threatened
+      ? (nearest!.position.y > FIELD.height / 2 ? top : bottom)
+      : clamp(keeper.position.y, top, bottom),
+  };
+};

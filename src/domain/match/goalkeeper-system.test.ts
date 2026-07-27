@@ -548,6 +548,35 @@ describe("posse segura nas maos", () => {
     expect(state.stats.coral.goals).toBe(0);
     expect(keeper.position.x).toBeGreaterThan(startX - keeper.radius);
   });
+
+  it("sai da linha e distribui dentro da janela da Regra 12", () => {
+    const state = createState();
+    const keeper = goalkeeper(state);
+    keeper.position = { x: 5, y: FIELD.height / 2 };
+    state.ball.controllerId = keeper.profile.id;
+    state.ball.position = { ...keeper.position };
+    state.ball.velocity = { x: 0, y: 0 };
+    state.ball.controlStartedAt = state.elapsed;
+    state.ball.lastTouch = "blue";
+    state.ball.lastTouchPlayerId = keeper.profile.id;
+    keeper.goalkeeperHoldUntil = state.elapsed + GOALKEEPING.maximumHoldSeconds;
+    const presser = state.players.find((player) => player.team === "coral" && player.profile.position !== "goalkeeper")!;
+    presser.position = { x: 9, y: FIELD.height / 2 };
+    const startX = keeper.position.x;
+
+    let releasedAt: number | null = null;
+    for (let frame = 0; frame < GOALKEEPING.maximumHoldSeconds * 120 && releasedAt === null; frame += 1) {
+      stepMatch(state, FIXED_STEP);
+      if (state.ball.controllerId === null) releasedAt = state.elapsed;
+    }
+
+    // Soltou dentro da janela, depois do tempo de acomodar a bola, e nunca para o marcador.
+    expect(releasedAt).not.toBeNull();
+    expect(releasedAt!).toBeGreaterThan(GOALKEEPING.minimumHoldSeconds);
+    expect(state.ball.lastTouchPlayerId).toBe(keeper.profile.id);
+    // E saiu de perto da própria linha em vez de distribuir de dentro do gol.
+    expect(keeper.position.x).toBeGreaterThan(startX + keeper.radius);
+  });
 });
 
 describe("alerta apos o rebote", () => {

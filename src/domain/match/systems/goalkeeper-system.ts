@@ -535,8 +535,10 @@ const resolveCatch = (state: MatchState, goalkeeper: PlayerRuntime, attempt: Goa
   }
   state.activeShot = null;
   setAttemptResult(state, goalkeeper, attempt, "catch", quality);
-  // Bola nas mãos: segura a posse (imune a desarme) e espera o time subir antes de distribuir.
-  goalkeeper.goalkeeperHoldUntil = state.elapsed + GOALKEEPING.catchRecovery + GOALKEEPING.secureHoldSeconds;
+  // Bola nas mãos: a janela da Regra 12 abre agora. Enquanto ela durar ele é intocável; quando
+  // ele solta é decisão dele (ver `carrierDecision`), não um cronômetro.
+  goalkeeper.goalkeeperHoldUntil = state.elapsed + GOALKEEPING.maximumHoldSeconds;
+  state.ball.controlStartedAt = state.elapsed;
   goalkeeper.goalkeeperAlertUntil = 0;
   emitCognitiveEvent(state, "controlClaimed", null, { controllerId: goalkeeper.profile.id });
 };

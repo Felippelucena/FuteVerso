@@ -346,9 +346,20 @@ export const GOALKEEPING = {
   // Passo da varredura que procura o ponto reivindicável na rota. Grosseiro de propósito: é
   // gatilho, não mira — a mira fina é do solver do mergulho (`launchSearchStep`).
   claimSearchStep: 0.06,
-  // Depois de agarrar nas mãos, segura a posse (imune a desarme) por este tempo, esperando o
-  // time se reposicionar antes de distribuir — ignorando o marcador que pressiona.
-  secureHoldSeconds: 1.9,
+  // --- Bola nas mãos (Regra 12) ---
+  // Ele acomoda a bola por `minimumHoldSeconds` antes de pensar em distribuir e tem até
+  // `maximumHoldSeconds` para soltá-la. Entre as duas, a exigência para soltar decai de
+  // `releaseStandard` a zero: no começo só uma saída boa o convence, no fim qualquer uma serve.
+  // Estourada a janela ele perde a proteção e vira um portador comum — é a punição do jogo para
+  // quem segurou demais, e dispensa um caso especial que o obrigue a chutar.
+  //
+  // `releaseStandard` é uma nota na escala do `choosePass`, calibrada por medição: com o campo
+  // aberto o goleiro acha uma saída acima dela em ~1,2s e joga logo; num quadro fechado ele
+  // espera, e a posse média fica em ~2,7s. Acima de 8 ele segura até a janela quase estourar, e
+  // aí o passe sai pior do que sairia antes.
+  minimumHoldSeconds: 1.2,
+  maximumHoldSeconds: 6,
+  releaseStandard: 5,
   // Depois de espalmar/rebater, fica em alerta e se reposiciona em velocidade por este tempo.
   alertSeconds: 2.6,
   // Velocidade de reposicionamento durante o alerta (corrida, não a corridinha de ajuste).

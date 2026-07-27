@@ -1,9 +1,10 @@
-import { COGNITION, CONDUCT, CONTEST, DEFENSE, DUEL, FIELD, MENTALITY, OFFSIDE, PHYSICS, TACTICS } from "./config";
+import { COGNITION, CONDUCT, CONTEST, DEFENSE, DUEL, FIELD, GOALKEEPING, MENTALITY, OFFSIDE, PHYSICS, TACTICS } from "./config";
 import { add, clamp, distance, dot, normalize, scale, subtract } from "../shared/math";
 import { mentalityBias, type FreedomInstruction } from "../tactics/model";
 import type { AgentDecision, AssignmentDuty, BallAction, DecisionReason, DribbleStyle, MatchState, PlanTarget, PlayerPlan, PlayerRuntime, Team, Vec2 } from "./model";
 import { chasersFor, readBallSituation } from "./runtime/ball-situation";
-import { activeBallPlayerId, ballHeldByKeeper } from "./runtime/control";
+import { activeBallPlayerId, ballHeldByKeeper, keeperHoldingBall } from "./runtime/control";
+import { goalkeeperReleasePost } from "./runtime/goalkeeper-geometry";
 import { resolveMarking, type MarkingAssignment } from "./runtime/marking";
 import { duelEdge, duelStrength } from "./runtime/duel";
 import { isRestartTaker, restartLayoutTarget } from "./runtime/restart";
@@ -275,12 +276,32 @@ const carrierDecision = (
   opponents: PlayerRuntime[],
   state: MatchState,
 ): AgentDecision => {
-  if (player.profile.position === "goalkeeper" && player.goalkeeperHoldUntil > state.elapsed) {
-    // Bola nas mãos: segura a posse e espera o time se reposicionar antes de distribuir,
-    // ignorando o marcador que pressiona (ele não pode desarmar as mãos do goleiro).
+  if (keeperHoldingBall(state, player)) {
+    // Bola nas mãos (Regra 12): ele levanta, caminha até a frente da pequena área e distribui
+    // quando aparece uma saída que valha — a exigência decai enquanto a janela corre. Antes isto
+    // era um cronômetro fixo com o goleiro imóvel, e um corpo parado colado na linha é o que a
+    // pressão empurrava para dentro da meta.
+    const holdAge = state.elapsed - state.ball.controlStartedAt;
+    const settling = player.goalkeeperRecoveryUntil > state.elapsed;
+    const kick = choosePass(player, teammates, opponents, state);
+    const patience = clamp(
+      (GOALKEEPING.maximumHoldSeconds - holdAge) / (GOALKEEPING.maximumHoldSeconds - GOALKEEPING.minimumHoldSeconds),
+      0,
+      1,
+    );
+    if (kick && holdAge >= GOALKEEPING.minimumHoldSeconds && kick.score >= GOALKEEPING.releaseStandard * patience) {
+      return {
+        movementTarget: { ...player.position }, burst: false, posture: "inPossession",
+        intent: "passing", reason: kick.reason, ballAction: kick.action,
+      };
+    }
     return {
-      movementTarget: { ...player.position }, burst: false, posture: "inPossession",
-      intent: "holdingBall", reason: "holdInHands", ballAction: { kind: "none" },
+      movementTarget: settling ? { ...player.position } : goalkeeperReleasePost(player, opponents),
+      burst: false,
+      posture: "inPossession",
+      intent: "holdingBall",
+      reason: "holdInHands",
+      ballAction: { kind: "none" },
     };
   }
   if (isRestartTaker(state, player.profile.id)) {
