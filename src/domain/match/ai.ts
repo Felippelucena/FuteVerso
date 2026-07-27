@@ -3,7 +3,7 @@ import { add, clamp, distance, dot, normalize, scale, subtract } from "../shared
 import { mentalityBias, type FreedomInstruction } from "../tactics/model";
 import type { AgentDecision, AssignmentDuty, BallAction, DecisionReason, DribbleStyle, MatchState, PlanTarget, PlayerPlan, PlayerRuntime, Team, Vec2 } from "./model";
 import { chasersFor, readBallSituation } from "./runtime/ball-situation";
-import { activeBallPlayerId } from "./runtime/control";
+import { activeBallPlayerId, ballHeldByKeeper } from "./runtime/control";
 import { resolveMarking, type MarkingAssignment } from "./runtime/marking";
 import { duelEdge, duelStrength } from "./runtime/duel";
 import { isRestartTaker, restartLayoutTarget } from "./runtime/restart";
@@ -714,6 +714,7 @@ export const decideAll = (state: MatchState): Map<string, AgentDecision> => {
   const controller = actualController ?? (situation.phase === "owned" && situation.favourite
     ? state.players.find((player) => player.profile.id === situation.favourite?.playerId) ?? null
     : null);
+  const heldByKeeper = ballHeldByKeeper(state);
   for (const team of ["blue", "coral"] as const) {
     const teammates = state.players.filter((player) => player.team === team);
     const opponents = state.players.filter((player) => player.team !== team);
@@ -725,10 +726,14 @@ export const decideAll = (state: MatchState): Map<string, AgentDecision> => {
     // porém, ninguém recusa — é o que "disputa" quer dizer.
     const mayLeaveShape = situation.phase === "contested" || !plan || plan.pressTrigger !== null;
     const slots = situation.phase === "contested" ? CONTEST.contestSlots : CONTEST.pressSlots;
-    const chasers = mayLeaveShape && !teamHasPossession ? chasersFor(state, team, slots) : [];
+    // Regra 12: bola nas mãos do goleiro adversário não se persegue — ela não pode ser tomada.
+    // O time recua e marca as saídas (todos caem no alvo defensivo), em vez de correr para cima
+    // de um corpo que ninguém pode disputar.
+    const unpressable = heldByKeeper !== null && heldByKeeper.team !== team;
+    const chasers = mayLeaveShape && !teamHasPossession && !unpressable ? chasersFor(state, team, slots) : [];
     // O segundo engajador é outra decisão, não um segundo lugar na corrida: é o zagueiro que sai
     // da linha para dividir com um portador sem pressão dentro do nosso terço. Vem do dever.
-    const stepper = dutyHolders(plan, "press")[1] ?? null;
+    const stepper = unpressable ? null : dutyHolders(plan, "press")[1] ?? null;
     // Quem marca quem, resolvido agora e para o time inteiro de uma vez — é aqui que a
     // exclusividade entre defensores cabe, sem ninguém precisar de estado global.
     const marking = resolveMarking(state, team, plan);

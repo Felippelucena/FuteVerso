@@ -521,6 +521,33 @@ describe("posse segura nas maos", () => {
     for (let i = 0; i < 30; i += 1) updatePossession(state, FIXED_STEP);
     expect(state.ball.controllerId).toBe(keeper.profile.id);
   });
+
+  it("nao e empurrado para dentro da propria meta com a bola nas maos", () => {
+    const state = createState();
+    const keeper = goalkeeper(state);
+    keeper.position = { x: 4.2, y: FIELD.height / 2 };
+    keeper.facing = { x: -1, y: 0 };
+    state.ball.controllerId = keeper.profile.id;
+    state.ball.position = { ...keeper.position };
+    state.ball.velocity = { x: 0, y: 0 };
+    state.ball.height = 0;
+    state.ball.lastTouch = "blue";
+    state.ball.lastTouchPlayerId = keeper.profile.id;
+    keeper.goalkeeperHoldUntil = state.elapsed + 2.4;
+    // Dois pressionadores em cima. Antes isto empurrava o goleiro por cima da linha em ~1,4s.
+    for (const [index, chaser] of state.players
+      .filter((player) => player.team === "coral" && player.profile.position !== "goalkeeper")
+      .slice(0, 2)
+      .entries()) {
+      chaser.position = { x: 12 + index, y: FIELD.height / 2 + index };
+    }
+    const startX = keeper.position.x;
+
+    for (let frame = 0; frame < 240; frame += 1) stepMatch(state, FIXED_STEP);
+
+    expect(state.stats.coral.goals).toBe(0);
+    expect(keeper.position.x).toBeGreaterThan(startX - keeper.radius);
+  });
 });
 
 describe("alerta apos o rebote", () => {

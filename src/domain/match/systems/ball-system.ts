@@ -520,7 +520,11 @@ export const updateBall = (state: MatchState, dt: number): void => {
     const defendingTeam: Team = goalLineX === 0 ? "blue" : "coral";
     // Regra 10: passou inteira pela linha de meta ou é gol (pela boca) ou é bola fora de jogo —
     // por cima do travessão e por fora dos postes valem a mesma saída, não um rebote em campo.
-    if (insideGoalMouth(crossingY, crossingHeight)) registerGoal(state, otherTeam(defendingTeam));
+    //
+    // Gol se faz com a bola livre, nunca com ela dominada — mesmo guarda que a baliza já usa logo
+    // acima. Quem atravessa a linha carregando a bola põe a bola fora de jogo; a meta se bate com
+    // um chute, um passe ou um toque à frente, e todos soltam a bola antes de ela cruzar.
+    if (ball.controllerId === null && insideGoalMouth(crossingY, crossingHeight)) registerGoal(state, otherTeam(defendingTeam));
     else {
       const restartTeam = ball.lastTouch === defendingTeam ? otherTeam(defendingTeam) : defendingTeam;
       beginRestart(state, restartTeam === defendingTeam ? "goalKick" : "corner", restartTeam, ball.position);

@@ -1,7 +1,7 @@
 import { DUEL, FIELD, PHYSICS } from "../config";
 import { clamp, distance } from "../../shared/math";
 import type { Engagement, MatchState, PlayerRuntime } from "../model";
-import { clearDribbleOwner } from "../runtime/control";
+import { clearDribbleOwner, keeperHoldingBall } from "../runtime/control";
 import { emitCognitiveEvent } from "../runtime/cognitive-events";
 import { duelEdge } from "../runtime/duel";
 import { activeChallengers, recklessChallenger } from "../runtime/engagement";
@@ -32,8 +32,7 @@ export const updateEngagement = (state: MatchState, dt: number): void => {
   }
   if (!holder) return;
   // Goleiro com a bola nas mãos é intocável: ninguém desarma uma posse segura na área.
-  const keeperHolding = holder.profile.position === "goalkeeper" && holder.goalkeeperHoldUntil > state.elapsed;
-  const challengers = keeperHolding ? [] : activeChallengers(state, holder);
+  const challengers = keeperHoldingBall(state, holder) ? [] : activeChallengers(state, holder);
   if (challengers.length === 0) {
     state.engagement = null;
     return;

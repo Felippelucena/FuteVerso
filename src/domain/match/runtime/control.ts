@@ -88,6 +88,24 @@ export const clearDribbleOwner = (state: MatchState): void => {
   state.ball.dribbleStartedAt = 0;
 };
 
+/**
+ * Regra 12: a bola nas mãos do goleiro é posse encerrada. Ninguém a disputa, ninguém o empurra e
+ * ninguém corre atrás dela — a jogada só recomeça quando ele a devolve ao chão.
+ *
+ * Fonte única da regra: antes ela existia só no `engagement-system` (imune ao desarme), e os
+ * sistemas que decidem a corrida pela bola e resolvem a colisão dos corpos não a conheciam. O
+ * resultado era o pressionador mirando um ponto dentro do corpo do goleiro e empurrando-o, com a
+ * bola nas mãos, para dentro da própria meta.
+ */
+export const keeperHoldingBall = (state: MatchState, player: PlayerRuntime): boolean =>
+  player.profile.position === "goalkeeper"
+  && state.ball.controllerId === player.profile.id
+  && state.elapsed < player.goalkeeperHoldUntil;
+
+/** O goleiro que segura a bola agora, se houver — a mesma pergunta, feita sem um jogador em mãos. */
+export const ballHeldByKeeper = (state: MatchState): PlayerRuntime | null =>
+  state.players.find((player) => keeperHoldingBall(state, player)) ?? null;
+
 /** Zera as tentativas/estados de defesa dos goleiros — usado ao reiniciar a jogada (bola parada). */
 export const clearGoalkeeperAttempts = (state: MatchState): void => {
   for (const goalkeeper of state.players.filter((player) => player.profile.position === "goalkeeper")) {

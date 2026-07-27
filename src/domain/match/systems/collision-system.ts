@@ -1,7 +1,7 @@
 import { PHYSICS } from "../config";
 import { add, distance, dot, length, scale, subtract } from "../../shared/math";
 import type { MatchState, PlayerRuntime } from "../model";
-import { isEvadedDefender } from "../runtime/control";
+import { isEvadedDefender, keeperHoldingBall } from "../runtime/control";
 import { emitCognitiveEvent, relevantPlayersNear } from "../runtime/cognitive-events";
 
 const evadesEachOther = (state: MatchState, defender: PlayerRuntime, attacker: PlayerRuntime): boolean =>
@@ -15,14 +15,19 @@ const resolvePlayerCollision = (state: MatchState, a: PlayerRuntime, b: PlayerRu
   const minimum = a.radius + b.radius;
   if (separation >= minimum || separation < 0.001) return;
   const normal = scale(delta, 1 / separation);
-  const correction = scale(normal, (minimum - separation) / 2);
-  a.position = subtract(a.position, correction);
-  b.position = add(b.position, correction);
+  const overlap = minimum - separation;
+  // Regra 12: o goleiro com a bola nas mãos é âncora. Quem trombar nele é que sai empurrado, e o
+  // corpo dele não recebe impulso nenhum — sem isso a pressão o arrastava para dentro da meta.
+  const anchoredA = keeperHoldingBall(state, a);
+  const anchoredB = keeperHoldingBall(state, b);
+  const shareA = anchoredA ? 0 : anchoredB ? 1 : 0.5;
+  a.position = subtract(a.position, scale(normal, overlap * shareA));
+  b.position = add(b.position, scale(normal, overlap * (1 - shareA)));
   const relative = (b.velocity.x - a.velocity.x) * normal.x + (b.velocity.y - a.velocity.y) * normal.y;
   if (relative < 0) {
     const impulse = scale(normal, relative * 0.38);
-    a.velocity = add(a.velocity, impulse);
-    b.velocity = subtract(b.velocity, impulse);
+    if (!anchoredA) a.velocity = add(a.velocity, impulse);
+    if (!anchoredB) b.velocity = subtract(b.velocity, impulse);
   }
 };
 
