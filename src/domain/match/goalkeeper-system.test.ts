@@ -99,6 +99,10 @@ const fireShotAtGoal = (state: MatchState, aimY: number, speed: number, height: 
 interface SaveTrace {
   groundedFrames: number;
   groundedTravel: number;
+  /** Quanto o corpo percorreu no ar, do impulso ao pouso — o mergulho que se vê na tela. */
+  diveTravel: number;
+  /** Quanto os pés saíram do lugar antes de decolar, em linha reta (não o caminho andado). */
+  setDisplacement: number;
   launchDirection: Vec2 | null;
   launchedAtFrame: number | null;
   desperate: boolean;
@@ -108,25 +112,38 @@ interface SaveTrace {
 /** Runs the real engine and records how the keeper's save unfolded. */
 const traceSave = (state: MatchState, keeper: PlayerRuntime, frames: number, onFrame?: (frame: number) => void): SaveTrace => {
   const trace: SaveTrace = {
-    groundedFrames: 0, groundedTravel: 0, launchDirection: null,
+    groundedFrames: 0, groundedTravel: 0, diveTravel: 0, setDisplacement: 0, launchDirection: null,
     launchedAtFrame: null, desperate: false, outcome: null,
   };
-  let previousY = keeper.position.y;
+  let previous = { ...keeper.position };
+  // Só o PRIMEIRO lance interessa: depois dele o goleiro já está caçando a sobra, e nem essa
+  // corrida é ajuste de pés nem o voo dela é o mergulho que se quer medir.
+  let flightEndsAt: number | null = null;
   for (let frame = 0; frame < frames; frame += 1) {
     onFrame?.(frame);
     stepMatch(state, FIXED_STEP);
     const attempt = keeper.goalkeeperAttempt;
+    const travelled = distance(keeper.position, previous);
+    previous = { ...keeper.position };
     if (!attempt) continue;
+    if (!trace.outcome && attempt.outcome) trace.outcome = attempt.outcome;
+    // O corpo segue voando depois do toque, e é o voo inteiro que se vê na tela.
+    if (flightEndsAt !== null) {
+      if (state.elapsed < flightEndsAt) trace.diveTravel += travelled;
+      continue;
+    }
+    if (trace.outcome) continue;
     if (attempt.launchedAt === null) {
       trace.groundedFrames += 1;
-      trace.groundedTravel += Math.abs(keeper.position.y - previousY);
-    } else if (trace.launchedAtFrame === null) {
+      trace.groundedTravel += travelled;
+    } else {
       trace.launchedAtFrame = frame;
       trace.launchDirection = attempt.launchDirection ? { ...attempt.launchDirection } : null;
       trace.desperate = attempt.desperate;
+      trace.setDisplacement = distance(attempt.origin, keeper.position);
+      flightEndsAt = attempt.launchedAt + attempt.flightTime;
+      trace.diveTravel += travelled;
     }
-    if (attempt.outcome) trace.outcome = attempt.outcome;
-    previousY = keeper.position.y;
   }
   return trace;
 };
@@ -167,6 +184,42 @@ describe("decisao de saltar", () => {
     expect(trace.groundedTravel).toBeGreaterThan(0.5);
     expect(trace.launchedAtFrame).not.toBeNull();
     expect(trace.launchedAtFrame!).toBeGreaterThan(trace.groundedFrames - 1);
+  });
+
+  it("mergulha o corpo inteiro em vez de esticar ate a bola", () => {
+    const state = createState();
+    // Chute no canto com tempo de sobra: e o caso em que o goleiro ANDAVA ate a bola e chegava
+    // la em pe. O salto tem de valer mais que o passo, senao ele nao existe na tela.
+    const keeper = fireShotAtGoal(state, FIELD.height / 2 + 9, 40, 1.1, 52);
+    makeElite(keeper);
+
+    const trace = traceSave(state, keeper, 240);
+
+    expect(trace.launchedAtFrame).not.toBeNull();
+    // O corpo voa mais longe do que o braço alcança — abaixo disso o "mergulho" seria um estica.
+    expect(trace.diveTravel).toBeGreaterThan(goalkeeperReachRadius(keeper));
+    // E os pés se ajustaram no lugar: um passo, não uma corrida lateral até a bola.
+    expect(trace.setDisplacement).toBeLessThan(GOALKEEPING.setStep + keeper.radius);
+    expect(trace.diveTravel).toBeGreaterThan(trace.setDisplacement);
+  });
+
+  it("pula certo e ainda assim deixa a bola passar por dentro do alcance", () => {
+    const state = createState(9);
+    const keeper = goalkeeper(state);
+    // Goleiro fraco, bola forte roçando a ponta do alcance: presenca nao e defesa.
+    keeper.profile.skills.goalkeeping = 1;
+    keeper.profile.skills.control = 1;
+    keeper.profile.mental.anticipation = 1;
+    keeper.profile.mental.decisionMaking = 1;
+    keeper.profile.mental.composure = 1;
+    armLaunchedAttempt(state, keeper, 108, 1.2, { yOffset: goalkeeperReachRadius(keeper) * 0.99 });
+
+    updateBall(state, 0.05);
+
+    expect(keeper.goalkeeperAttempt?.outcome).toBe("miss");
+    expect(state.ball.lastTouchPlayerId).not.toBe(keeper.profile.id);
+    expect(state.stats.blue.saves).toBe(0);
+    expect(state.stats.blue.glancingTouches).toBe(0);
   });
 
   it("congela a direcao no salto e nao a corrige depois", () => {
@@ -287,7 +340,9 @@ describe("resolucao do contato", () => {
     keeper.profile.mental.decisionMaking = 1;
     keeper.profile.mental.composure = 1;
     const keeperReach = goalkeeperReachRadius(keeper);
-    armLaunchedAttempt(state, keeper, 108, 1.2, { yOffset: keeperReach * 0.94 });
+    // Dentro do alcance, mas longe do centro: a mão chega e nao segura. Na PONTA do alcance ele
+    // ja nem toca — isso e o teste do lance que passa por dentro, logo abaixo.
+    armLaunchedAttempt(state, keeper, 108, 1.2, { yOffset: keeperReach * 0.7 });
 
     updateBall(state, 0.05);
 
@@ -366,8 +421,8 @@ describe("ciclo de vida da tentativa", () => {
 describe("geometria do mergulho", () => {
   it("dimensiona o mergulho para alcancar o canto e se compromete a tempo", () => {
     const state = createState();
-    // Chute a meia altura para o lado: exige um mergulho de verdade, mas alcancavel.
-    const keeper = fireShotAtGoal(state, FIELD.height / 2 + 11, 46, 1.1, 38);
+    // Chute a meia altura no canto (dentro da trave): exige mergulho de verdade, mas alcancavel.
+    const keeper = fireShotAtGoal(state, FIELD.goalBottom - 1.5, 46, 1.1, 38);
     makeElite(keeper);
 
     let launchSpeedAtTakeoff = 0;

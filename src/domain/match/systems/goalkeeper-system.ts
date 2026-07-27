@@ -1,5 +1,5 @@
 import { FIELD, FIXED_STEP, GOALKEEPING } from "../config";
-import { add, clamp, distance, dot, length, normalize, scale, subtract } from "../../shared/math";
+import { add, clamp, distance, dot, length, limit, normalize, scale, subtract } from "../../shared/math";
 import type { AgentDecision, GoalkeeperAction, GoalkeeperAttempt, GoalkeeperSource, MatchState, PlayerRuntime, SaveOutcome, Vec2 } from "../model";
 import { clearDribbleOwner, registerControlledTeam, registerLooseBall } from "../runtime/control";
 import { emitCognitiveEvent, relevantPlayersNear } from "../runtime/cognitive-events";
@@ -35,8 +35,7 @@ export const goalkeeperReachRadius = (goalkeeper: PlayerRuntime): number =>
 
 /** Impulso máximo que este goleiro consegue imprimir num mergulho (explosão). */
 const diveLaunchSpeed = (goalkeeper: PlayerRuntime): number =>
-  GOALKEEPING.diveLaunchSpeed * (0.82 + goalkeeper.profile.skills.goalkeeping / 100 * 0.3) * (0.8 + goalkeeper.sprintEnergy * 0.2)
-  * GOALKEEPING.maxDiveSpeedFactor;
+  GOALKEEPING.diveLaunchSpeed * (0.82 + goalkeeper.profile.skills.goalkeeping / 100 * 0.3) * (0.8 + goalkeeper.sprintEnergy * 0.2);
 
 /** Tempo que um mergulho no impulso máximo leva para o corpo cobrir `bodyGap`, ou Infinity se nem no talo chega. */
 const diveTimeToCover = (bodyGap: number, maxSpeed: number): number => {
@@ -47,15 +46,12 @@ const diveTimeToCover = (bodyGap: number, maxSpeed: number): number => {
 };
 
 /**
- * O impulso exato para o corpo pousar sobre o ponto de interceptação em `seconds`: inverte
- * diveDisplacement. É isto que projeta o goleiro na perpendicular à rota da bola em vez de
- * um empurrão fixo — mergulho pleno para bola longe, alcance controlado para bola perto.
+ * Quanto tempo o corpo fica no ar. É o relógio do MERGULHO, e não o da bola: o goleiro só se
+ * desloca enquanto voa, então é este tempo que limita o quanto ele cobre — e é por ele que se
+ * decide a hora de decolar.
  */
-const launchSpeedToReach = (bodyGap: number, seconds: number, maxSpeed: number): number => {
-  if (bodyGap <= 0) return 0;
-  const reachable = 1 - Math.exp(-GOALKEEPING.diveDrag * Math.max(0.02, seconds));
-  return Math.min(maxSpeed, bodyGap * GOALKEEPING.diveDrag / Math.max(0.001, reachable));
-};
+const diveFlightTime = (vertical: number): number =>
+  vertical <= 0.05 ? GOALKEEPING.groundedDiveTime : 2 * vertical / GOALKEEPING.jumpGravity;
 
 const maximumVertical = (goalkeeper: PlayerRuntime): number =>
   GOALKEEPING.jumpLaunchVertical * (0.84 + goalkeeper.profile.skills.goalkeeping / 100 * 0.3);
@@ -76,14 +72,14 @@ const verticalImpulseFor = (height: number, seconds: number): number =>
 
 const describeAction = (
   source: GoalkeeperSource,
-  lateral: number,
+  launchSpeed: number,
   vertical: number,
   height: number,
   punch: boolean,
 ): GoalkeeperAction => {
   if (source === "aerial") return punch ? "punch" : "aerialClaim";
-  if (lateral < 1.2 && vertical <= 0.15) return "standingSave";
-  if (vertical > lateral * 0.55) return "verticalJump";
+  // O rótulo sai do que o corpo faz: sem impulso lateral não houve mergulho, houve alcance.
+  if (launchSpeed <= 0.001) return vertical > 0.15 ? "verticalJump" : "standingSave";
   return height > 1.55 ? "highDive" : "lowDive";
 };
 
@@ -251,10 +247,11 @@ const solveLaunch = (
     const gap = distance(goalkeeper.position, predicted.position);
     const bodyGap = Math.max(0, gap - attempt.reachRadius);
     const diveTime = diveTimeToCover(bodyGap, maxSpeed);
-    // Precisa dar tempo do corpo chegar antes da bola cruzar este ponto.
-    if (diveTime > seconds) continue;
     const vertical = verticalImpulseFor(predicted.height, seconds);
     if (vertical > ceiling) continue;
+    // Precisa dar tempo do corpo chegar antes da bola cruzar este ponto — e o corpo só se desloca
+    // enquanto está no ar, então o mergulho também não cobre mais do que um voo alcança.
+    if (diveTime > Math.min(seconds, diveFlightTime(Math.max(0, vertical)))) continue;
     const nearbyOpponent = attempt.source === "aerial" && state.players.some((player) => player.team !== goalkeeper.team
       && distance(player.position, predicted.position) < goalkeeper.radius * 2.5);
     const solution: LaunchSolution = {
@@ -290,20 +287,37 @@ const launch = (
   attempt.launchDirection = lateral < 0.001 ? { x: 0, y: 0 } : normalize(offset);
   attempt.launchSpeed = launchSpeed;
   attempt.launchVertical = vertical;
-  attempt.flightTime = vertical <= 0.05 ? GOALKEEPING.groundedDiveTime : 2 * vertical / GOALKEEPING.jumpGravity;
+  attempt.flightTime = diveFlightTime(vertical);
   attempt.desperate = desperate;
-  attempt.action = describeAction(attempt.source, lateral, vertical, height, punch);
+  attempt.action = describeAction(attempt.source, launchSpeed, vertical, height, punch);
   goalkeeper.velocity = scale(attempt.launchDirection, launchSpeed);
 };
 
 /**
  * Decide, a cada tick, entre ajustar os pés no chão ou se comprometer com o mergulho.
- * O goleiro escolhe o ponto de interceptação de menor esforço (a perpendicular à rota da bola)
- * e faz a corridinha de ajuste enquanto sobra folga; assim que faltar apenas o tempo de voo do
- * mergulho mais uma margem de segurança, ele decola com o impulso dimensionado para pousar
- * exatamente sobre esse ponto. Isso produz um mergulho pleno que chega a tempo, em vez de um
- * lance curto e tardio. Uma bola inalcançável mesmo no talo termina num mergulho que cai curto.
+ *
+ * São duas coisas distintas, e antes eram uma só. **Ajustar os pés** é se colocar no ângulo — a
+ * mesma posição de guarda de sempre, recalculada para onde a bola está agora: passinhos, não uma
+ * corrida lateral até o ponto de contato. **Mergulhar** é explosão: impulso pleno, sem dosagem.
+ * O que se resolve esticando o corpo meio passo não é mergulho nenhum — é alcance, e sai em pé.
+ *
+ * Antes o goleiro corria até o ponto de menor esforço e depois dosava o impulso para pousar
+ * exatamente no que sobrou; o resultado media menos de um corpo de deslocamento, e o mergulho não
+ * existia na tela. Some junto o desencontro de relógios: o impulso era dimensionado pelo tempo de
+ * chegada da BOLA, mas o corpo só voa `flightTime`, então ele caía sistematicamente curto.
  */
+/**
+ * Para onde ele leva os pés enquanto não decola. Contra um chute, no máximo um passo a partir de
+ * onde leu a bola: o resto da distância é o mergulho, e quem anda lateralmente até a bola chega lá
+ * em pé e não mergulha nunca. A âncora é a posição de leitura, não a de agora — medir do corpo a
+ * cada quadro deixaria o passo andar para sempre. Numa reivindicação (cruzamento, sobra), ir até a
+ * bola É a ação, e o alvo é o ponto inteiro.
+ */
+const setFeet = (attempt: GoalkeeperAttempt, point: Vec2): Vec2 =>
+  attempt.source === "shot"
+    ? add(attempt.origin, limit(subtract(point, attempt.origin), GOALKEEPING.setStep))
+    : { ...point };
+
 const updateLaunchDecision = (state: MatchState, goalkeeper: PlayerRuntime, attempt: GoalkeeperAttempt, _dt: number): void => {
   if (attempt.launchedAt !== null || state.elapsed < attempt.reactionReadyAt) return;
   const horizon = windowRemaining(state, goalkeeper, attempt);
@@ -318,7 +332,7 @@ const updateLaunchDecision = (state: MatchState, goalkeeper: PlayerRuntime, atte
       state.ball.position, state.ball.velocity, state.ball.height, state.ball.verticalVelocity,
       Math.max(GOALKEEPING.launchSearchStep, horizon * 0.5),
     );
-    attempt.approachTarget = { ...predicted.position };
+    attempt.approachTarget = setFeet(attempt, predicted.position);
     if (horizon <= GOALKEEPING.desperationLead) {
       const vertical = clamp(verticalImpulseFor(predicted.height, Math.max(0.06, horizon)), 0, maximumVertical(goalkeeper));
       launch(state, goalkeeper, attempt, predicted.position, predicted.height, vertical, maxSpeed, false, true);
@@ -326,14 +340,15 @@ const updateLaunchDecision = (state: MatchState, goalkeeper: PlayerRuntime, atte
     return;
   }
 
-  attempt.approachTarget = { ...solution.point };
-  // Faz a corridinha de ajuste enquanto sobra folga; compromete-se assim que faltar apenas o
-  // tempo do mergulho mais a margem de segurança. Isso dá voo pleno ao corpo (mergulho que
-  // chega ao ponto) e impede a bola de passar enquanto ele ainda "se prepara".
+  attempt.approachTarget = setFeet(attempt, solution.point);
+  // Decola quando faltar só o tempo de o corpo cobrir o vão (no impulso pleno) mais a margem de
+  // segurança. O mergulho é sempre do mesmo tamanho; o que muda é QUANDO ele começa — e é isso
+  // que põe o corpo em cima da rota no instante em que a bola passa, em vez de já ter voado além.
   if (solution.seconds > solution.diveTime + GOALKEEPING.commitLead) return;
-  // Dimensiona o impulso para o corpo pousar exatamente sobre o ponto de interceptação — a
-  // perpendicular entre o goleiro e a rota da bola.
-  const launchSpeed = launchSpeedToReach(solution.bodyGap, solution.seconds, maxSpeed);
+  // `bodyGap` já é o que sobra DEPOIS do alcance de braço: zero quer dizer "dá para pegar em pé",
+  // e qualquer coisa acima disso exige tirar os pés do chão. Aí é impulso pleno — mergulho não se
+  // dosa. É a régua inteira: ou o corpo fica plantado, ou voa.
+  const launchSpeed = solution.bodyGap <= 0.001 ? 0 : maxSpeed;
   launch(state, goalkeeper, attempt, solution.point, solution.height, solution.vertical, launchSpeed, solution.punch, false);
 };
 
@@ -635,10 +650,22 @@ export const resolveGoalkeeperContact = (
     const speed = length(state.ball.velocity);
     const speedPenalty = clamp((speed - 52) / 220, 0, 0.22);
     const verticalSpeedPenalty = clamp(Math.abs(state.ball.verticalVelocity) / 105, 0, 0.08);
-    const quality = clamp(goalkeeperQuality(goalkeeper) * 0.62 * (0.84 + planarMargin * 0.16)
+    const skill = goalkeeperQuality(goalkeeper);
+    const luck = signedMatchNoise(state);
+    // São DUAS perguntas, e antes eram uma só. Primeiro: ele põe a mão ali? O alcance não é um
+    // disco perfeito — na borda a mão pode simplesmente não chegar, e aí a bola passa por dentro
+    // do raio sem ninguém tocá-la. Quem manda aqui é a centralidade do contato, não o talento: um
+    // goleiro de elite também é batido no cantinho, e era isso que fazia dele uma parede.
+    // Só depois vem a segunda pergunta — o que as mãos fazem com a bola —, que é a `quality`.
+    const reach = planarMargin * 0.62 + skill * 0.26 + composure * 0.12 - speedPenalty + luck * 0.12;
+    if (reach < GOALKEEPING.touchThreshold) {
+      finishMiss(state, goalkeeper, attempt);
+      return false;
+    }
+    const quality = clamp(skill * 0.62 * (0.84 + planarMargin * 0.16)
       + planarMargin * 0.42 + verticalMargin * 0.07 + composure * 0.24
       - speedPenalty * (1 - planarMargin * 0.55) - verticalSpeedPenalty
-      - (1 - goalkeeper.stamina) * 0.08 + signedMatchNoise(state) * 0.055, 0, 1);
+      - (1 - goalkeeper.stamina) * 0.08 + luck * 0.055, 0, 1);
     const catchSpeed = 79 + goalkeeper.profile.skills.goalkeeping * 0.25;
     const catchingShapeBonus = planarMargin * 0.25 + composure * 0.12;
     const outcome: SaveOutcome = attempt.action !== "punch"

@@ -290,18 +290,24 @@ export const GOALKEEPING = {
   maximumReaction: 0.16,
   catchThreshold: 0.62,
   parryThreshold: 0.25,
+  // O degrau mais baixo da escada do contato: abaixo disto ele não encosta na bola. Pular certo
+  // não é garantia de tocar — na ponta do alcance, num chute forte, a bola passa por dentro do
+  // raio sem mão nenhuma nela. Fica logo abaixo do `parryThreshold` porque é a mesma faixa de
+  // contato marginal: medido, ela se divide em roçar (~3%) e passar limpo (~1%) com um goleiro
+  // de elite, e passar limpo cresce depressa conforme o goleiro piora.
+  touchThreshold: 0.06,
   catchRecovery: 0.56,
   diveRecovery: 0.92,
   maximumAttemptAge: 2.2,
   // Reach beyond the body, as a multiple of the keeper's own radius: one radius of arm.
   // Everything past that has to be earned by actually moving the body there.
   handReachFactor: 1,
-  // Launch impulse of a dive, in field units per second. A touch beyond a sprint
-  // (PHYSICS.burstSpeedFactor puts a sprint near 26) because a dive is an explosive
-  // whole-body lunge, not a teleport. It decays under diveDrag and cannot be steered.
-  // Dimensionado para um mergulho pleno cobrir na casa de 4× o raio do goleiro além do
-  // alcance de braço na janela típica de um chute — um voo de verdade, não um estica.
-  diveLaunchSpeed: 31, 
+  // Impulso do mergulho, em unidades por segundo. Não é dosado: mergulho é tudo ou nada, e o que
+  // o braço alcança em pé sai sem impulso nenhum. Decai sob `diveDrag` e não se corrige no ar.
+  // Este número sempre foi o teto do mergulho; agora é o mergulho. Medido na bateria de chutes:
+  // o corpo percorre ~3,4 m nos cantos, contra ~1,9 m do impulso dosado antigo, e as taxas de
+  // defesa por zona ficaram onde estavam — o goleiro defende o mesmo, mergulhando de verdade.
+  diveLaunchSpeed: 31,
   diveDrag: 1.4,
   // Tempo de voo do mergulho, do impulso até o pouso, quando a bola está no alcance do corpo.
   jumpLaunchVertical: 5.6,
@@ -313,18 +319,19 @@ export const GOALKEEPING = {
   standingReach: 2.85,
   // How fast the keeper shuffles across the line while waiting for the launch window.
   approachSpeedFactor: 1.25,
+  // Quanto ele ajusta os pés diante de um chute, a partir de onde leu a bola: um metro, um passo.
+  // Tudo além disso é mergulho. Sem esta trava ele corria lateralmente até o ponto de contato e
+  // chegava lá em pé — o salto virava o resíduo da corrida, e não existia na tela.
+  setStep: meters(1),
   // If the window never opens, launch anyway this close to arrival and come up short.
   desperationLead: 0.07,
   // Upper bound on how far ahead the launch solver looks along the ball path.
   launchSearchStep: 0.02,
-  // Margem de segurança do commit: o goleiro salta assim que faltar só este tempo de
-  // sobra para o mergulho ainda chegar, em vez de esperar o último tick possível. Folgado
-  // de propósito para o corpo decolar logo após o chute (mergulho pleno) em vez de ficar
-  // ajustando os pés enquanto a bola passa.
-  commitLead: 0.24,
-  // O impulso do mergulho é dimensionado para pousar no ponto de interceptação (a
-  // perpendicular à rota da bola), limitado a este múltiplo do diveLaunchSpeed.
-  maxDiveSpeedFactor: 1,
+  // Margem de segurança do commit, em cima do tempo que o corpo leva para cobrir o vão. Pequena
+  // de propósito: com impulso pleno, decolar cedo demais faz o corpo passar VOANDO por cima da
+  // rota antes de a bola chegar. O mergulho é do tamanho que é; o que se acerta é a hora.
+  commitLead: 0.04,
+
   // --- Posição de guarda (princípio da posição, não uma Lei) ---
   // O goleiro vive na bissetriz do ângulo bola–postes, que é o segmento da bola até o CENTRO do
   // gol: de lá os dois cantos ficam à mesma distância. A profundidade é uma fração do caminho

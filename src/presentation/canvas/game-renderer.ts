@@ -1,4 +1,4 @@
-import { FIELD, PHYSICS, RESTART } from "../../domain/match/config";
+import { FIELD, GOALKEEPING, PHYSICS, RESTART } from "../../domain/match/config";
 import { clamp, distance, length } from "../../domain/shared/math";
 import { goalkeeperJumpHeight } from "../../domain/match/systems/goalkeeper-system";
 import { progressToX } from "../../domain/match/runtime/offside";
@@ -224,11 +224,25 @@ export class GameRenderer {
     const lift = saveAttempt && saveAttempt.outcome === null
       ? goalkeeperJumpHeight(saveAttempt, this.elapsed) * this.scale * 0.9
       : 0;
+    // O corpo em voo estica na direção do mergulho: um círculo deslizando não lê como mergulho,
+    // por mais longe que vá. A conta é a do próprio voo — quanto mais rápido, mais esticado.
+    const flight = saveAttempt && saveAttempt.launchedAt !== null && saveAttempt.launchDirection
+      && this.elapsed - saveAttempt.launchedAt < saveAttempt.flightTime
+      ? { direction: saveAttempt.launchDirection, speed: length(player.velocity) }
+      : null;
+    const stretch = flight ? 1 + clamp(flight.speed / GOALKEEPING.diveLaunchSpeed, 0, 1) * 0.75 : 1;
     ctx.fillStyle = `rgba(0, 0, 0, ${lift > 0 ? 0.16 : 0.24})`;
     ctx.beginPath();
     ctx.ellipse(x + radius * 0.18, y + radius * 0.58, radius * 0.95, radius * 0.46, 0, 0, Math.PI * 2);
     ctx.fill();
     if (lift > 0) ctx.translate(0, -lift);
+    if (flight && stretch > 1.02) {
+      ctx.translate(x, y);
+      ctx.rotate(Math.atan2(flight.direction.y, flight.direction.x));
+      ctx.scale(stretch, 1 / stretch);
+      ctx.rotate(-Math.atan2(flight.direction.y, flight.direction.x));
+      ctx.translate(-x, -y);
+    }
 
     if (hasPossession || isBallTarget) {
       ctx.strokeStyle = colors.light;
