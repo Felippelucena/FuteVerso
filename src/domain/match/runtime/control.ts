@@ -9,8 +9,19 @@ export const pressureAt = (state: MatchState, player: PlayerRuntime): number => 
   return clamp(1 - closest / 10, 0, 1);
 };
 
+/**
+ * Quem manda na bola agora — **quem chega nela primeiro**, e não quem a tocou por último.
+ *
+ * A definição antiga (`controllerId ?? dribbleOwnerId ?? pendingPass.receiverId`) achatava três
+ * estados diferentes num id só: o time inteiro tratava uma bola adiantada num pique, ou um passe
+ * já desviado, como se ela estivesse colada no pé de alguém.
+ *
+ * Numa disputa aberta a resposta é **ninguém** — e não o líder do momento. Nomear um favorito
+ * enquanto a corrida oscila trocaria o ator a cada quadro, e com ele o plano dos vinte e dois.
+ * Ver `runtime/ball-situation`.
+ */
 export const activeBallPlayerId = (state: MatchState): string | null =>
-  state.ball.controllerId ?? state.ball.dribbleOwnerId ?? state.pendingPass?.receiverId ?? null;
+  state.ballSituation.phase === "contested" ? null : state.ballSituation.favourite?.playerId ?? null;
 
 export const adaptPlayerPolicy = (
   player: PlayerRuntime,

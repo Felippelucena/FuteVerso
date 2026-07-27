@@ -1,6 +1,7 @@
 import { FIELD, PHYSICS } from "../config";
 import { clamp, distance, length } from "../../shared/math";
 import type { MatchState, PlayerRuntime, PreparedReceptionAction, ShotTechnique } from "../model";
+import { playerSkillSpeed } from "./player-metrics";
 import { predictPlayerAlongPlan, predictedSpaceAt } from "./prediction";
 import { evaluateShotOpportunity } from "./shot-opportunity";
 import { pressureAt } from "./control";
@@ -20,7 +21,7 @@ export const prepareReceptionAction = (state: MatchState, player: PlayerRuntime)
   if (!pending) return null;
   const intendedReceiver = pending.receiverId === player.profile.id;
   const remaining = Math.max(0.12, pending.expectedArrivalAt - state.elapsed);
-  const interceptionReach = (8.5 + player.profile.skills.sprintSpeed * 0.06) * PHYSICS.runSpeedFactor * remaining + player.radius * 1.5;
+  const interceptionReach = playerSkillSpeed(player) * PHYSICS.runSpeedFactor * remaining + player.radius * 1.5;
   const canPrepareInterception = player.team !== pending.team && distance(player.position, pending.landingPoint) <= interceptionReach;
   if (!intendedReceiver && !canPrepareInterception) return null;
   const contact = pending.landingPoint;

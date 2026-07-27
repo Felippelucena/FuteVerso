@@ -26,12 +26,13 @@ import {
   cellAt,
   cellDistance,
   cellKey,
-  goalCenter,
   GOALKEEPER_COLUMN,
   LINE_HEIGHT_RANGE,
   SHAPE_SPAN,
   shiftCell,
 } from "../runtime/formation-geometry";
+import { chasersFor } from "../runtime/ball-situation";
+import { rankThreats } from "../runtime/marking";
 import { predictPlayerPosition, predictionHorizon } from "../runtime/prediction";
 
 /**
@@ -165,20 +166,14 @@ const byId = (first: PlayerRuntime, second: PlayerRuntime): number =>
 // ---------------------------------------------------------------------------------------------
 
 /**
- * Quem vai na bola. Recebe só jogadores de linha: o goleiro nunca pressiona — quando ele sai, sai
- * pela própria regra de reivindicação (goalkeeper-system), que exige chegar antes do adversário.
- * Antes ele entrava aqui com uma penalidade que se anulava perto do próprio gol, e então o
- * goleiro era o pressionador natural de toda bola na área: saía do gol atrás dela.
+ * Quem vai na bola. É a mesma fila da disputa que a decisão individual lê a cada quadro
+ * (`chasersFor`), e não uma segunda escolha em paralelo — o dever só congela por dois segundos o
+ * que a corrida responde continuamente.
  */
-export const choosePresser = (state: MatchState, players: PlayerRuntime[]): PlayerRuntime | null =>
-  [...players].sort((first, second) => {
-    const score = (player: PlayerRuntime): number => {
-      const mentality = (player.profile.mental.aggression + player.profile.mental.intensity + player.profile.mental.anticipation) / 300;
-      const future = predictPlayerPosition(player, predictionHorizon(player, 0.85) * 0.55);
-      return distance(future, state.ball.position) - mentality * FIELD.width * 0.045;
-    };
-    return score(first) - score(second);
-  })[0] ?? null;
+const choosePresser = (state: MatchState, team: Team): PlayerRuntime | null => {
+  const [id] = chasersFor(state, team, 1);
+  return id ? state.players.find((player) => player.profile.id === id) ?? null : null;
+};
 
 /**
  * Segundo engajador: sai da linha para dividir quando a bola do adversário entra no nosso terço
@@ -248,17 +243,6 @@ const safetyScore = (player: PlayerRuntime, team: Team, context: AssignmentConte
   return player.profile.skills.defending * 0.42 + player.profile.mental.decisionMaking * 0.2
     + player.profile.mental.anticipation * 0.18 + player.profile.mental.teamwork * 0.12
     + goalSide * 5 + central * 3 + fromInstruction - forwardness(player, context) * 6;
-};
-
-/** Adversários por perigo — o mais perigoso primeiro. */
-const rankThreats = (state: MatchState, team: Team, opponents: PlayerRuntime[]): PlayerRuntime[] => {
-  const ownGoal = goalCenter(team, true);
-  const threat = (opponent: PlayerRuntime): number => distance(opponent.position, ownGoal) * 0.54
-    + distance(opponent.position, state.ball.position) * 0.34
-    + Math.abs(opponent.position.y - FIELD.height / 2) * 0.12;
-  return [...opponents]
-    .filter((opponent) => opponent.profile.position !== "goalkeeper")
-    .sort((first, second) => threat(first) - threat(second) || byId(first, second));
 };
 
 // ---------------------------------------------------------------------------------------------
@@ -350,7 +334,7 @@ const assignOutOfPossession = (
 
   // Sem gatilho em vigor ninguém sai para a bola: o time inteiro sustenta a zona e espera. É o
   // que "gatilho desabilitado" quer dizer, e é o que dá sentido à lista vazia do plano.
-  const presser = context.pressTrigger ? choosePresser(state, outfield) : null;
+  const presser = context.pressTrigger ? choosePresser(state, team) : null;
   if (presser) duties.set(presser.profile.id, { duty: "press", priority: 0, targetPlayerId: carrierId });
   const second = context.pressTrigger
     ? chooseSecondPresser(
@@ -636,29 +620,6 @@ export const buildAssignments = (
       lateralPull,
       rationale: DUTY_REASON[choice.duty],
     };
-  }
-
-  // Segunda passada: agora que cada zona é definitiva, quem defende em zona responde por quem
-  // estiver dentro dela. É o que torna a marcação zonal capaz de encostar em alguém, sem
-  // ninguém atravessando o campo atrás de um número.
-  if (context.posture === "outOfPossession") {
-    const claimed = new Set(Object.values(assignments)
-      .map((assignment) => assignment.targetPlayerId)
-      .filter((id): id is string => id !== null));
-    for (const { player, choice } of ordered) {
-      if (choice.duty !== "holdLine") continue;
-      const assignment = assignments[player.profile.id];
-      const anchor = cellAnchor(assignment.zone, team, placement);
-      const inZone = opponents
-        .filter((opponent) => opponent.profile.position !== "goalkeeper" && !claimed.has(opponent.profile.id))
-        .filter((opponent) => distance(opponent.position, anchor) < DEFENSE.zoneRadius * FIELD.width)
-        .sort((first, second) => distance(first.position, anchor) - distance(second.position, anchor) || byId(first, second));
-      const target = inZone[0] ?? null;
-      if (target) {
-        claimed.add(target.profile.id);
-        assignment.targetPlayerId = target.profile.id;
-      }
-    }
   }
 
   return { assignments, safetyId, placement };

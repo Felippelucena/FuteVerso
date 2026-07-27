@@ -78,6 +78,9 @@ export const PHYSICS = {
   passiveCollisionRadiusFactor: 0.78,
   playerBounce: 0.25,
   kickDistance: 4.15,
+  // Até que altura um jogador de linha ainda alcança a bola. É o teto do domínio e da leitura
+  // da corrida: acima dele a bola passa por cima de todo mundo e não há disputa nenhuma.
+  reachableBallHeight: 2.4,
   kickCooldown: 0.42,
   maxBallSpeed: 108,
   walkSpeedFactor: 0.62,
@@ -352,6 +355,31 @@ export const GOALKEEPING = {
   alertSpeedFactor: 1.85,
 } as const;
 
+// A corrida pela bola: "quem chega no próximo toque, e com que folga?". É a leitura de bola do
+// motor (runtime/ball-situation), que substituiu o "quem tocou por último".
+export const CONTEST = {
+  // Até onde a rota da bola é varrida à procura do ponto de encontro. Mesma ordem do horizonte
+  // de reivindicação do goleiro: além disso a previsão não vale o custo.
+  horizonSeconds: 2.2,
+  searchStep: 0.06,
+  // Folga (s) do favorito abaixo da qual o lance está em aberto — e aí ele não é de ninguém.
+  // Curta de propósito: uma bola realmente dividida é rara, e chamar de disputa toda vantagem
+  // pequena deixa os dois times permanentemente desorganizados, correndo atrás de rebote.
+  openMargin: 0.15,
+  // Histerese: já em disputa, o lance só volta a ter dono com esta folga. Sem ela o estado
+  // oscilaria a cada quadro numa corrida equilibrada, e o plano de todo mundo junto com ele.
+  settleMargin: 0.3,
+  // Quantos de cada time saem para a bola. Enquanto ela tem dono — no pé dele ou correndo à
+  // frente dele — vai um só: o segundo homem cobre, não dobra, e dois em cima da mesma bola é
+  // buraco atrás. Só a dividida de verdade justifica os dois; o terceiro já é o time se
+  // desmanchando atrás de uma bola que dois já estão disputando.
+  pressSlots: 1,
+  contestSlots: 2,
+  // Quanto a vontade de ir na bola (agressividade, intensidade, antecipação) adianta o jogador
+  // na fila da disputa, em segundos. Substitui o mesmo apetite que antes era medido em metros.
+  pressAppetite: 0.35,
+} as const;
+
 // Comportamento defensivo além do presser único. Frações são múltiplos de FIELD.width/height,
 // resolvidas em quem consome (o config mantém o vocabulário absoluto do resto do motor).
 export const DEFENSE = {
@@ -374,11 +402,17 @@ export const DEFENSE = {
   recoverBurstMax: 1.6,
   // Risco mínimo do plano coletivo para liberar o lateral a sobrepor no ataque.
   overlapMinRisk: 0.5,
-  // --- Marcação zonal ---
-  // Raio (fração de width) em que um adversário conta como "dentro da minha zona". Acima disso
-  // o defensor sustenta a célula e não encosta em ninguém: é o que impede a marcação zonal de
-  // virar perseguição individual disfarçada.
+  // --- Marcação: zona com pega firme (ver runtime/marking) ---
+  // Raio (fração de width) em que um adversário conta como "meu". Medido do corpo do defensor,
+  // não da âncora ideal da célula: quem está deslocado responde por quem está perto dele.
   zoneRadius: 0.14,
+  // Alcance (fração de width) em que o marcado ainda é uma ameaça — a distância de um PASSE, e
+  // não a de uma corrida: quem está a trinta metros da bola se encontra com um toque só, e é
+  // por isso que se marca de perto. Além dela vale o piso.
+  tightenRange: 0.4,
+  // Piso da firmeza: com a bola do outro lado do campo o defensor sustenta a zona e só observa
+  // o vizinho. Zero seria ignorá-lo — que é o que o motor fazia.
+  zoneTightness: 0.25,
 } as const;
 
 // Desfechos de contato (tabela resolveContact). Os gates de "roubo limpo" exigem momento real

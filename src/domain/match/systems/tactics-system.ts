@@ -14,6 +14,7 @@ import type {
   TeamShape,
   TeamTacticalState,
 } from "../model";
+import { readBallSituation } from "../runtime/ball-situation";
 import { activeBallPlayerId } from "../runtime/control";
 import { predictPlayerPosition, predictedSpaceAt, predictionHorizon } from "../runtime/prediction";
 import { buildAssignments, placementFor } from "./assignment-system";
@@ -135,7 +136,10 @@ const chooseDefensiveBlock = (state: MatchState, team: Team, players: PlayerRunt
 };
 
 const proposePressTrigger = (state: MatchState, team: Team): PressTrigger => {
-  if (!state.ball.controllerId && !state.pendingPass && !state.ball.dribbleOwnerId) return "looseBall";
+  // Bola em aberto é bola solta, mesmo que alguém a tenha jogado ali de propósito. Antes o
+  // gatilho exigia que não houvesse condução nem passe em curso — e então a bola adiantada num
+  // pique, que é a melhor chance de dividida do jogo, nunca disparava pressão nenhuma.
+  if (state.ballSituation.phase === "contested") return "looseBall";
   if (state.tactics[team].phase === "counterPress") return "counterPress";
   const edgeDistance = Math.min(state.ball.position.y, FIELD.height - state.ball.position.y);
   return edgeDistance < FIELD.height * 0.18 ? "touchline" : "compact";
@@ -222,6 +226,9 @@ const collectivePlanNeedsRefresh = (state: MatchState, team: Team): boolean => {
 };
 
 export const updateTacticalContext = (state: MatchState, dt: number): void => {
+  // Postura, incumbência e gatilho de pressão são todos leitores da situação da bola: ela abre
+  // a atualização do contexto. Ver `planAll` para o outro ponto de leitura.
+  state.ballSituation = readBallSituation(state);
   for (const team of ["blue", "coral"] as const) {
     const tactical = state.tactics[team];
     const shape = measureShape(state, team);

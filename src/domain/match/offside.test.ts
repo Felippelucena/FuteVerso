@@ -89,9 +89,11 @@ describe("Lei 11 — infração e reinício", () => {
     clearField(state);
     const passer = blue(state, "centerMid");
     const runner = blue(state, "striker");
-    // Deixa o alvo do passe realmente livre: goleiro e um zagueiro atrás, resto longe.
+    // Deixa o alvo do passe realmente livre: goleiro e um zagueiro atrás, resto longe. O zagueiro
+    // que define a linha fica FORA do corredor do passe — parado em cima dele, ele simplesmente
+    // intercepta a bola (e faz certo), e o impedido nunca chega a se envolver na jogada.
     coral(state, "goalkeeper").position = { x: FIELD.width - 6, y: FIELD.height / 2 };
-    coral(state, "centerBack").position = { x: FIELD.width - 46, y: FIELD.height / 2 };
+    coral(state, "centerBack").position = { x: FIELD.width - 46, y: FIELD.height / 2 - 34 };
     state.players.filter((p) => p.team === "coral" && p.profile.position !== "goalkeeper" && p.profile.position !== "centerBack")
       .forEach((p, index) => { p.position = { x: 20, y: 8 + index * 9 }; });
     passer.position = { x: FIELD.width / 2 - 6, y: FIELD.height / 2 };

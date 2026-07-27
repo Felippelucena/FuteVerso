@@ -1,8 +1,10 @@
-import { COGNITION, CONDUCT, DEFENSE, DUEL, FIELD, MENTALITY, OFFSIDE, PHYSICS, TACTICS } from "./config";
+import { COGNITION, CONDUCT, CONTEST, DEFENSE, DUEL, FIELD, MENTALITY, OFFSIDE, PHYSICS, TACTICS } from "./config";
 import { add, clamp, distance, dot, normalize, scale, subtract } from "../shared/math";
 import { mentalityBias, type FreedomInstruction } from "../tactics/model";
-import type { AgentDecision, AssignmentDuty, BallAction, DecisionReason, DribbleStyle, MatchState, PlanTarget, PlayerAssignment, PlayerPlan, PlayerRuntime, Vec2 } from "./model";
+import type { AgentDecision, AssignmentDuty, BallAction, DecisionReason, DribbleStyle, MatchState, PlanTarget, PlayerPlan, PlayerRuntime, Team, Vec2 } from "./model";
+import { chasersFor, readBallSituation } from "./runtime/ball-situation";
 import { activeBallPlayerId } from "./runtime/control";
+import { resolveMarking, type MarkingAssignment } from "./runtime/marking";
 import { duelEdge, duelStrength } from "./runtime/duel";
 import { isRestartTaker, restartLayoutTarget } from "./runtime/restart";
 import { attackingProgress, offsideLineProgress } from "./runtime/offside";
@@ -15,12 +17,12 @@ import {
   predictionHorizon,
 } from "./runtime/prediction";
 import { estimatePassDuration } from "./runtime/pass-trajectory";
-import { playerSkillSpeed } from "./runtime/player-metrics";
+import { etaToPoint, playerSkillSpeed } from "./runtime/player-metrics";
 import { chooseDribbleTouch, evaluateForwardRunway, knockPastEligible } from "./runtime/dribble-runway";
 import { classifyPassPurpose } from "./runtime/pass-purpose";
 import { evaluateShotOpportunity } from "./runtime/shot-opportunity";
 import { goalkeeperDecision, goalkeeperMovementTarget } from "./systems/goalkeeper-system";
-import { assignedAnchor, assignmentOf, choosePresser, dutyHolders } from "./systems/assignment-system";
+import { assignedAnchor, assignmentOf, dutyHolders } from "./systems/assignment-system";
 import { attackDirection, formationAnchor, goalCenter } from "./runtime/formation-geometry";
 import { prepareReceptionAction } from "./runtime/reception-planning";
 
@@ -200,9 +202,8 @@ export const choosePass = (player: PlayerRuntime, teammates: PlayerRuntime[], op
         + (player.profile.mental.creativity - 50) / 100 * (blocked ? 0.2 : 0.06)
         - passDistance / fieldX(72) - rangePenalty - offsidePenalty
         - effectivePressure * (passDistance > fieldX(18) ? 0.58 : 0.86) * (1.08 - player.profile.mental.creativity / 500);
-      const receiverEta = distance(teammate.position, target) / Math.max(1, playerSkillSpeed(teammate) * PHYSICS.runSpeedFactor);
-      const opponentEta = Math.min(...opponents.map((opponent) => distance(opponent.position, target)
-        / Math.max(1, playerSkillSpeed(opponent) * PHYSICS.runSpeedFactor)));
+      const receiverEta = etaToPoint(teammate, target);
+      const opponentEta = Math.min(...opponents.map((opponent) => etaToPoint(opponent, target)));
       const reason: DecisionReason = wallPass ? "wallPass" : switchValue > 0.52 ? "switchPlay" : "progressivePass";
       return { teammate, target, passDistance, score, reason, variant, purpose, receiverEta, opponentEta };
     }))
@@ -573,11 +574,68 @@ const supportTarget = (
   return { target, reason, burst };
 };
 
+/**
+ * Ir até onde a bola vai estar. É o mesmo movimento para quem empurrou a bola à frente num
+ * pique, para quem espera o passe e para quem vai tomá-la de alguém: muda o rótulo, a postura e
+ * o ponto exato de chegada, não o trajeto.
+ *
+ * É aqui que morre o detector de desvio caseiro da recepção. Se a bola muda de rota, o ponto de
+ * encontro muda com ela; quem deixou de chegar primeiro deixa de ser o dono do lance, sem que
+ * ninguém precise reconhecer um "desvio".
+ */
+const pursueBallDecision = (player: PlayerRuntime, state: MatchState, team: Team, committed: boolean): AgentDecision => {
+  const situation = state.ballSituation;
+  const ownKnockOn = state.ball.dribbleOwnerId === player.profile.id;
+  const awaitingPass = state.pendingPass?.receiverId === player.profile.id;
+  // O rótulo sai de POR QUE a bola é minha, e não de como ela está rolando: continuo o meu
+  // pique, recebo o passe que veio para mim, ou vou tomar uma bola que não era de ninguém.
+  const mine = ownKnockOn || awaitingPass;
+  const style = state.ball.dribbleStyle;
+  const intent: AgentDecision["intent"] = ownKnockOn
+    ? style === "feint" ? "feinting" : style === "carry" ? "carrying" : "knockingOn"
+    : awaitingPass ? "receiving" : "pressing";
+  // Bola minha: vou nela. Bola a tomar: chego pelo lado do próprio gol, fechando a saída em vez
+  // de correr atrás por trás.
+  const phase = state.tactics[team].phase;
+  const aggressive = committed || situation.phase === "contested"
+    || phase === "counterPress" || phase === "highPress";
+  const target = mine ? { ...situation.contactPoint } : add(
+    situation.contactPoint,
+    scale(
+      normalize(subtract(goalCenter(team, true), situation.contactPoint)),
+      player.radius * (aggressive ? 0.95 : 1.75),
+    ),
+  );
+  if (!mine && state.tactics[team].collectivePlan?.pressTrigger === "touchline") {
+    target.y += (situation.contactPoint.y < FIELD.height / 2 ? 1 : -1) * player.radius * 0.9;
+  }
+  const runSpeed = playerSkillSpeed(player) * PHYSICS.runSpeedFactor;
+  const gap = distance(player.position, target);
+  // Bola minha: só queimo pique se for chegar tarde ou se houver alguém no páreo. Bola a tomar:
+  // solta se corre atrás, dominada se pressiona andando — e é esse pique que transforma um toque
+  // adiantado do adversário numa chance de dividida.
+  const race = mine
+    ? gap / Math.max(0.12, situation.contactIn) > runSpeed * 0.88 || situation.margin < CONTEST.settleMargin
+    : committed || situation.phase !== "controlled";
+  const burst = race && player.sprintCooldown <= 0 && player.sprintEnergy > (mine ? 0.48 : 0.12);
+  const raceSpeed = playerSkillSpeed(player) * PHYSICS.burstSpeedFactor;
+  return {
+    movementTarget: clampToField(target, 3),
+    burst,
+    burstDuration: burst
+      ? clamp(gap / Math.max(1, raceSpeed * 0.78), PHYSICS.burstDuration, 1.45)
+      : undefined,
+    posture: mine ? "inPossession" : "outOfPossession",
+    intent,
+    reason: ownKnockOn ? "carryIntoSpace" : awaitingPass ? "attackReception" : "pressBall",
+    ballAction: { kind: "none" },
+  };
+};
+
 const defensiveTarget = (
   player: PlayerRuntime,
-  mark: PlayerRuntime | null,
+  marking: MarkingAssignment | null,
   state: MatchState,
-  assignment: PlayerAssignment | null,
 ): { target: Vec2; intent: AgentDecision["intent"]; burst: boolean; reason: DecisionReason; burstDuration?: number } => {
   const collective = state.tactics[player.team].collectivePlan;
   const anchor = assignedAnchor(collective, player);
@@ -585,9 +643,12 @@ const defensiveTarget = (
   const thinkingTime = perceptionDepth(player, state.ball.position);
   const ownGoal = goalCenter(player.team, true);
   const phase = state.tactics[player.team].phase;
-  const marksMan = assignment?.duty === "trackRunner";
-  const markWeight = player.memory.policy.mark * (marksMan ? 0.68 : 0.46);
-  const coverWeight = player.memory.policy.cover * (marksMan ? 0.24 : 0.38);
+  const mark = marking?.mark ?? null;
+  // A firmeza da marcação sai da situação (`runtime/marking`); a disposição do jogador só a
+  // tempera. Antes era um número fixo — 0,3 para a zona —, e o defensor nunca chegava no homem.
+  const tightness = marking
+    ? clamp(marking.tightness * (0.82 + player.memory.policy.mark * 0.36 - player.memory.policy.cover * 0.12), 0, 1)
+    : 0;
   const predictedBall = predictBallPosition(state, predictionHorizon(player, 0.7) * 0.5);
   // A escada de cobertura por índice global morreu aqui. A distância à bola sai da profundidade
   // da própria célula, e o valor pode ser **negativo**: quem tem zona funda cobre atrás da bola,
@@ -600,16 +661,18 @@ const defensiveTarget = (
   );
   const coverPoint = add(predictedBall, scale(normalize(subtract(ownGoal, predictedBall)), coverDistance));
   const predictedMark = mark ? predictPlayerPosition(mark, predictionHorizon(player, 0.55) * 0.48) : null;
+  // Quanto mais firme a marcação, mais colado nas costas do homem e menos de lado: soltar é o
+  // que dá o passo de vantagem que o atacante usa para receber virado.
   const markSide = predictedMark ? {
-    x: predictedMark.x - direction * fieldX(marksMan ? 5 : 3),
-    y: predictedMark.y + Math.sign(anchor.y - predictedMark.y || 1) * fieldY(3),
+    x: predictedMark.x - direction * fieldX(1.5 + (1 - tightness) * 4),
+    y: predictedMark.y + Math.sign(anchor.y - predictedMark.y || 1) * fieldY(1 + (1 - tightness) * 3),
   } : anchor;
-  // Marcação individual persegue o homem; a zonal só encosta em quem entrou na célula dela.
-  const markBias = marksMan ? 0.75 : 0.3;
-  const medium = blend(coverPoint, markSide, markBias + markWeight * 0.18 - coverWeight * 0.1);
-  const farPlan = blend(anchor, markSide, markWeight * (0.42 + thinkingTime * 0.3));
-  const contextualTarget = blend(medium, farPlan, thinkingTime);
-  const laneDiscipline = phase === "lowBlock" ? 0.36 : 0.28;
+  const medium = blend(coverPoint, markSide, tightness);
+  const farPlan = blend(anchor, markSide, tightness * (0.42 + thinkingTime * 0.3));
+  // Com a bola longe o jogador volta à forma; colado no homem, ele vai com ele.
+  const contextualTarget = blend(medium, farPlan, thinkingTime * (1 - tightness));
+  // A disciplina de faixa é da zona: quem está preso a um homem não volta para a própria linha.
+  const laneDiscipline = (phase === "lowBlock" ? 0.36 : 0.28) * (1 - tightness);
   const target = clampToField(blend(contextualTarget, { x: contextualTarget.x, y: anchor.y }, laneDiscipline), 3);
   const intent = mark ? "marking" : "covering";
   const reason: DecisionReason = mark ? "markThreat" : "holdZone";
@@ -638,67 +701,37 @@ const defensiveTarget = (
   return { target, intent, reason, burst: defensiveBurst };
 };
 
-const receptionTarget = (state: MatchState): Vec2 => {
-  const pending = state.pendingPass;
-  if (!pending) return state.ball.position;
-  const remaining = pending.expectedArrivalAt - state.elapsed;
-  const liveProjection = predictBallPosition(state, clamp(remaining, 0.12, 2.2));
-  const trajectoryChanged = distance(liveProjection, pending.landingPoint) > fieldX(6);
-  return clampToField(trajectoryChanged || remaining <= 0 ? liveProjection : pending.landingPoint, 3);
-};
-
-const receptionDecision = (player: PlayerRuntime, opponents: PlayerRuntime[], state: MatchState): AgentDecision => {
-  const target = receptionTarget(state);
-  const remaining = Math.max(0.12, (state.pendingPass?.expectedArrivalAt ?? state.elapsed + 0.4) - state.elapsed);
-  const runSpeed = playerSkillSpeed(player) * PHYSICS.runSpeedFactor;
-  const receiverEta = distance(player.position, target) / Math.max(1, runSpeed);
-  const opponentEta = Math.min(...opponents.map((opponent) => distance(opponent.position, target)
-    / Math.max(1, playerSkillSpeed(opponent) * PHYSICS.runSpeedFactor)));
-  const requiredSpeed = distance(player.position, target) / remaining;
-  const urgentRace = opponentEta <= receiverEta + 0.35;
-  const burst = player.sprintEnergy > 0.48 && player.sprintCooldown <= 0
-    && (requiredSpeed > runSpeed * 0.88 || urgentRace);
-  return {
-    movementTarget: target,
-    burst,
-    burstDuration: burst ? clamp(Math.max(receiverEta, remaining), PHYSICS.burstDuration, 1.45) : undefined,
-    posture: "inPossession",
-    intent: "receiving",
-    reason: "attackReception",
-    ballAction: { kind: "none" },
-  };
-};
-
 export const decideAll = (state: MatchState): Map<string, AgentDecision> => {
   const decisions = new Map<string, AgentDecision>();
+  // O motor tem dois começos de leitura-para-decidir: o coletivo (`updateTacticalContext`) e o
+  // individual, aqui. Os dois medem a situação da bola antes de olhar para ela — é uma função
+  // só, lida em dois momentos, e não duas fontes.
+  const situation = state.ballSituation = readBallSituation(state);
   const actualController = state.players.find((player) => player.profile.id === state.ball.controllerId) ?? null;
-  const dribbleOwner = !actualController
-    ? state.players.find((player) => player.profile.id === state.ball.dribbleOwnerId) ?? null
-    : null;
-  const passReceiver = !actualController && !dribbleOwner && state.pendingPass
-    ? state.players.find((player) => player.profile.id === state.pendingPass?.receiverId) ?? null
-    : null;
-  const controller = actualController ?? dribbleOwner ?? passReceiver;
+  // Quem manda na bola solta é quem vence a corrida por ela — e só enquanto a corrida tiver um
+  // vencedor claro. Em disputa aberta ninguém a tem, e é isso que solta os dois times para ir
+  // nela. Antes esta linha era a mesma confusão de `activeBallPlayerId`, reescrita aqui.
+  const controller = actualController ?? (situation.phase === "owned" && situation.favourite
+    ? state.players.find((player) => player.profile.id === situation.favourite?.playerId) ?? null
+    : null);
   for (const team of ["blue", "coral"] as const) {
     const teammates = state.players.filter((player) => player.team === team);
     const opponents = state.players.filter((player) => player.team !== team);
     const teamHasPossession = controller?.team === team;
     const plan = state.tactics[team].collectivePlan;
-    // Quem pressiona vem do dever `press`: prioridade 0 é quem chega primeiro na bola,
-    // prioridade 1 é o segundo que sai da linha para dividir.
-    const pressers = dutyHolders(plan, "press");
-    // O dever manda. Quando ninguém foi nomeado — sem plano ainda, ou bola solta com a posse
-    // creditada a nós —, o mais perto vai atrás dela pela mesma escolha que o plano usaria, que
-    // nunca escolhe o goleiro. Só o time cujo gatilho está desligado abre mão disso: é o que
-    // "não pressiono nessa situação" quer dizer.
-    const presser = teammates.find((player) => player.profile.id === pressers[0])
-      ?? (!plan || plan.pressTrigger
-        ? choosePresser(state, teammates.filter((player) => player.profile.position !== "goalkeeper"))
-        : null);
-    const secondPresser = pressers[1] && pressers[1] !== presser?.profile.id
-      ? teammates.find((player) => player.profile.id === pressers[1]) ?? null
-      : null;
-    const ownGoal = goalCenter(team, true);
+    // Quem vai à bola sai da CORRIDA, a cada quadro — não de um papel escolhido segundos atrás,
+    // quando a bola estava em outro lugar. O plano tático segue mandando no que é dele: gatilho
+    // desligado é abrir mão de sair para uma bola que o adversário domina. Bola em aberto,
+    // porém, ninguém recusa — é o que "disputa" quer dizer.
+    const mayLeaveShape = situation.phase === "contested" || !plan || plan.pressTrigger !== null;
+    const slots = situation.phase === "contested" ? CONTEST.contestSlots : CONTEST.pressSlots;
+    const chasers = mayLeaveShape && !teamHasPossession ? chasersFor(state, team, slots) : [];
+    // O segundo engajador é outra decisão, não um segundo lugar na corrida: é o zagueiro que sai
+    // da linha para dividir com um portador sem pressão dentro do nosso terço. Vem do dever.
+    const stepper = dutyHolders(plan, "press")[1] ?? null;
+    // Quem marca quem, resolvido agora e para o time inteiro de uma vez — é aqui que a
+    // exclusividade entre defensores cabe, sem ninguém precisar de estado global.
+    const marking = resolveMarking(state, team, plan);
     for (const player of teammates) {
       // Bola parada: enquanto a bola está parada no ponto e o cobrador caminha, todos vão para o
       // desenho do reinício (a fonte de incumbência com prioridade sobre a cognição normal, até o
@@ -721,36 +754,27 @@ export const decideAll = (state: MatchState): Map<string, AgentDecision> => {
       }
       // O goleiro tem cérebro próprio (goalkeeper-system): a posição de guarda, a saída e a defesa
       // saem todas de lá. Ele só entra no fluxo comum quando é ELE que vai jogar a bola — nas
-      // mãos, cobrando um reinício ou como destino de um passe.
-      if (player.profile.position === "goalkeeper" && controller?.profile.id !== player.profile.id) {
+      // mãos, cobrando um reinício ou como destino de um passe do próprio time. Ganhar uma
+      // corrida qualquer não o tira do gol: a saída dele tem régua própria, mais estrita.
+      const keeperPlaysBall = state.ball.controllerId === player.profile.id
+        || (state.pendingPass?.receiverId === player.profile.id && state.pendingPass.team === player.team);
+      if (player.profile.position === "goalkeeper" && !keeperPlaysBall) {
         decisions.set(player.profile.id, goalkeeperDecision(player, state));
         continue;
       }
-      if (controller?.profile.id === player.profile.id) {
-        if (actualController) {
-          decisions.set(player.profile.id, carrierDecision(player, teammates, opponents, state));
-        } else if (dribbleOwner) {
-          const style = state.ball.dribbleStyle ?? "carry";
-          const lookAhead = style === "knockOn"
-            ? state.ball.dribbleTouchRange === "short" ? 0.34 : state.ball.dribbleTouchRange === "medium" ? 0.52 : 0.72
-            : style === "feint" ? 0.58 : 0.36;
-          const chaseTarget = clampToField(predictBallPosition(state, lookAhead), 3);
-          const intent: AgentDecision["intent"] = style === "knockOn"
-            ? "knockingOn"
-            : style === "feint"
-              ? "feinting"
-              : "carrying";
-          decisions.set(player.profile.id, {
-            movementTarget: chaseTarget,
-            burst: style === "knockOn" || style === "feint",
-            posture: "inPossession",
-            intent,
-            reason: "carryIntoSpace",
-            ballAction: { kind: "none" },
-          });
-        } else {
-          decisions.set(player.profile.id, receptionDecision(player, opponents, state));
-        }
+      if (actualController?.profile.id === player.profile.id) {
+        decisions.set(player.profile.id, carrierDecision(player, teammates, opponents, state));
+        continue;
+      }
+      // Ir buscar a bola que é sua é COMPROMISSO, não corrida que se desiste: quem empurrou a
+      // bola à frente vai atrás dela, e quem foi mirado num passe vai recebê-lo — mesmo com um
+      // adversário chegando antes. Quem desiste porque perdeu a corrida não disputa nada, e o
+      // passe morre sem ninguém em cima dele.
+      const committedToBall = !state.ball.controllerId
+        && (state.ball.dribbleOwnerId === player.profile.id
+          || state.pendingPass?.receiverId === player.profile.id);
+      if (committedToBall || controller?.profile.id === player.profile.id) {
+        decisions.set(player.profile.id, pursueBallDecision(player, state, team, false));
         continue;
       }
       if (teamHasPossession && controller) {
@@ -765,42 +789,21 @@ export const decideAll = (state: MatchState): Map<string, AgentDecision> => {
         });
         continue;
       }
-      if (presser?.profile.id === player.profile.id) {
-        const predictedPressSpeed = (8.5 + player.profile.skills.sprintSpeed * 0.06) * PHYSICS.runSpeedFactor;
-        const pressHorizon = clamp(distance(player.position, state.ball.position) / Math.max(12, predictedPressSpeed), 0.18, 1.2);
-        const prediction = predictBallPosition(state, pressHorizon);
-        const aggressivePress = state.tactics[team].phase === "counterPress" || state.tactics[team].phase === "highPress";
-        const goalSide = add(prediction, scale(normalize(subtract(ownGoal, prediction)), player.radius * (aggressivePress ? 0.95 : 1.75)));
-        if (state.tactics[team].collectivePlan?.pressTrigger === "touchline") {
-          goalSide.y += (prediction.y < FIELD.height / 2 ? 1 : -1) * player.radius * 0.9;
-        }
-        const rivalBallDistance = Math.min(...opponents.map((opponent) => distance(opponent.position, state.ball.position)));
-        const looseBallRace = !actualController
-          && distance(player.position, state.ball.position) < fieldX(28)
-          && rivalBallDistance < fieldX(28);
-        const raceDistance = distance(player.position, prediction);
-        const raceSpeed = (8.5 + player.profile.skills.sprintSpeed * 0.06) * PHYSICS.burstSpeedFactor;
-        const burstDuration = looseBallRace ? clamp(raceDistance / Math.max(1, raceSpeed * 0.78), PHYSICS.burstDuration, 1.45) : undefined;
-        decisions.set(player.profile.id, { movementTarget: clampToField(goalSide, 3), burst: looseBallRace, burstDuration, posture: "outOfPossession", intent: "pressing", reason: "pressBall", ballAction: { kind: "none" } });
+      // Ir à bola tem duas origens, e uma só forma de andar: ganhar a corrida por ela, ou ter
+      // sido mandado sair da linha para dividir (o segundo engajador, que é uma aposta do plano
+      // e por isso vai comprometido, mesmo perdendo a corrida).
+      const committed = stepper === player.profile.id;
+      if (committed || chasers.includes(player.profile.id)) {
+        decisions.set(player.profile.id, pursueBallDecision(player, state, team, committed));
         continue;
       }
-      if (secondPresser && secondPresser.profile.id === player.profile.id) {
-        // Item 1: segundo engajador sai da linha e divide em disparada, goal-side e agressivo.
-        const raceBase = 8.5 + player.profile.skills.sprintSpeed * 0.06;
-        const pressHorizon = clamp(distance(player.position, state.ball.position) / Math.max(12, raceBase * PHYSICS.runSpeedFactor), 0.18, 1);
-        const prediction = predictBallPosition(state, pressHorizon);
-        const goalSide = add(prediction, scale(normalize(subtract(ownGoal, prediction)), player.radius * 0.95));
-        const burstDuration = clamp(distance(player.position, prediction) / Math.max(1, raceBase * PHYSICS.burstSpeedFactor * 0.78), PHYSICS.burstDuration, 1.45);
-        decisions.set(player.profile.id, { movementTarget: clampToField(goalSide, 3), burst: true, burstDuration, posture: "outOfPossession", intent: "pressing", reason: "pressBall", ballAction: { kind: "none" } });
-        continue;
-      }
-      // Sem ranking global de ameaça e sem marcação por índice: o jogador responde por quem o
-      // plano coletivo colocou dentro da célula dele. Ninguém atravessa o campo atrás de um número.
-      const assignment = assignmentOf(plan, player.profile.id);
-      const assignedMark = assignment?.targetPlayerId
-        ? opponents.find((opponent) => opponent.profile.id === assignment.targetPlayerId) ?? null
-        : null;
-      const { target, intent, burst, reason, burstDuration } = defensiveTarget(player, assignedMark, state, assignment);
+      // Por quem ele responde vem da leitura do quadro, não de um id decidido segundos atrás:
+      // o vizinho que entrou na faixa dele agora é o problema dele agora.
+      const { target, intent, burst, reason, burstDuration } = defensiveTarget(
+        player,
+        marking.get(player.profile.id) ?? null,
+        state,
+      );
       decisions.set(player.profile.id, { movementTarget: target, burst, burstDuration, posture: "outOfPossession", intent, reason, ballAction: { kind: "none" } });
     }
   }
@@ -816,9 +819,6 @@ const planTarget = (player: PlayerRuntime, decision: AgentDecision, state: Match
   // O alvo do goleiro é contínuo: a bola se move a cada tick, e o ajuste de pés tem que
   // acompanhar a rota sem esperar o próximo pensamento. O plano guarda a referência, não o ponto.
   if (GOALKEEPER_INTENTS.has(decision.intent)) return { kind: "goalkeeper" };
-  if (state.ball.dribbleOwnerId === player.profile.id || state.pendingPass?.receiverId === player.profile.id) {
-    return { kind: "ball", offset: subtract(decision.movementTarget, state.ball.position) };
-  }
   if (decision.intent === "pressing") {
     return { kind: "ball", offset: subtract(decision.movementTarget, state.ball.position) };
   }
@@ -884,17 +884,17 @@ export const resolvePlanDecision = (player: PlayerRuntime, state: MatchState): A
     };
   }
   let movementTarget: Vec2;
-  if (state.ball.dribbleOwnerId === player.profile.id) {
-    const style = state.ball.dribbleStyle ?? "carry";
-    const lookAhead = style === "knockOn"
-      ? state.ball.dribbleTouchRange === "short" ? 0.34 : state.ball.dribbleTouchRange === "medium" ? 0.52 : 0.72
-      : style === "feint" ? 0.58 : 0.36;
-    movementTarget = predictBallPosition(state, lookAhead);
-  } else if (state.pendingPass?.receiverId === player.profile.id && !state.ball.controllerId) {
-    movementTarget = receptionTarget(state);
-  } else if (plan.target.kind === "point") movementTarget = plan.target.position;
+  // Quem vai à bola persegue o ponto de encontro ao vivo, e não o alvo congelado no plano: entre
+  // dois pensamentos a bola anda, e é ela que manda no trajeto de quem corre atrás dela. O
+  // goleiro vem antes de tudo: o alvo dele é do sistema dele, e ganhar uma corrida não o tira
+  // da posição de guarda.
+  const chasing = !state.ball.controllerId
+    && state.ballSituation.phase !== "contested"
+    && state.ballSituation.favourite?.playerId === player.profile.id;
+  if (plan.target.kind === "goalkeeper") movementTarget = goalkeeperMovementTarget(player, state);
+  else if (chasing) movementTarget = state.ballSituation.contactPoint;
+  else if (plan.target.kind === "point") movementTarget = plan.target.position;
   else if (plan.target.kind === "ball") movementTarget = add(state.ball.position, plan.target.offset);
-  else if (plan.target.kind === "goalkeeper") movementTarget = goalkeeperMovementTarget(player, state);
   else {
     const targetPlayerId = plan.target.playerId;
     const targetPlayer = state.players.find((candidate) => candidate.profile.id === targetPlayerId);

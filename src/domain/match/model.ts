@@ -210,6 +210,44 @@ export interface Ball {
   controlStartedAt: number;
 }
 
+/**
+ * Em que estado a bola está, do ponto de vista de quem joga:
+ *
+ * - `controlled` — no pé de alguém, sob a mola do controle;
+ * - `owned` — solta, mas alguém chega nela com folga (a bola adiantada num pique, o passe
+ *   íntegro a caminho do destinatário);
+ * - `contested` — solta e a corrida está em aberto, seja porque dois chegam juntos, seja
+ *   porque ninguém chega tão cedo.
+ *
+ * Substitui o "quem tocou por último", que confundia os três num id só e fazia o time inteiro
+ * tratar uma bola adiantada — ou desviada — como se estivesse colada no pé de alguém.
+ */
+export type BallPhase = "controlled" | "owned" | "contested";
+
+export interface BallContender {
+  playerId: string;
+  team: Team;
+  /** Segundos até ele alcançar o ponto de contato. */
+  eta: number;
+}
+
+/** Ver `runtime/ball-situation`. Recalculada uma vez por quadro e lida por todo mundo. */
+export interface BallSituation {
+  phase: BallPhase;
+  /** Onde o próximo toque acontece — a posição da bola, quando ela já está num pé. */
+  contactPoint: Vec2;
+  /** Segundos até esse toque. */
+  contactIn: number;
+  /** Todo mundo apto a disputá-la, do mais rápido ao mais lento. `favourite` é o primeiro. */
+  contenders: BallContender[];
+  /** Quem chega primeiro. Nulo só quando não há ninguém apto a tocá-la. */
+  favourite: BallContender | null;
+  /** O melhor do outro time, quando algum entra no páreo. */
+  rival: BallContender | null;
+  /** `rival.eta − favourite.eta`. Grande = lance resolvido; perto de zero = dividida. */
+  margin: number;
+}
+
 export type PassTrajectory = "ground" | "air";
 export type PassRange = "short" | "long";
 export type PassTargeting = "feet" | "space";
@@ -779,6 +817,11 @@ export interface MatchState {
   half: number;
   /** Bola parada em andamento (cobrança caminhada), ou nula em jogo corrido. Unifica a antiga saída de bola. */
   restart: RestartState | null;
+  /**
+   * Quem alcança a bola primeiro, e com que folga. Derivada da posição dos corpos e da rota da
+   * bola a cada quadro, como `tactics[].shape` — não é estado que alguém escreve.
+   */
+  ballSituation: BallSituation;
   ballControlTeam: Team | null;
   possessionTeam: Team | null;
   possessionCandidateTeam: Team | null;

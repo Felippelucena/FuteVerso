@@ -79,9 +79,12 @@ const updatePlayer = (state: MatchState, player: PlayerRuntime, decision: AgentD
   // corridinha de ajuste), para caçar a sobra e voltar ao gol rápido.
   const goalkeeperAlert = !controlsBall && !goalkeeperSetting
     && player.profile.position === "goalkeeper" && player.goalkeeperAlertUntil > state.elapsed;
+  // Marcar é acompanhar um homem que se mexe: quem faz isso andando chega sempre um passo atrás.
+  // Sustentar a zona (`covering`), não — aí o jogador se recoloca no próprio ritmo.
   const running = !controlsBall && (
     movementGap > FIELD.width * 0.095
     || decision.intent === "pressing"
+    || decision.intent === "marking"
     || decision.intent === "receiving"
     || decision.intent === "sprinting"
     || decision.intent === "knockingOn"

@@ -82,7 +82,12 @@ describe("qualidade coletiva da simulacao", () => {
     expect(totals("sprintDribbles")).toBeGreaterThan(0);
     expect(state.stats.blue.completedLongPasses).toBeLessThanOrEqual(state.stats.blue.longPasses);
     expect(state.stats.coral.completedAerialPasses).toBeLessThanOrEqual(state.stats.coral.aerialPasses);
-    expect(state.stats.blue.turnoversWon + state.stats.coral.turnoversWon).toBeLessThan(120);
+    // Teto de troca de posse: o que ele guarda é o jogo não virar pinball. Subiu quando a
+    // percepção da bola passou a ser uma corrida (runtime/ball-situation) e o defensor passou a
+    // investir na bola adiantada em vez de assistir — mais disputa é mais posse trocando de mão,
+    // e é o comportamento pedido. O que continua proibido é o colapso, que os limites de forma,
+    // de condução livre e de sequência de posse acima seguem medindo.
+    expect(state.stats.blue.turnoversWon + state.stats.coral.turnoversWon).toBeLessThan(150);
     // Knock-ons empurram a bola à frente com mais frequência que a antiga condução colada,
     // então há um pouco mais de entradas no terço final — comportamento desejado, sem colapso.
     expect(state.stats.blue.finalThirdEntries).toBeLessThan(42);

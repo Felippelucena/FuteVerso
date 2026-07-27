@@ -81,6 +81,11 @@ describe("movimento dos jogadores", () => {
     const passer = state.players.find((player) => player.team === receiver.team && player !== receiver)!;
     receiver.position = { x: FIELD.width / 2, y: FIELD.height / 2 };
     receiver.velocity = { x: 0, y: 0 };
+    // Ninguém mais no corredor: a bola é de quem chega nela, e um companheiro parado no caminho
+    // a tomaria com razão — o que se mede aqui é o ritmo de quem vai recebê-la, não quem recebe.
+    for (const other of state.players) {
+      if (other !== receiver) other.position = { x: 10, y: 6 };
+    }
     const target = { x: receiver.position.x + 8, y: receiver.position.y };
     state.ball.position = { x: receiver.position.x - 10, y: receiver.position.y };
     state.ball.velocity = { x: 28, y: 0 };
@@ -107,7 +112,7 @@ describe("movimento dos jogadores", () => {
     expect(["run", "burst"]).toContain(receiver.pace);
   });
 
-  it("usa explosao quando o adversario chega ate 0,35 s depois do receptor", () => {
+  it("dispara quando a corrida pela bola esta em aberto", () => {
     const state = createTestMatch(2718);
     startOpenPlay(state);
     state.elapsed = 9;
@@ -116,7 +121,12 @@ describe("movimento dos jogadores", () => {
     const rival = state.players.find((player) => player.team !== receiver.team && player.profile.position === "centerMid")!;
     const target = { x: FIELD.width / 2, y: FIELD.height / 2 };
     receiver.position = { x: target.x - 10, y: target.y };
-    rival.position = { x: target.x + 10.5, y: target.y };
+    // O adversário no páreo pelo MESMO ponto de encontro — que fica onde a bola e o receptor se
+    // cruzam, e não no alvo nominal do passe. Medir a corrida até o alvo era o que fazia o motor
+    // achar que estava tudo resolvido enquanto o lance era uma dividida. Ele vem lançado: um
+    // corpo em movimento chega bem antes de um parado à mesma distância.
+    rival.position = { x: target.x - 15, y: target.y + 5 };
+    rival.velocity = { x: 10, y: -6 };
     state.players.forEach((player, index) => {
       if (player !== receiver && player !== rival) player.position = { x: 8 + index * 7, y: 8 };
     });
@@ -140,7 +150,7 @@ describe("movimento dos jogadores", () => {
     };
 
     const decision = decideAll(state).get(receiver.profile.id)!;
-    expect(decision.intent).toBe("receiving");
+    expect(state.ballSituation.phase).toBe("contested");
     expect(decision.burst).toBe(true);
     stepMatch(state, 1 / 120);
     expect(receiver.pace).toBe("burst");
@@ -153,6 +163,11 @@ describe("movimento dos jogadores", () => {
     const receiver = state.players.find((player) => player.team === "blue" && player.profile.position === "centerMid")!;
     const passer = state.players.find((player) => player.team === receiver.team && player !== receiver)!;
     receiver.position = { x: 48, y: 28 };
+    // Campo limpo em volta: quem persegue a bola desviada é quem chega nela, e o teste é sobre
+    // o alvo acompanhar a rota nova — não sobre qual companheiro herda o lance.
+    for (const other of state.players) {
+      if (other !== receiver) other.position = { x: 10, y: 100 };
+    }
     const originalLanding = { x: 78, y: 30 };
     state.ball.position = { x: 53, y: 31 };
     state.ball.velocity = { x: 2, y: 24 };

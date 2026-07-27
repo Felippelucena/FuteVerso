@@ -6,6 +6,7 @@ import {
   kickoffTakerPosition,
 } from "./runtime/formation-geometry";
 import { kickoffTeamOfHalf } from "./runtime/kickoff";
+import { unclaimedBall } from "./runtime/ball-situation";
 import { ANALYTICS_GRID, DEFAULT_MATCH_SEED, FIELD, RESTART } from "./config";
 import { DEFAULT_INSTRUCTION } from "../tactics/model";
 import { positionFit } from "../tactics/position-fit";
@@ -121,6 +122,7 @@ export function createMatchState(config: MatchConfig): MatchState {
         startedAt: 0, ballInPlay: false,
       }
       : null,
+    ballSituation: unclaimedBall(kickoffBall),
     ballControlTeam: null,
     possessionTeam: null,
     possessionCandidateTeam: null,

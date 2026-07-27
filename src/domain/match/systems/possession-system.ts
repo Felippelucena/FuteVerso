@@ -175,6 +175,10 @@ export const updatePossession = (state: MatchState, dt: number): void => {
     clearDribbleOwner(state);
     dribbleOwner = null;
   }
+  // Posse é a ESTATÍSTICA, não a percepção: a bola adiantada num pique e o passe no ar contam
+  // para quem os jogou, como nas estatísticas de futebol. Quem decide em campo não lê daqui —
+  // lê `state.ballSituation`, que pergunta quem chega nela primeiro. Os dois divergem de
+  // propósito, e é essa divergência que mantém o % de posse legível para quem assiste.
   const inFlightPassTeam = state.pendingPass?.team ?? null;
   if (dribbleOwner) {
     registerControlledTeam(state, dribbleOwner.team);
@@ -313,18 +317,26 @@ const resolveOffsideOnTouch = (state: MatchState, toucher: PlayerRuntime): boole
 };
 
 export const expirePendingPass = (state: MatchState): void => {
-  if (!state.pendingPass) return;
-  const controlWindow = state.pendingPass.trajectory === "air"
-    ? state.pendingPass.range === "long" ? 0.16 : 0.35
-    : state.pendingPass.range === "long" ? 0.48 : 0.75;
-  if (state.elapsed <= state.pendingPass.expectedArrivalAt + controlWindow) return;
-  const passer = state.players.find((player) => player.profile.id === state.pendingPass?.passerId);
-  emitCognitiveEvent(state, "passResolved", relevantPlayersNear(state, state.ball.position), {
-    passId: state.pendingPass.id,
-    outcome: "loose",
-  });
-  if (passer) passer.memory.stats.failedPasses += 1;
-  // O passe morreu no ar sem chegar ao impedido: não há mais o que vigiar.
-  if (state.offsideWatch && state.offsideWatch.passId === state.pendingPass.id) state.offsideWatch = null;
-  state.pendingPass = null;
+  const pending = state.pendingPass;
+  if (!pending) return;
+  const passer = state.players.find((player) => player.profile.id === pending.passerId);
+  const closePass = (): void => {
+    emitCognitiveEvent(state, "passResolved", relevantPlayersNear(state, state.ball.position), {
+      passId: pending.id,
+      outcome: "loose",
+    });
+    if (passer) passer.memory.stats.failedPasses += 1;
+    state.pendingPass = null;
+  };
+  // O passe só morre por tempo. Encerrá-lo assim que a bola sai da rota parece certo e não é: o
+  // desvio que interessa ao jogador é o que muda quem chega primeiro, e disso quem cuida é
+  // `runtime/ball-situation` — quem deixou de ser o favorito para de esperar a bola no mesmo
+  // quadro. Matar o `pendingPass` junto só apagava o crédito do passe que ainda se completava.
+  const controlWindow = pending.trajectory === "air"
+    ? pending.range === "long" ? 0.16 : 0.35
+    : pending.range === "long" ? 0.48 : 0.75;
+  if (state.elapsed <= pending.expectedArrivalAt + controlWindow) return;
+  // O passe morreu no ar sem chegar ao impedido: aí sim não há mais o que vigiar.
+  if (state.offsideWatch?.passId === pending.id) state.offsideWatch = null;
+  closePass();
 };

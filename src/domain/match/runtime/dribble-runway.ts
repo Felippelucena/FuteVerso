@@ -1,8 +1,8 @@
 import { DUEL, FIELD, PHYSICS } from "../config";
 import type { DribbleRangeReason, DribbleTouchRange, MatchState, PlayerRuntime, Vec2 } from "../model";
-import { clamp, distance } from "../../shared/math";
+import { clamp } from "../../shared/math";
 import { predictedSpaceAt, predictPlayerAlongPlan } from "./prediction";
-import { playerSkillSpeed } from "./player-metrics";
+import { etaToPoint, playerSkillSpeed } from "./player-metrics";
 
 export interface ForwardRunway {
   direction: Vec2;
@@ -31,8 +31,7 @@ const RANGE_RULES = [
 ] as const;
 
 const opponentEtaAt = (state: MatchState, player: PlayerRuntime, target: Vec2): number => Math.min(
-  ...state.players.filter((candidate) => candidate.team !== player.team).map((opponent) =>
-    distance(opponent.position, target) / Math.max(1, playerSkillSpeed(opponent) * PHYSICS.runSpeedFactor)),
+  ...state.players.filter((candidate) => candidate.team !== player.team).map((opponent) => etaToPoint(opponent, target)),
 );
 
 export const evaluateForwardRunway = (state: MatchState, player: PlayerRuntime): ForwardRunway => {

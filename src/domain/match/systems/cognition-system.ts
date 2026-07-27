@@ -1,5 +1,5 @@
 import { planAll, resolvePlanDecision, thinkingInterval } from "../ai";
-import { COGNITION, FIELD } from "../config";
+import { COGNITION, CONTEST } from "../config";
 import { distance } from "../../shared/math";
 import type { AgentDecision, MatchState, PlayerRuntime } from "../model";
 import { activeBallPlayerId } from "../runtime/control";
@@ -17,11 +17,15 @@ const planNeedsRefresh = (player: PlayerRuntime, state: MatchState): boolean => 
   if (plan.target.kind === "point"
     && state.elapsed - plan.startedAt > 0.2
     && distance(player.position, plan.target.position) < player.radius * 2) return true;
-  const looseBallClose = !state.ball.controllerId
-    && !state.pendingPass
-    && !state.ball.dribbleOwnerId
-    && distance(player.position, state.ball.position) < FIELD.width * 0.065;
-  return looseBallClose && plan.target.kind !== "ball";
+  // Bola em aberto e eu no páreo: repensar agora, não no próximo pensamento. É a diferença
+  // entre investir na bola adiantada e vê-la passar — antes este gatilho se calava justamente
+  // quando havia um pique ou um passe em curso, que é quando a chance aparece.
+  const { phase, contenders } = state.ballSituation;
+  const best = contenders[0];
+  const mine = contenders.find((contender) => contender.playerId === player.profile.id);
+  const inTheRace = phase === "contested" && best !== undefined && mine !== undefined
+    && mine.eta <= best.eta + CONTEST.openMargin;
+  return inTheRace && plan.target.kind !== "ball";
 };
 
 export const updateCognition = (state: MatchState): Map<string, AgentDecision> => {
