@@ -1,7 +1,7 @@
-import { FIELD, PHYSICS } from "../config";
+import { DUEL, FIELD, PHYSICS } from "../config";
 import type { DribbleRangeReason, DribbleTouchRange, MatchState, PlayerRuntime, Vec2 } from "../model";
 import { clamp, distance } from "../../shared/math";
-import { predictPlayerAlongPlan } from "./prediction";
+import { predictedSpaceAt, predictPlayerAlongPlan } from "./prediction";
 import { playerSkillSpeed } from "./player-metrics";
 
 export interface ForwardRunway {
@@ -53,6 +53,24 @@ export const evaluateForwardRunway = (state: MatchState, player: PlayerRuntime):
     blockerId = opponent.profile.id;
   }
   return { direction, distance: Math.min(maximumDistance, blockerDistance), fieldDistance, blockerId };
+};
+
+/**
+ * Vale erguer a bola por cima da dividida? Só quando o marcador está goal-side, colado, e há
+ * espaço livre atrás dele para o portador disparar. É escolha do atacante — por isso mora aqui,
+ * ao lado das outras decisões de avanço, e não no desfecho de um duelo.
+ */
+export const knockPastEligible = (state: MatchState, carrier: PlayerRuntime, challenger: PlayerRuntime): boolean => {
+  if (carrier.sprintEnergy <= DUEL.knockPastMinEnergy || carrier.dribbleTouchCooldown > 0) return false;
+  const goalward = { x: carrier.team === "blue" ? 1 : -1, y: 0 };
+  if ((challenger.position.x - carrier.position.x) * goalward.x <= 0) return false; // precisa estar à frente
+  const behind = {
+    x: challenger.position.x + goalward.x * DUEL.knockPastProbe * FIELD.width,
+    y: challenger.position.y,
+  };
+  const others = state.players.filter((player) => player.team !== carrier.team && player.profile.id !== challenger.profile.id);
+  const space = others.length ? predictedSpaceAt(behind, others, 0.4) : FIELD.width;
+  return space >= DUEL.knockPastMinSpace * FIELD.width;
 };
 
 export const chooseDribbleTouch = (

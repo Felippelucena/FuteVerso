@@ -516,6 +516,7 @@ export class MatchScreen implements Screen {
       ["De primeira", blue.firstTimeShots, coral.firstTimeShots], ["De longe", blue.longShots, coral.longShots], ["Cruzamentos", blue.crosses, coral.crosses],
       ["Fintas", `${blue.feintsCompleted}/${blue.feintsAttempted}`, `${coral.feintsCompleted}/${coral.feintsAttempted}`], ["Toques longos", blue.sprintDribbles, coral.sprintDribbles],
       ["Desarmes", `${blue.tacklesWon}/${blue.tacklesAttempted}`, `${coral.tacklesWon}/${coral.tacklesAttempted}`], ["Recuperações", blue.turnoversWon, coral.turnoversWon],
+      ["Faltas", blue.fouls, coral.fouls],
       ["Avanços agressivos", blue.aggressiveBreaks, coral.aggressiveBreaks],
       ["Entradas no terço final", blue.finalThirdEntries, coral.finalThirdEntries], ["Quebras de linha", blue.lineBreaks, coral.lineBreaks], ["Inversões", blue.switches, coral.switches],
       ["Largura média", Math.round(this.averageShape("blue", "widthIntegral")), Math.round(this.averageShape("coral", "widthIntegral"))],

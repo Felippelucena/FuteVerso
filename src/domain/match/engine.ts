@@ -3,8 +3,10 @@ import { sampleSpatialAnalytics } from "./systems/analytics-system";
 import { updateBall, updateControlledBall } from "./systems/ball-system";
 import { resolveBallPlayerCollision, resolvePlayerCollisions } from "./systems/collision-system";
 import { updateCognition } from "./systems/cognition-system";
+import { updateEngagement } from "./systems/engagement-system";
 import {
   accrueAddedTime,
+  advanceFoul,
   advanceMatchClock,
   advanceOffside,
   expireTemporalEffects,
@@ -31,7 +33,7 @@ export function stepMatch(state: MatchState, dt: number): void {
   // Impedimento apitado congela a jogada e desenha a linha antes do tiro livre: uma parada de fato,
   // física e cognição suspensas, mas o relógio e o tempo tático correm. A bola parada NÃO congela —
   // é uma fase viva restrita (os jogadores caminham), tratada no fluxo normal por advanceRestart.
-  if (advanceOffside(state, dt)) {
+  if (advanceOffside(state, dt) || advanceFoul(state, dt)) {
     updateTacticalContext(state, dt);
     finishMatchIfNeeded(state);
     return;
@@ -49,6 +51,9 @@ export function stepMatch(state: MatchState, dt: number): void {
   // Depois do movimento (precisa da posição final do cobrador) e antes do controle da bola (para
   // entregar a posse no mesmo tick em que o cobrador chega ao ponto).
   advanceRestart(state, dt);
+  // Depois do movimento (a disputa lê a posição final dos corpos no quadro) e antes do controle
+  // da bola, que é onde as forças do contato entram na integração.
+  updateEngagement(state, dt);
   updateControlledBall(state, decisions, dt);
   updateBall(state, dt);
   updatePossession(state, dt);

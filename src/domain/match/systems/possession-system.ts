@@ -14,7 +14,6 @@ import { signedMatchNoise } from "../runtime/random";
 import { restartForbidsTouch } from "../runtime/restart";
 import { emitCognitiveEvent, relevantPlayersNear } from "../runtime/cognitive-events";
 import { executeBallAction } from "./ball-system";
-import { resolveContact } from "./contact-resolution";
 
 const ballClaimQuality = (state: MatchState, player: PlayerRuntime, ownBox: boolean): number => {
   const skills = player.profile.skills;
@@ -161,25 +160,11 @@ const tryPreparedContact = (state: MatchState, player: PlayerRuntime): boolean =
 };
 
 export const updatePossession = (state: MatchState, dt: number): void => {
+  // Enquanto a bola estiver no alcance do portador ela é dele — inclusive sob disputa. Quem tira
+  // a bola do pé é a pressão contínua aplicada na integração (`attachControlledBall`); aqui só se
+  // constata o resultado. Não há mais desfecho de contato escrito à mão.
   const current = state.players.find((player) => player.profile.id === state.ball.controllerId);
   if (current && state.ball.height < 1.8 && distance(current.position, state.ball.position) < PHYSICS.kickDistance + 0.7) {
-    const challenger = [...state.players]
-      .filter((player) => player.team !== current.team
-        && player.reactionTimer <= 0
-        && !isEvadedDefender(state, player)
-        && distance(player.position, current.position) < current.radius + player.radius + 0.75)
-      .sort((a, b) => distance(a.position, current.position) - distance(b.position, current.position))[0];
-    // Goleiro com a bola nas mãos é intocável: ninguém desarma uma posse segura na área.
-    const keeperHolding = current.profile.position === "goalkeeper" && current.goalkeeperHoldUntil > state.elapsed;
-    if (challenger && !keeperHolding) {
-      state.stats[challenger.team].tacklesAttempted += 1;
-      // Item 2: o desfecho do contato é selecionado por resolveContact (cardápio autoral com
-      // física de momento). Retorna false quando a bola sai do controle do portador.
-      if (!resolveContact(state, current, challenger)) {
-        state.contestedSeconds += dt;
-        return;
-      }
-    }
     registerControlledTeam(state, current.team);
     state.stats[current.team].possessionSeconds += dt;
     return;
@@ -261,7 +246,12 @@ export const updatePossession = (state: MatchState, dt: number): void => {
   if (state.ball.lastTouch && state.ball.lastTouch !== controller.team) controller.memory.stats.interceptions += 1;
   state.ball.controllerId = controller.profile.id;
   state.activeShot = null;
-  if (!continuesOwnDribble) state.ball.controlStartedAt = state.elapsed;
+  // Bola nova no pé chega à frente do corpo; a proteção se constrói a partir daí. Sem zerar,
+  // uma âncora velha faria a bola nascer atrás das costas de quem acabou de dominar.
+  if (!continuesOwnDribble) {
+    controller.ballAnchor = 0;
+    state.ball.controlStartedAt = state.elapsed;
+  }
   clearDribbleOwner(state);
   state.ball.lastTouch = controller.team;
   state.ball.lastTouchPlayerId = controller.profile.id;
@@ -270,7 +260,13 @@ export const updatePossession = (state: MatchState, dt: number): void => {
     passId: state.pendingPass?.id,
     controllerId: controller.profile.id,
   });
-  if (state.feintEvasion && state.feintEvasion.attackerId !== controller.profile.id) state.feintEvasion = null;
+  // A finta acabou quando a bola trocou de dono: quem foi vendido por outro volta a existir.
+  for (const player of state.players) {
+    if (player.evadedByAttackerId && player.evadedByAttackerId !== controller.profile.id) {
+      player.evadedUntil = 0;
+      player.evadedByAttackerId = null;
+    }
+  }
   state.stats[controller.team].possessionSeconds += dt;
   registerPassOutcome(state, controller);
   state.ball.lastAction = null;

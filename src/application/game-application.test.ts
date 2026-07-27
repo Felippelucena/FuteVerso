@@ -24,7 +24,7 @@ const newPlayer = (overrides: Partial<PlayerProfile> = {}): PlayerProfile => ({
   secondaryPositions: [],
   role: "playmaker",
   skills: {
-    acceleration: 70, sprintSpeed: 70, burst: 70, stamina: 70, control: 70,
+    acceleration: 70, sprintSpeed: 70, burst: 70, stamina: 70, control: 70, strength: 70,
     passing: 70, vision: 70, finishing: 60, defending: 60, kickPower: 70, goalkeeping: 20,
   },
   mental: {

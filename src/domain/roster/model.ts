@@ -19,6 +19,12 @@ export interface PlayerSkills {
   burst: number;
   stamina: number;
   control: number;
+  /**
+   * Força de corpo: proteger a bola, aguentar o ombro, ganhar a dividida no contato. É o físico
+   * do duelo, distinto de `control` (a técnica) e de `kickPower` (a força do chute) — antes
+   * `control` acumulava os dois papéis e um jogador não podia ser forte e ruim de bola.
+   */
+  strength: number;
   passing: number;
   vision: number;
   finishing: number;

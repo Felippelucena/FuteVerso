@@ -4,13 +4,12 @@ import type { MatchState, PlayerRuntime } from "../model";
 import { isEvadedDefender } from "../runtime/control";
 import { emitCognitiveEvent, relevantPlayersNear } from "../runtime/cognitive-events";
 
+const evadesEachOther = (state: MatchState, defender: PlayerRuntime, attacker: PlayerRuntime): boolean =>
+  state.elapsed < defender.evadedUntil && defender.evadedByAttackerId === attacker.profile.id;
+
 const resolvePlayerCollision = (state: MatchState, a: PlayerRuntime, b: PlayerRuntime): void => {
-  const evasion = state.feintEvasion;
-  if (evasion && state.elapsed < evasion.expiresAt) {
-    const isEvasionPair = (a.profile.id === evasion.attackerId && b.profile.id === evasion.defenderId)
-      || (a.profile.id === evasion.defenderId && b.profile.id === evasion.attackerId);
-    if (isEvasionPair) return;
-  }
+  // O par de uma finta em curso se atravessa: o driblador passa pelo corpo do marcador vendido.
+  if (evadesEachOther(state, a, b) || evadesEachOther(state, b, a)) return;
   const delta = subtract(b.position, a.position);
   const separation = length(delta);
   const minimum = a.radius + b.radius;

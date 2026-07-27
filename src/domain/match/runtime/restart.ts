@@ -200,7 +200,10 @@ export const beginRestart = (state: MatchState, kind: RestartKind, team: Team, e
   state.pendingPass = null;
   state.activeShot = null;
   clearGoalkeeperAttempts(state);
-  state.feintEvasion = null;
+  for (const player of state.players) {
+    player.evadedUntil = 0;
+    player.evadedByAttackerId = null;
+  }
   // Bola parada dá fôlego à volátil; a longa (fôlego de partida) não recupera. Só na saída de bola,
   // como antes — nos demais reinícios a própria caminhada já devolve a volátil.
   if (kind === "kickoff") {
@@ -219,9 +222,9 @@ export const beginRestart = (state: MatchState, kind: RestartKind, team: Team, e
   if (kind !== "kickoff") emitMatchEvent(state, { type: "restart-awarded", team, restartKind: kind });
 };
 
-/** Reinício do impedimento: tiro livre indireto para o time que defende, no ponto da infração. */
-export const restartFreeKick = (state: MatchState, defendingTeam: Team, spot: Vec2): void => {
-  beginRestart(state, "freeKick", defendingTeam, spot);
+/** Tiro livre no ponto da infração, para o time que a sofreu — impedimento (Lei 11) ou falta (12). */
+export const restartFreeKick = (state: MatchState, awardedTeam: Team, spot: Vec2): void => {
+  beginRestart(state, "freeKick", awardedTeam, spot);
 };
 
 /**

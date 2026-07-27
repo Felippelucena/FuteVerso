@@ -26,9 +26,17 @@ export const createMemory = (profile: PlayerProfile): PlayerMemory => ({
 
 const isScore = (value: unknown): value is number => Number.isFinite(value) && Number(value) >= 1 && Number(value) <= 100;
 const skillKeys: (keyof PlayerSkills)[] = [
-  "acceleration", "sprintSpeed", "burst", "stamina", "control", "passing",
+  "acceleration", "sprintSpeed", "burst", "stamina", "control", "strength", "passing",
   "vision", "finishing", "defending", "kickPower", "goalkeeping",
 ];
+
+/**
+ * Força de corpo estimada para elencos gravados antes de o atributo existir. Aproxima o físico
+ * pelo que já se sabia do jogador: quem marca, aguenta e chuta forte costuma ser encorpado.
+ * Só serve à migração — jogador novo nasce com a força sorteada como qualquer outro atributo.
+ */
+export const derivedStrength = (skills: Omit<PlayerSkills, "strength">): number => Math.max(1, Math.min(100,
+  Math.round(skills.defending * 0.4 + skills.stamina * 0.35 + skills.kickPower * 0.25)));
 const mentalKeys: (keyof PlayerMentalAttributes)[] = [
   "decisionMaking", "anticipation", "composure", "aggression",
   "teamwork", "creativity", "intensity", "adaptability",

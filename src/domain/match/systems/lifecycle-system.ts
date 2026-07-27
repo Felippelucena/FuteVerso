@@ -14,7 +14,9 @@ export const advanceMatchClock = (state: MatchState, dt: number): void => {
 };
 
 export const expireTemporalEffects = (state: MatchState): void => {
-  if (state.feintEvasion && state.elapsed >= state.feintEvasion.expiresAt) state.feintEvasion = null;
+  for (const player of state.players) {
+    if (player.evadedByAttackerId && state.elapsed >= player.evadedUntil) player.evadedByAttackerId = null;
+  }
 };
 
 /**
@@ -38,6 +40,22 @@ export const advanceOffside = (state: MatchState, dt: number): boolean => {
   const defending: Team = call.team === "blue" ? "coral" : "blue";
   restartFreeKick(state, defending, call.spot);
   state.offsideCall = null;
+  return true;
+};
+
+/**
+ * Falta apitada: congela a jogada até `resolveAt`, quando sai o tiro livre do time que a sofreu.
+ * Devolve `true` enquanto o jogo está parado, para o motor pular o resto do tick — exatamente como
+ * o impedimento, porque é a mesma coisa: o árbitro parou o jogo e vai recolocar a bola.
+ */
+export const advanceFoul = (state: MatchState, dt: number): boolean => {
+  const call = state.foulCall;
+  if (!call) return false;
+  state.contestedSeconds += dt;
+  if (state.elapsed < call.resolveAt) return true;
+  const fouled: Team = call.team === "blue" ? "coral" : "blue";
+  restartFreeKick(state, fouled, call.spot);
+  state.foulCall = null;
   return true;
 };
 

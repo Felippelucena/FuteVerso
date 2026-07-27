@@ -21,7 +21,7 @@ const player = (id: string): PlayerProfile => ({
   secondaryPositions: [],
   role: "playmaker",
   skills: {
-    acceleration: 60, sprintSpeed: 60, burst: 60, stamina: 60, control: 60,
+    acceleration: 60, sprintSpeed: 60, burst: 60, stamina: 60, control: 60, strength: 60,
     passing: 60, vision: 60, finishing: 60, defending: 60, kickPower: 60, goalkeeping: 20,
   },
   mental: {

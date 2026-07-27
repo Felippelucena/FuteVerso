@@ -27,6 +27,7 @@ const skills = (values: Partial<PlayerSkills>): PlayerSkills => ({
   burst: 65,
   stamina: 70,
   control: 65,
+  strength: 65,
   passing: 65,
   vision: 65,
   finishing: 60,

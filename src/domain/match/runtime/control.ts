@@ -88,4 +88,4 @@ export const clearGoalkeeperAttempts = (state: MatchState): void => {
 };
 
 export const isEvadedDefender = (state: MatchState, player: PlayerRuntime): boolean =>
-  state.feintEvasion?.defenderId === player.profile.id && state.elapsed < state.feintEvasion.expiresAt;
+  state.elapsed < player.evadedUntil;

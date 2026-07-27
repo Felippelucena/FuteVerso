@@ -10,18 +10,18 @@ import type { ContentRandom } from "./random";
  * identidade a cada posição em vez de gerar jogadores medianos em tudo.
  */
 const ARCHETYPES: Record<PlayerPosition, Partial<Record<keyof PlayerSkills, number>>> = {
-  goalkeeper: { goalkeeping: 10, defending: -6, finishing: -40, control: -14, passing: -8, vision: -8, acceleration: -12, sprintSpeed: -12, burst: -14, kickPower: -4, stamina: -10 },
-  centerBack: { defending: 10, kickPower: 2, stamina: 0, finishing: -22, vision: -8, control: -8, acceleration: -8, sprintSpeed: -5, burst: -8, goalkeeping: -50 },
-  rightBack: { defending: 3, stamina: 8, sprintSpeed: 7, acceleration: 6, passing: 0, finishing: -18, vision: -4, kickPower: -3, goalkeeping: -50 },
-  leftBack: { defending: 3, stamina: 8, sprintSpeed: 7, acceleration: 6, passing: 0, finishing: -18, vision: -4, kickPower: -3, goalkeeping: -50 },
-  defensiveMid: { defending: 8, stamina: 8, passing: 4, vision: 2, finishing: -14, burst: -6, acceleration: -4, goalkeeping: -50 },
+  goalkeeper: { goalkeeping: 10, defending: -6, finishing: -40, control: -14, strength: 4, passing: -8, vision: -8, acceleration: -12, sprintSpeed: -12, burst: -14, kickPower: -4, stamina: -10 },
+  centerBack: { defending: 10, strength: 10, kickPower: 2, stamina: 0, finishing: -22, vision: -8, control: -8, acceleration: -8, sprintSpeed: -5, burst: -8, goalkeeping: -50 },
+  rightBack: { defending: 3, stamina: 8, sprintSpeed: 7, acceleration: 6, passing: 0, strength: -3, finishing: -18, vision: -4, kickPower: -3, goalkeeping: -50 },
+  leftBack: { defending: 3, stamina: 8, sprintSpeed: 7, acceleration: 6, passing: 0, strength: -3, finishing: -18, vision: -4, kickPower: -3, goalkeeping: -50 },
+  defensiveMid: { defending: 8, stamina: 8, strength: 5, passing: 4, vision: 2, finishing: -14, burst: -6, acceleration: -4, goalkeeping: -50 },
   centerMid: { passing: 8, vision: 8, control: 5, stamina: 6, defending: -2, finishing: -8, goalkeeping: -50 },
-  rightMid: { stamina: 9, sprintSpeed: 6, acceleration: 5, passing: 4, control: 3, defending: -4, finishing: -8, goalkeeping: -50 },
-  leftMid: { stamina: 9, sprintSpeed: 6, acceleration: 5, passing: 4, control: 3, defending: -4, finishing: -8, goalkeeping: -50 },
-  attackingMid: { vision: 10, control: 8, passing: 7, finishing: 2, defending: -20, stamina: -3, goalkeeping: -50 },
-  rightWing: { acceleration: 10, sprintSpeed: 10, burst: 9, control: 6, finishing: 2, defending: -24, goalkeeping: -50 },
-  leftWing: { acceleration: 10, sprintSpeed: 10, burst: 9, control: 6, finishing: 2, defending: -24, goalkeeping: -50 },
-  striker: { finishing: 11, control: 5, burst: 6, kickPower: 4, acceleration: 3, defending: -26, passing: -8, vision: -6, stamina: -4, goalkeeping: -50 },
+  rightMid: { stamina: 9, sprintSpeed: 6, acceleration: 5, passing: 4, control: 3, defending: -4, strength: -4, finishing: -8, goalkeeping: -50 },
+  leftMid: { stamina: 9, sprintSpeed: 6, acceleration: 5, passing: 4, control: 3, defending: -4, strength: -4, finishing: -8, goalkeeping: -50 },
+  attackingMid: { vision: 10, control: 8, passing: 7, finishing: 2, defending: -20, strength: -8, stamina: -3, goalkeeping: -50 },
+  rightWing: { acceleration: 10, sprintSpeed: 10, burst: 9, control: 6, finishing: 2, defending: -24, strength: -10, goalkeeping: -50 },
+  leftWing: { acceleration: 10, sprintSpeed: 10, burst: 9, control: 6, finishing: 2, defending: -24, strength: -10, goalkeeping: -50 },
+  striker: { finishing: 11, control: 5, burst: 6, strength: 7, kickPower: 4, acceleration: 3, defending: -26, passing: -8, vision: -6, stamina: -4, goalkeeping: -50 },
 };
 
 // Funções plausíveis por posição, com peso. A função é o eixo de decisão do motor e não
@@ -65,7 +65,7 @@ const NEIGHBOURS: Record<PlayerPosition, PlayerPosition[]> = {
 };
 
 const SKILL_KEYS: (keyof PlayerSkills)[] = [
-  "acceleration", "sprintSpeed", "burst", "stamina", "control", "passing",
+  "acceleration", "sprintSpeed", "burst", "stamina", "control", "strength", "passing",
   "vision", "finishing", "defending", "kickPower", "goalkeeping",
 ];
 

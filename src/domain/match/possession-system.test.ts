@@ -28,7 +28,11 @@ describe("posse e domínio", () => {
     expect(state.ball.controllerId ?? state.ball.dribbleOwnerId).toBe(coral.profile.id);
   });
 
-  it("encerra contato prolongado com uma tentativa real de desarme", () => {
+  // O desfecho do duelo (quem arranca a bola de quem, e em quanto tempo) é medido em
+  // `engagement.test`, que roda a disputa isolada — no motor inteiro, um portador pressionado
+  // entrega a bola antes de ser desarmado, e o teste mediria a decisão de passe. Aqui fica só a
+  // ligação: com um corpo em cima, a disputa nasce de verdade dentro do `stepMatch`.
+  it("abre uma disputa quando um adversário encosta no portador", () => {
     const state = createTestMatch(42);
     startOpenPlay(state);
     const holder = state.players.find((player) => player.team === "blue" && player.profile.position === "centerMid")!;
@@ -38,8 +42,10 @@ describe("posse e domínio", () => {
     challenger.position = { x: holder.position.x + holder.radius + challenger.radius + 0.5, y: holder.position.y };
     holder.profile.skills.control = 1;
     holder.profile.skills.burst = 1;
+    holder.profile.skills.strength = 1;
     challenger.profile.skills.defending = 100;
     challenger.profile.skills.acceleration = 100;
+    challenger.profile.skills.strength = 100;
     state.ball.position = { x: holder.position.x + holder.radius + FIELD.ballRadius, y: holder.position.y };
     state.ball.controllerId = holder.profile.id;
     state.ball.lastTouch = holder.team;
@@ -47,9 +53,11 @@ describe("posse e domínio", () => {
 
     stepMatch(state, 1 / 120);
 
-    expect(state.ball.controllerId).not.toBe(holder.profile.id);
+    expect(state.engagement?.holderId).toBe(holder.profile.id);
+    expect(state.engagement?.challengerIds).toContain(challenger.profile.id);
     expect(state.stats.coral.tacklesAttempted).toBe(1);
-    expect(state.stats.coral.tacklesWon).toBe(1);
+    // E a bola já está sendo puxada para fora do pé — não reposicionada por um desfecho.
+    expect(state.ball.velocity.x).toBeLessThan(0); // empurrada para longe do desafiante (+x)
   });
 
   it("deixa uma bola forte escapar de um jogador sem controle para domina-la", () => {

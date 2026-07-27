@@ -1,5 +1,7 @@
-import { DUEL, FIELD, PHYSICS } from "../config";
-import { add, clamp, distance, dot, lerp, length, limit, normalize, rotate, scale, subtract } from "../../shared/math";
+import { DUEL, FIELD, PHYSICS, SHIELD } from "../config";
+import { add, clamp, cross, distance, dot, lerp, length, limit, normalize, rotate, scale, subtract } from "../../shared/math";
+import { desiredBallAnchor } from "../runtime/ball-anchor";
+import { activeChallengers, contestForces, gripFactor } from "../runtime/engagement";
 import type { AgentDecision, BallAction, DribbleStyle, DribbleTouchRange, MatchState, PlayerRuntime, Team, Vec2 } from "../model";
 import {
   adaptPlayerPolicy,
@@ -10,6 +12,7 @@ import {
 } from "../runtime/control";
 import { emitMatchEvent } from "../runtime/events";
 import { emitCognitiveEvent, relevantPlayersNear } from "../runtime/cognitive-events";
+import { duelEdge } from "../runtime/duel";
 import { GOAL_MOUTH, insideGoalMouth, resolveGoalFrameContact } from "../runtime/goal-frame";
 import { beginRestart, registerRestartKick } from "../runtime/restart";
 import { offsideOffendersAtPass } from "../runtime/offside";
@@ -51,6 +54,15 @@ const dribbleTravelPlan = (
     chaseDuration,
   };
 };
+
+/** O marcador REAL no raio de colisão (raios quase se tocando) — não um adversário em espaço vazio. */
+const nearestEngagedOpponent = (state: MatchState, player: PlayerRuntime): PlayerRuntime | null =>
+  [...state.players]
+    .filter((candidate) => candidate.team !== player.team
+      && candidate.reactionTimer <= 0
+      && candidate.duelCooldown <= 0
+      && distance(candidate.position, player.position) < player.radius + candidate.radius + DUEL.feintEngageMargin)
+    .sort((a, b) => distance(a.position, player.position) - distance(b.position, player.position))[0] ?? null;
 
 const releaseBall = (state: MatchState, player: PlayerRuntime, direction: Vec2, speed: number, lift: number): void => {
   state.ball.velocity = limit(scale(direction, speed), PHYSICS.maxBallSpeed);
@@ -95,7 +107,25 @@ export const executeBallAction = (state: MatchState, player: PlayerRuntime, acti
     let chosenDirection = targetDirection;
     let dribbleTarget = action.target;
     let defender: PlayerRuntime | null = null;
-    if (action.style === "knockOn") {
+    let lift = 0;
+    if (action.style === "knockPast") {
+      // Bola erguida por cima da dividida e corrida atrás: o recurso de quem tem pique em vez de
+      // repertório. Era um desfecho do duelo, mas nunca foi — é uma decisão do atacante.
+      defender = nearestEngagedOpponent(state, player);
+      if (!defender) return;
+      const toDefender = normalize(subtract(defender.position, player.position));
+      const goalward = { x: player.team === "blue" ? 1 : -1, y: 0 };
+      const leftRot = rotate(goalward, Math.PI / 6);
+      const rightRot = rotate(goalward, -Math.PI / 6);
+      chosenDirection = dot(leftRot, toDefender) < dot(rightRot, toDefender) ? leftRot : rightRot;
+      dribbleTarget = add(player.position, scale(chosenDirection, DUEL.knockPastProbe * FIELD.width * 2));
+      errorFactor = 0.3 + pressure * 0.3;
+      speed = DUEL.knockPastSpeed;
+      lift = DUEL.knockPastLift; // apex ≈ 0,85 < 1,8 → a bola segue jogável
+      player.dribbleTouchCooldown = Math.max(player.dribbleTouchCooldown, 0.3);
+      defender.velocity = add(scale(defender.velocity, 0.85), scale(toDefender, 1.5));
+      state.stats[player.team].sprintDribbles += 1;
+    } else if (action.style === "knockOn") {
       errorFactor = 0.58 + pressure * 0.42 + (1 - player.sprintEnergy) * 0.35;
       speed = 25 + quality * 9;
       state.stats[player.team].sprintDribbles += 1;
@@ -108,18 +138,13 @@ export const executeBallAction = (state: MatchState, player: PlayerRuntime, acti
       else if (touchRange === "medium") state.stats[player.team].mediumSprintDribbles += 1;
       else state.stats[player.team].longSprintDribbles += 1;
     } else if (action.style === "feint") {
-      defender = [...state.players]
-        .filter((candidate) => candidate.team !== player.team
-          && candidate.reactionTimer <= 0
-          && candidate.duelCooldown <= 0
-          // Só finta contra um marcador REAL no raio de colisão (raios quase se tocando).
-          && distance(candidate.position, player.position) < player.radius + candidate.radius + DUEL.feintEngageMargin)
-        .sort((a, b) => distance(a.position, player.position) - distance(b.position, player.position))[0];
+      defender = nearestEngagedOpponent(state, player);
       if (defender) {
         state.stats[player.team].feintsAttempted += 1;
-        const attackerScore = (player.profile.skills.control * 0.58 + player.profile.skills.burst * 0.42) / 100;
-        const defenderScore = (defender.profile.skills.defending * 0.62 + defender.profile.skills.acceleration * 0.38) / 100;
-        success = attackerScore - defenderScore + signedMatchNoise(state) * 0.42 > 0.08;
+        // Mesma força de duelo do desarme: ler uma finta e cravar um carrinho pedem a mesma
+        // virtude. Antes esta fórmula ignorava estamina e cabeça, e o zagueiro exausto lia o
+        // drible tão bem quanto o inteiro. Ruído maior que o do contato — finta é mais loteria.
+        success = duelEdge(player, defender) + signedMatchNoise(state) * 0.42 > 0.08;
         if (success) {
           defender.reactionTimer = Math.max(defender.reactionTimer, PHYSICS.feintReactionDuration * (0.8 + quality * 0.4));
           defender.duelCooldown = Math.max(defender.duelCooldown, PHYSICS.feintEvasionDuration + 0.22);
@@ -148,7 +173,7 @@ export const executeBallAction = (state: MatchState, player: PlayerRuntime, acti
         if (defender) chosenDirection = normalize(subtract(defender.position, player.position));
         adaptPlayerPolicy(player, "dribble", state.learningEnabled ? -0.0008 : 0);
       }
-      player.duelCooldown = success ? 5.2 : 6.8;
+      player.duelCooldown = success ? DUEL.feintCooldownWon : DUEL.feintCooldownLost;
       errorFactor = success ? 0.14 : 0.72;
       speed = success ? 23 + quality * 7 : 11.5;
     }
@@ -162,27 +187,31 @@ export const executeBallAction = (state: MatchState, player: PlayerRuntime, acti
       state.ball.lastTouch = player.team;
       state.ball.lastTouchPlayerId = player.profile.id;
       state.ball.controlStartedAt = controlStartedAt;
-      state.feintEvasion = null;
       clearDribbleOwner(state);
       registerControlledTeam(state, player.team);
       player.kickCooldown = 0.42;
       return;
     }
-    const travelPlan = dribbleTravelPlan(player, action.style, action.touchRange, dribbleTarget, quality);
-    speed = travelPlan.launchSpeed;
-    // Quem empurra a bola à frente precisa disparar atrás dela — a não ser exaurido. Não trava o
-    // sprintCooldown: a perseguição se sustenta em piques encadeados, limitada pela energia volátil.
-    if ((action.style === "knockOn" || action.style === "feint") && player.sprintEnergy > 0.1) {
-      player.sprintTimer = Math.max(player.sprintTimer, travelPlan.chaseDuration);
+    // O balão por cima já nasce com velocidade e altura próprias; os demais estilos calculam o
+    // toque pelo plano de perseguição.
+    if (action.style !== "knockPast") {
+      const travelPlan = dribbleTravelPlan(player, action.style, action.touchRange, dribbleTarget, quality);
+      speed = travelPlan.launchSpeed;
+      // Quem empurra a bola à frente precisa disparar atrás dela — a não ser exaurido. Não trava o
+      // sprintCooldown: a perseguição se sustenta em piques encadeados, limitada pela volátil.
+      if ((action.style === "knockOn" || action.style === "feint") && player.sprintEnergy > 0.1) {
+        player.sprintTimer = Math.max(player.sprintTimer, travelPlan.chaseDuration);
+      }
+    } else if (player.sprintEnergy > 0.1) {
+      player.sprintTimer = Math.max(player.sprintTimer, 0.6);
     }
     const direction = rotate(chosenDirection, signedMatchNoise(state) * (1 - quality) * errorFactor);
-    releaseBall(state, player, direction, speed, 0);
+    releaseBall(state, player, direction, speed, lift);
     state.ball.lastAction = "dribble";
     state.ball.lastShotOnTarget = false;
-    if (action.style === "feint") {
-      state.feintEvasion = defender
-        ? { attackerId: player.profile.id, defenderId: defender.profile.id, expiresAt: state.elapsed + PHYSICS.feintEvasionDuration }
-        : null;
+    if (action.style === "feint" && defender) {
+      defender.evadedUntil = state.elapsed + PHYSICS.feintEvasionDuration;
+      defender.evadedByAttackerId = player.profile.id;
     }
     state.ball.dribbleOwnerId = player.profile.id;
     state.ball.dribbleTarget = { ...dribbleTarget };
@@ -191,7 +220,9 @@ export const executeBallAction = (state: MatchState, player: PlayerRuntime, acti
     state.ball.dribbleStartedAt = state.elapsed;
     state.ball.controlStartedAt = controlStartedAt;
     registerControlledTeam(state, player.team);
-    player.kickCooldown = action.style === "feint" ? 0.32 : action.style === "knockOn" ? 0.3 : 0.16;
+    player.kickCooldown = action.style === "feint" ? 0.32
+      : action.style === "knockOn" || action.style === "knockPast" ? 0.3
+        : 0.16;
     return;
   }
   if (action.kind === "shot") {
@@ -311,17 +342,37 @@ const armOffsideWatch = (state: MatchState, passer: PlayerRuntime, passId: numbe
     : null;
 };
 
-const attachControlledBall = (state: MatchState, player: PlayerRuntime, dt: number): void => {
+/**
+ * A bola no pé do portador, quadro a quadro: a mola do controle a puxa para a âncora enquanto a
+ * disputa a empurra para fora. É a corrida entre as duas que resolve o desarme — e é por isso que
+ * nada aqui escreve uma posição de desfecho. Quando a pressão vence, a bola já sai andando na
+ * velocidade que ganhou, sem descontinuidade no instante em que o controle cai.
+ */
+const attachControlledBall = (state: MatchState, player: PlayerRuntime, shielding: boolean, dt: number): void => {
   const facing = length(player.facing) > 0 ? player.facing : { x: player.team === "blue" ? 1 : -1, y: 0 };
-  const target = add(player.position, scale(facing, player.radius + state.ball.radius + 0.15));
+  // A bola contorna o corpo em velocidade finita: saltar direto para a âncora desejada seria
+  // trocar um teleporte por outro.
+  const anchorTurn = SHIELD.turnRate * dt;
+  const anchorError = desiredBallAnchor(state, player, shielding) - player.ballAnchor;
+  player.ballAnchor += clamp(anchorError, -anchorTurn, anchorTurn);
+  const carry = rotate(facing, player.ballAnchor);
+  const target = add(player.position, scale(carry, player.radius + state.ball.radius + 0.15));
+  const challengers = state.engagement ? activeChallengers(state, player) : [];
+  const contest = contestForces(state, player, challengers);
+  // A trombada empurra o PORTADOR; a bola fica onde estava. É essa separação que o tira dela.
+  player.velocity = add(player.velocity, scale(contest.shove, dt));
+  const grip = PHYSICS.controlSpring * gripFactor(player, contest.bite);
   const error = subtract(target, state.ball.position);
   const correction = limit(
-    scale(error, 1 - Math.exp(-PHYSICS.controlSpring * dt)),
+    scale(error, 1 - Math.exp(-grip * dt)),
     PHYSICS.controlledBallRepositionSpeed * dt,
   );
-  const blend = clamp(1 - Math.exp(-PHYSICS.controlSpring * dt), 0, 1);
-  state.ball.position = add(state.ball.position, correction);
-  state.ball.velocity = add(scale(state.ball.velocity, 1 - blend), scale(player.velocity, blend));
+  const blend = clamp(1 - Math.exp(-grip * dt), 0, 1);
+  state.ball.position = add(add(state.ball.position, correction), scale(contest.pressure, dt));
+  state.ball.velocity = add(
+    add(scale(state.ball.velocity, 1 - blend), scale(player.velocity, blend)),
+    contest.pressure,
+  );
   state.ball.height = 0;
   state.ball.verticalVelocity = 0;
 };
@@ -340,8 +391,8 @@ const prepareControlledBall = (player: PlayerRuntime, decision: AgentDecision, d
   if (remainingAngle <= maximumTurn) {
     player.facing = desired;
   } else {
-    const cross = current.x * desired.y - current.y * desired.x;
-    const turnSign = Math.abs(cross) > 0.0001 ? Math.sign(cross) : player.team === "blue" ? 1 : -1;
+    const turn = cross(current, desired);
+    const turnSign = Math.abs(turn) > 0.0001 ? Math.sign(turn) : player.team === "blue" ? 1 : -1;
     player.facing = rotate(current, maximumTurn * turnSign);
   }
   if (decision.ballAction.kind === "dribble") return true;
@@ -362,7 +413,11 @@ export const updateControlledBall = (state: MatchState, decisions: Map<string, A
     state.ball.height = 0;
     state.ball.verticalVelocity = 0;
   } else {
-    attachControlledBall(state, controller, dt);
+    // Protege a bola enquanto ainda está lendo o jogo ou conduzindo colado; ao decidir o passe,
+    // o chute ou o toque à frente, recompõe a bola à frente para bater nela.
+    const shielding = decision.ballAction.kind === "none"
+      || (decision.ballAction.kind === "dribble" && decision.ballAction.style === "carry");
+    attachControlledBall(state, controller, shielding, dt);
   }
   const firstTouchSettled = state.elapsed - state.ball.controlStartedAt >= PHYSICS.firstTouchSettleTime;
   if (actionReady && firstTouchSettled) executeBallAction(state, controller, decision.ballAction);

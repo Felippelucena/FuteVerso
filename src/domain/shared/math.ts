@@ -31,6 +31,11 @@ export const lerp = (from: number, to: number, amount: number): number =>
 
 export const dot = (a: Vec2, b: Vec2): number => a.x * b.x + a.y * b.y;
 
+export const cross = (a: Vec2, b: Vec2): number => a.x * b.y - a.y * b.x;
+
+/** Ângulo com sinal de `from` para `to`, em (−π, π]. Positivo gira no mesmo sentido de `rotate`. */
+export const signedAngle = (from: Vec2, to: Vec2): number => Math.atan2(cross(from, to), dot(from, to));
+
 export const rotate = (value: Vec2, angle: number): Vec2 => ({
   x: value.x * Math.cos(angle) - value.y * Math.sin(angle),
   y: value.x * Math.sin(angle) + value.y * Math.cos(angle),

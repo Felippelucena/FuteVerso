@@ -72,7 +72,7 @@ describe.runIf(CALIBRATION)("caracterizacao deterministica", () => {
     // rodá-lo e o motor tiver mudado de propósito. O hash anterior estava defasado de várias
     // mudanças atrás — é o preço de um teste que ninguém roda, e a razão de o rebaseline vir
     // sempre num commit só dele: só assim o diff do baseline é auditável.
-    expect(hashes).toEqual({ short: "f834f781", long: "ece8a6f9" });
+    expect(hashes).toEqual({ short: "34f4b155", long: "279785c4" });
     // Timeout explícito: com 22 jogadores em campo a simulação custa ~2,4× o que custava no
     // 5x5, e o padrão de 5s estourava quando a suíte roda em paralelo.
   }, 60_000);

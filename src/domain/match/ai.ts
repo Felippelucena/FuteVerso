@@ -3,6 +3,7 @@ import { add, clamp, distance, dot, normalize, scale, subtract } from "../shared
 import { mentalityBias, type FreedomInstruction } from "../tactics/model";
 import type { AgentDecision, AssignmentDuty, BallAction, DecisionReason, DribbleStyle, MatchState, PlanTarget, PlayerAssignment, PlayerPlan, PlayerRuntime, Vec2 } from "./model";
 import { activeBallPlayerId } from "./runtime/control";
+import { duelEdge, duelStrength } from "./runtime/duel";
 import { isRestartTaker, restartLayoutTarget } from "./runtime/restart";
 import { attackingProgress, offsideLineProgress } from "./runtime/offside";
 import {
@@ -15,7 +16,7 @@ import {
 } from "./runtime/prediction";
 import { estimatePassDuration } from "./runtime/pass-trajectory";
 import { playerSkillSpeed } from "./runtime/player-metrics";
-import { chooseDribbleTouch, evaluateForwardRunway } from "./runtime/dribble-runway";
+import { chooseDribbleTouch, evaluateForwardRunway, knockPastEligible } from "./runtime/dribble-runway";
 import { classifyPassPurpose } from "./runtime/pass-purpose";
 import { evaluateShotOpportunity } from "./runtime/shot-opportunity";
 import { goalkeeperDecision, goalkeeperMovementTarget } from "./systems/goalkeeper-system";
@@ -309,8 +310,8 @@ const carrierDecision = (
   const aggression = player.profile.mental.aggression / 100;
   const teamwork = player.profile.mental.teamwork / 100;
   const decisions = player.profile.mental.decisionMaking / 100;
-  const duelQuality = (player.profile.skills.control * 0.58 + player.profile.skills.burst * 0.42) / 100;
-  const escapeConfidence = clamp((duelQuality - 0.52) / 0.35, 0, 1);
+  const carrierStrength = duelStrength(player, "holder");
+  const escapeConfidence = clamp((carrierStrength - DUEL.escapeConfidenceBase) / DUEL.escapeConfidenceSpan, 0, 1);
   const finalThirdUrgency = state.tactics[player.team].phase === "finalThird"
     ? clamp((state.elapsed - state.tactics[player.team].phaseStartedAt) / 6, 0, 1) * 0.22
     : 0;
@@ -402,35 +403,41 @@ const carrierDecision = (
   const defenderIsCommitting = defenderCanDuel
     && closestOpponent < radiiTouch + DUEL.feintEngageMargin
     && (closingSpeed > 0.65 || closestOpponent < radiiTouch);
+  // Encarar ou não é uma comparação com ESTE marcador, não uma nota absoluta de habilidade: a
+  // pergunta útil no 1x1 é "sou melhor que ele?", e é a mesma conta que resolve a finta depois.
   const canFeint = controlAge >= PHYSICS.feintControlSettleTime
     && player.reactionTimer <= 0
     && player.duelCooldown <= 0
-    && creativity > 0.48;
+    && creativity > 0.48
+    && Boolean(duelOpponent && duelEdge(player, duelOpponent) > DUEL.feintConfidenceEdge);
   const laneSpace = openDribbleLane(player, baseDribbleTarget, opponents);
-  // Avançar em espaço é sempre knock-on (empurra a bola e corre atrás). A bola colada
-  // (carry) fica reservada para quando não há pique possível: apertado, sem corredor,
-  // ou vencendo um marcador que se comprometeu (feint).
-  const style: DribbleStyle = defenderIsCommitting && duelQuality > 0.56 && canFeint
+  // Diante de um marcador comprometido, o técnico finta e o veloz ergue a bola por cima e corre
+  // atrás. Em espaço livre é sempre knock-on; a bola colada (carry) fica para o apertado, quando
+  // não há pique possível.
+  const canKnockPast = Boolean(duelOpponent && knockPastEligible(state, player, duelOpponent));
+  const style: DribbleStyle = defenderIsCommitting && canFeint
     ? "feint"
-    : touchChoice.range
-      ? "knockOn"
-      : "carry";
+    : defenderIsCommitting && canKnockPast
+      ? "knockPast"
+      : touchChoice.range
+        ? "knockOn"
+        : "carry";
   const touchDistance = style === "knockOn"
     ? touchChoice.touchDistance
-    : style === "feint"
+    : style === "feint" || style === "knockPast"
       ? clamp(laneSpace * 0.62, fieldX(10), fieldX(16))
       : clamp(laneSpace * 0.66, fieldX(9.6), fieldX(14.4));
   const dribbleTarget = style === "knockOn"
     ? touchChoice.target
     : clampToField(add(player.position, scale(normalize(subtract(baseDribbleTarget, player.position)), touchDistance)), 5);
-  const intent: AgentDecision["intent"] = style === "knockOn"
+  const intent: AgentDecision["intent"] = style === "knockOn" || style === "knockPast"
     ? "knockingOn"
     : style === "feint"
       ? "feinting"
       : "carrying";
   return {
     movementTarget: dribbleTarget,
-    burst: style === "knockOn" || style === "feint",
+    burst: style !== "carry",
     posture: "inPossession",
     intent,
     reason,

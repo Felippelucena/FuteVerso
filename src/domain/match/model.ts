@@ -159,6 +159,20 @@ export interface PlayerRuntime {
   reactionTimer: number;
   duelCooldown: number;
   controlCooldown: number;
+  /**
+   * Janela em que este defensor foi passado por uma finta: até lá ele atravessa o driblador em vez
+   * de colidir, e não disputa a bola. Mora no defensor (e não na partida) porque é um efeito que
+   * ele sofre — num 11x11 duas fintas simultâneas em lados opostos do campo se atropelariam num
+   * slot global único.
+   */
+  evadedUntil: number;
+  evadedByAttackerId: string | null;
+  /**
+   * Onde a bola está no corpo deste jogador enquanto ele a controla: ângulo relativo ao `facing`,
+   * 0 = à frente. Negativo/positivo é o pé de um lado ou do outro. É o que permite pôr o corpo
+   * entre a bola e o marcador.
+   */
+  ballAnchor: number;
   pace: MovementPace;
   posture: TeamPosture;
   intent: PlayerIntent;
@@ -199,7 +213,7 @@ export interface Ball {
 export type PassTrajectory = "ground" | "air";
 export type PassRange = "short" | "long";
 export type PassTargeting = "feet" | "space";
-export type DribbleStyle = "carry" | "knockOn" | "feint";
+export type DribbleStyle = "carry" | "knockOn" | "feint" | "knockPast";
 export type DribbleTouchRange = "short" | "medium" | "long";
 export type DribbleRangeReason = "clearRunway" | "reducedForEnergy" | "reducedForRace" | "touchCooldown" | "insufficientRunway";
 
@@ -369,10 +383,28 @@ export interface CognitiveEvent {
   saveOutcome?: SaveOutcome;
 }
 
-export interface FeintEvasion {
-  attackerId: string;
-  defenderId: string;
-  expiresAt: number;
+/**
+ * Uma disputa em curso pela bola. O duelo deixou de ser um `if` de um quadro e virou uma coisa
+ * com duração: enquanto ela existe, os desafiantes empurram a bola para fora do pé do portador e
+ * o controle dele a puxa de volta, quadro a quadro. Ninguém escreve a posição da bola — o
+ * desfecho é a corrida entre as duas forças, e quem pega a sobra é o caminho normal de bola solta.
+ *
+ * Única por partida porque só há uma bola.
+ */
+export interface Engagement {
+  holderId: string;
+  challengerIds: string[];
+  startedAt: number;
+  /** Quanto a bola já foi arrancada do pé, em unidades. */
+  advantage: number;
+  /**
+   * A bola chegou a ser arrancada do pé durante esta disputa. É o que separa desarme de entrega:
+   * quem consegue passar sob pressão nunca sai do controle, e não deve creditar desarme a ninguém.
+   */
+  pried: boolean;
+  /** Quem entrou de forma imprudente nesta disputa, e em quem. Preenchidos ao apitar a falta. */
+  recklessById: string | null;
+  victimId: string | null;
 }
 
 export interface TeamStats {
@@ -408,6 +440,7 @@ export interface TeamStats {
   aggressiveBreaks: number;
   tacklesAttempted: number;
   tacklesWon: number;
+  fouls: number;
   goalsFromShots: number;
   goalsFromPasses: number;
   goalsFromDribbles: number;
@@ -595,6 +628,13 @@ export interface OffsideCalledEvent extends MatchEventBase {
   playerId: string;
 }
 
+export interface FoulCalledEvent extends MatchEventBase {
+  type: "foul-called";
+  /** Time que cometeu a falta. O tiro livre sai para o adversário. */
+  team: Team;
+  playerId: string;
+}
+
 export interface GoalScoredEvent extends MatchEventBase {
   type: "goal-scored";
   team: Team;
@@ -627,6 +667,7 @@ export type MatchEvent =
   | ShotTakenEvent
   | RestartAwardedEvent
   | OffsideCalledEvent
+  | FoulCalledEvent
   | GoalScoredEvent
   | AddedTimeSignalledEvent
   | MatchFinishedEvent;
@@ -712,6 +753,21 @@ export interface OffsideCall {
   resolveAt: number;
 }
 
+/**
+ * Lei 12 — falta apitada. Mesmo desenho do impedimento: congela a jogada por um instante e sai o
+ * tiro livre no ponto, para o time que sofreu. A imprudência é medida na disputa: entrar em
+ * velocidade no corpo, e não na bola.
+ */
+export interface FoulCall {
+  /** Time que cometeu a falta. O tiro livre é do adversário. */
+  team: Team;
+  offenderId: string;
+  victimId: string;
+  spot: Vec2;
+  calledAt: number;
+  resolveAt: number;
+}
+
 export interface MatchState {
   players: PlayerRuntime[];
   ball: Ball;
@@ -740,13 +796,16 @@ export interface MatchState {
   offsideWatch: OffsideWatch | null;
   /** Impedimento apitado, congelando a jogada até o tiro livre; nulo em jogo normal. */
   offsideCall: OffsideCall | null;
+  /** Falta apitada, congelando a jogada até o tiro livre; nulo em jogo normal. */
+  foulCall: FoulCall | null;
   /**
    * Verdadeiro logo após um lateral, escanteio ou tiro de meta: o primeiro passe (a cobrança em
    * si) não é julgado por impedimento — não há impedimento direto desses reinícios. Cai no toque
    * seguinte, quando o jogo volta a ser corrido.
    */
   offsideExemptRestart: boolean;
-  feintEvasion: FeintEvasion | null;
+  /** Disputa em curso pela bola, ou nulo quando o portador está livre. */
+  engagement: Engagement | null;
   lastAssist: { playerId: string; team: Team; time: number } | null;
   previousControlledTeam: Team | null;
   lastControlledTeam: Team | null;

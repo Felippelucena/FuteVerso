@@ -384,14 +384,53 @@ export const DEFENSE = {
 // Desfechos de contato (tabela resolveContact). Os gates de "roubo limpo" exigem momento real
 // do defensor; sem eles o duelo cai no desfecho neutro (pokeLoose), idêntico ao histórico.
 export const DUEL = {
-  // Roubo com agressividade controlada (defensor segue com a bola freando).
-  cleanStealMinClosing: 6, // pique do defensor ATRAVÉS do portador (u/s) mínimo
-  cleanStealMarginGate: 0.12, // margem de vitória no duelo além do limiar base (0,04)
-  cleanStealCarryFactor: 0.6, // fração da velocidade do defensor levada à bola (freada)
-  cleanStealMinCarry: 8,
-  cleanStealMaxCarry: 22,
-  cleanStealSpitBack: 5, // impulso que cospe o atacante no contrário do toque
-  // Balão baixo por cima da dividida (o atacante venceu o contato).
+  // --- Disputa contínua pela bola (o duelo é um processo, não um evento de um quadro). ---
+  // Margem além dos dois corpos para alguém entrar na disputa. Mesma janela do contato antigo.
+  engageMargin: 0.75,
+  // Em quantas unidades além do encosto o desafiante deixa de alcançar a bola. É o alcance da
+  // perna esticada: curto, porque desarme é coisa de pé na bola, não de estar por perto. É também
+  // o que dá valor à proteção de bola — esconder a bola do outro lado do corpo aumenta esta
+  // distância, e a pressão cai por geometria, sem precisar de termo próprio.
+  reachFalloff: 3.2,
+  // Velocidade (u/s) que um desafiante de força 1, com o pé na bola e ela escancarada, imprime.
+  // É a régua da disputa: subir isto faz a bola sair mais rápido de todo mundo.
+  pressureRate: 18,
+  closingReference: 9, // pique de chegada (u/s) que já vale o bônus cheio
+  closingWeight: 0.55, // quanto chegar em velocidade acrescenta à pressão
+  // Quanto a mordida do desafiante afrouxa a mão do portador. É o que faz o desarme tirar o
+  // domínio, e não só empurrar a bola — sem isto a mola de controle seria intransponível.
+  contestGripBite: 2,
+  gripFloor: 0.16,
+  // Quem está perdendo a bola na dividida fica desequilibrado por um instante. É o que impede o
+  // portador de reclamar a própria bola perdida no quadro seguinte — sem isso o desarme nunca sai.
+  beatenKickCooldown: 0.38,
+  beatenReaction: 0.24,
+  // Trombada: entrar no corpo não empurra a bola em direção nenhuma, mas arrebenta o domínio —
+  // é assim que se perde a bola sem que ninguém a tenha tocado. Vale menos que o pé na bola,
+  // porque desarmar de verdade é chegar nela.
+  chargeBite: 0.75,
+  // Aceleração (u/s²) com que quem atropela empurra o portador para longe. Força que DURA, não um
+  // tapa: quem entra por cima segue empurrando enquanto o corpo está lá.
+  chargeShove: 34,
+  chargeReaction: 0.3, // tempo em que o portador fica desequilibrado sob a trombada
+  // --- Lei 12: entrada imprudente. Falta é chegar no corpo, não na bola. ---
+  foulBodyGap: 0.4, // quão encostados os corpos precisam estar para ser uma entrada, não um roçar
+  // Velocidade (u/s) contra o corpo do portador que caracteriza a entrada. Alta de propósito:
+  // correr até um adversário a 7-10 u/s é marcação normal; falta é chegar em disparada.
+  foulClosingSpeed: 15,
+  foulBallReach: 0.35, // acima disto ele pegou na bola primeiro — não é falta, é desarme
+  // Quanto a agressividade precisa superar a técnica defensiva para o jogador entrar mal. Positivo
+  // porque a maioria dos duelos é limpa: falta é exceção, não a regra do contato.
+  foulRestraint: 0.52,
+  foulLatenessWeight: 0.3, // quanto chegar longe da bola conta como imprudência
+  foulSpeedWeight: 0.25, // quanto passar da velocidade mínima conta
+  // Lei 5 — vantagem: o quanto o portador precisa ser mais forte que quem entrou para aguentar o
+  // tranco e seguir jogando. Positivo porque atropelar funciona: só quem leva vantagem física
+  // clara fica de pé, e aí o árbitro engole o apito.
+  rideChallengeEdge: 0.1,
+  freezeSeconds: 0.9, // jogada parada enquanto o árbitro apita, antes do tiro livre
+  // Balão baixo por cima da dividida (escolha do atacante, não desfecho do duelo).
+  knockPastMinEnergy: 0.35, // energia volátil mínima para bancar a corrida atrás do balão
   knockPastProbe: 0.08, // até onde sondar espaço atrás do defensor (fração de width)
   knockPastMinSpace: 0.045, // espaço livre mínimo atrás (fração de width) para valer a pena
   knockPastSpeed: 26,
@@ -401,6 +440,38 @@ export const DUEL = {
   // 1x1 de verdade. É margem, não raio: quando os corpos encolheram para a escala métrica ela
   // subiu de 2 para 3,5 justamente para a janela do drible continuar a mesma em metros.
   feintEngageMargin: 3.5,
+  // Defensor que tentou e não venceu: fica batido por um instante, não paralisado. Eram 0,92s —
+  // quase um segundo de 38% de aceleração por apenas não ter ganhado a bola. O `duelCooldown`
+  // (0,62s) já é quem impede a re-investida imediata; isto aqui é só o tranco do corpo.
+  repelReaction: 0.4,
+  // Depois da finta, o tempo até o jogador poder entrar em novo duelo. Eram 5,2s/6,8s cravados —
+  // uma ordem de grandeza acima do cooldown de desarme (0,55–0,85s), e o motivo de o driblador
+  // quase nunca driblar. Quem foi lido demora mais a tentar de novo do que quem passou.
+  feintCooldownWon: 1.6,
+  feintCooldownLost: 2.4,
+  // Vantagem mínima do portador sobre o marcador (escala de `duelStrength`) para valer a tentativa
+  // de finta. Negativa de propósito: encarar alguém um pouco melhor faz parte do drible.
+  feintConfidenceEdge: -0.04,
+  // Quanta confiança o portador tem em escapar da pressão sozinho, lida da sua `duelStrength`:
+  // abaixo da base é zero, uma faixa acima dela é confiança total. A base fica onde ficava o
+  // antigo limiar (jogador mediano e inteiro sai por volta de 0,2 de confiança).
+  escapeConfidenceBase: 0.64,
+  escapeConfidenceSpan: 0.35,
+} as const;
+
+// Proteção de bola: a bola não mora no nariz do portador, ela desliza para o lado oposto a quem
+// pressiona. É a geometria que faz existir o corpo entre a bola e o marcador — sem ela, nenhum
+// ajuste de fórmula de duelo produz um lance de proteção.
+export const SHIELD = {
+  // A partir de quantas unidades além do encosto dos corpos o portador começa a esconder a bola.
+  // Largo o bastante para ele já estar protegendo quando o marcador chega, não depois.
+  range: 6,
+  // Até onde a bola se afasta da frente do corpo. Além de ~110° ela sai do alcance do pé de
+  // apoio e o portador a perderia de vista — proteger vira esconder de si mesmo.
+  maxAnchor: Math.PI * 0.6,
+  // Velocidade com que a bola contorna o corpo (rad/s). Uma virada completa de proteção leva
+  // ~0,3s, que é o tempo de um passo. Mais rápido que isto e a âncora vira teleporte de novo.
+  turnRate: 6,
 } as const;
 
 // Lookahead de condução→finalização: valoriza conduzir para abrir um chute melhor.

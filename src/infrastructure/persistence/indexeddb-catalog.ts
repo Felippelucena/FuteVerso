@@ -13,7 +13,7 @@ import type { Contract } from "../../domain/contract/model";
 import { isValidContract } from "../../domain/contract/rules";
 import type { PlayerMemory, PlayerProfile } from "../../domain/roster/model";
 import { playerOverall } from "../../domain/roster/rating";
-import { isValidProfile } from "../../domain/roster/rules";
+import { derivedStrength, isValidProfile } from "../../domain/roster/rules";
 import { sortKey } from "../../domain/shared/text";
 import type { World, WorldSettings } from "../../domain/world/model";
 import { emptyWorld } from "../../domain/world/rules";
@@ -24,8 +24,12 @@ export const DATABASE_NAME = "futeverso";
  * v2 acrescenta os índices que sustentam listas paginadas e a busca por prefixo, e passa a
  * gravar `overall` no registro do jogador. Subir o número dispara `onupgradeneeded`, onde a
  * store de jogadores é reescrita uma vez para ganhar o campo derivado.
+ *
+ * v3 acrescenta `skills.strength` (força de corpo, antes acumulada em `control`). Elencos
+ * gravados sem ele ganham um valor estimado a partir dos atributos que já tinham — sem isso o
+ * perfil ficaria inválido e o jogador sumiria do mundo salvo.
  */
-export const DATABASE_VERSION = 2;
+export const DATABASE_VERSION = 3;
 
 export const STORES = {
   players: "players",
@@ -374,9 +378,27 @@ const backfill = <T>(
   };
 };
 
+/**
+ * v3: preenche `skills.strength` nos jogadores gravados antes de o atributo existir. Roda por
+ * fora do `backfill` genérico de propósito — aquele valida o registro antes de reescrevê-lo, e
+ * um perfil sem `strength` já não passa na validação. É exatamente quem precisa da migração.
+ */
+const backfillStrength = (objectStore: IDBObjectStore): void => {
+  objectStore.openCursor().onsuccess = (event) => {
+    const cursor = (event.target as IDBRequest<IDBCursorWithValue | null>).result;
+    if (!cursor) return;
+    const record = cursor.value as PlayerRecord;
+    if (record?.skills && typeof record.skills.strength !== "number") {
+      cursor.update(toPlayerRecord({ ...record, skills: { ...record.skills, strength: derivedStrength(record.skills) } }));
+    }
+    cursor.continue();
+  };
+};
+
 const upgrade = (database: IDBDatabase, transaction: IDBTransaction): void => {
   const players = ensureStore(database, transaction, STORES.players, "id");
   ensureIndexes(players, PLAYER_INDEXES);
+  backfillStrength(players);
   // v1 gravava o registro sem os campos derivados; sem eles o registro fica fora do índice e
   // some da lista ordenada. As duas stores são reescritas uma vez, aqui.
   backfill(players, (record) => typeof (record as PlayerRecord).overall !== "number", toPlayerRecord, isValidProfile);

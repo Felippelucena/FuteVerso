@@ -231,7 +231,8 @@ describe("ações e física da bola", () => {
     });
 
     expect(state.stats.blue.feintsCompleted).toBe(1);
-    expect(state.feintEvasion).toMatchObject({ attackerId: attacker.profile.id, defenderId: defender.profile.id });
+    expect(defender.evadedByAttackerId).toBe(attacker.profile.id);
+    expect(defender.evadedUntil).toBeGreaterThan(state.elapsed);
     expect(state.ball.dribbleOwnerId).toBe(attacker.profile.id);
     expect(state.ball.velocity.x).toBeGreaterThan(0);
     expect(defender.reactionTimer).toBeGreaterThan(0);

@@ -20,10 +20,11 @@ import { numberField, readNumber, readText, selectField, textField } from "../fi
 const SKILL_FIELDS: { key: keyof PlayerSkills; label: string }[] = [
   { key: "acceleration", label: "Aceleração" }, { key: "sprintSpeed", label: "Velocidade" },
   { key: "burst", label: "Explosão" }, { key: "stamina", label: "Resistência" },
-  { key: "control", label: "Controle" }, { key: "passing", label: "Passe" },
-  { key: "vision", label: "Visão" }, { key: "finishing", label: "Finalização" },
-  { key: "defending", label: "Defesa" }, { key: "kickPower", label: "Força" },
-  { key: "goalkeeping", label: "Goleiro" },
+  { key: "control", label: "Controle" }, { key: "strength", label: "Força" },
+  { key: "passing", label: "Passe" }, { key: "vision", label: "Visão" },
+  { key: "finishing", label: "Finalização" }, { key: "defending", label: "Defesa" },
+  // "Força" agora é a do corpo (`strength`); esta aqui sempre foi a da perna.
+  { key: "kickPower", label: "Potência do chute" }, { key: "goalkeeping", label: "Goleiro" },
 ];
 
 const MENTAL_FIELDS: { key: keyof PlayerMentalAttributes; label: string }[] = [
