@@ -97,7 +97,7 @@ export const PHYSICS = {
 } as const;
 
 // Duas barras de estamina. A longa (fôlego) só decai na partida e termina entre 50%–60%
-// para um atleta médio; a volátil (piques) drena em disparada e recupera em ~4,5s parado.
+// para um atleta médio; a volátil (piques) drena em disparada e recupera em ~10s parado.
 // Custos são por unidade de distância percorrida, então "atravessar o campo" tem preço fixo.
 /**
  * Corrida de referência para calibrar a estamina: gol a gol, descontando o espaço atrás de
@@ -109,12 +109,12 @@ export const GOAL_TO_GOAL_SPRINT = fieldWidth - 10;
 // Fração da barra volátil consumida numa travessia gol a gol, por ritmo. São estes os
 // números de game design; o custo por unidade percorrida sai deles.
 //
-// Cuidado ao mexer: nenhum jogador atravessa o campo num pique só (burstDuration cobre ~8%
-// do gramado), então esta é uma régua de calibragem, não uma corrida que acontece em jogo.
-// O que se sente em campo é o ciclo pique/espera contra volatileRecoveryPerSecond — ver a
-// faixa de mínimos verificada em volatile-probe.test.ts.
-const VOLATILE_BURST_PER_CROSSING = 0.7;
-const VOLATILE_RUN_PER_CROSSING = 0.18;
+// Passar de 1 é intencional: a barra cheia banca pouco mais de um terço do campo em disparada
+// contínua, e o trote também cobra — recupera-se de verdade parando, não trotando. Com os
+// valores antigos (0,7 e 0,18 contra 0,22/s de recarga) o ciclo pique/espera era lucrativo e a
+// barra vivia grudada no topo: disparar não custava decisão nenhuma.
+const VOLATILE_BURST_PER_CROSSING = 2;
+const VOLATILE_RUN_PER_CROSSING = 0.6;
 
 export const STAMINA = {
   // --- Volátil (piques/explosões) ---
@@ -123,8 +123,8 @@ export const STAMINA = {
   // campo encarecia cada corrida sem ninguém perceber.
   volatileBurstCostPerUnit: VOLATILE_BURST_PER_CROSSING / GOAL_TO_GOAL_SPRINT,
   volatileRunCostPerUnit: VOLATILE_RUN_PER_CROSSING / GOAL_TO_GOAL_SPRINT,
-  // Do zero ao cheio em ~4,5s parado/trotando.
-  volatileRecoveryPerSecond: 0.22,
+  // Do zero ao cheio em ~10s parado; trotando leva bem mais, porque a corrida cobra por cima.
+  volatileRecoveryPerSecond: 0.10,
   // --- Longa (fôlego de partida): só decai ---
   longBurstCostPerUnit: 0.00040,
   longRunCostPerUnit: 0.00022,

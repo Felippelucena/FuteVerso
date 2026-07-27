@@ -3,6 +3,7 @@ import { referenceMatchConfig } from "./__fixtures__/reference-match";
 import { createMatchState, stepMatch } from "./index";
 import { GOAL_TO_GOAL_SPRINT } from "./config";
 import { length } from "../shared/math";
+import type { MovementPace } from "./model";
 import { applyStamina } from "./systems/movement-system";
 import { CALIBRATION } from "./__fixtures__/calibration";
 
@@ -18,89 +19,103 @@ const outfield = (state = createMatchState(referenceMatchConfig())) =>
   state.players.find((player) => player.team === "blue" && player.profile.position === "striker")!;
 
 describe("estamina volátil (piques)", () => {
-  // A travessia gol a gol é a régua de calibragem do custo do pique, não uma corrida que
-  // acontece em jogo: burstDuration cobre só ~8% do gramado. O teste seguinte mede o que o
-  // jogador de fato sente ao longo de uma partida.
-  it("gasta ~70% da volátil ao atravessar o campo em disparada", () => {
+  // O custo do pique é derivado da travessia gol a gol, então o alcance de uma barra cheia é
+  // uma fração fixa do campo, qualquer que seja o tamanho do gramado. Sair da faixa significa
+  // que alguém desamarrou volatileBurstCostPerUnit de GOAL_TO_GOAL_SPRINT.
+  it("a barra cheia banca pouco mais de um terço do campo em disparada contínua", () => {
     const player = outfield();
     player.stamina = 1;
     player.sprintEnergy = 1;
     player.velocity = { x: 24, y: 0 };
     let travelled = 0;
-    while (travelled < GOAL_TO_GOAL) {
+    while (player.sprintEnergy > 0 && travelled < GOAL_TO_GOAL) {
       applyStamina(player, "burst", DT);
       travelled += length(player.velocity) * DT;
     }
-    const spent = 1 - player.sprintEnergy;
-    // Faixa estreita porque o custo é derivado do campo: sair dela significa que alguém
-    // desamarrou volatileBurstCostPerUnit de GOAL_TO_GOAL_SPRINT.
-    expect(spent).toBeGreaterThan(0.65);
-    expect(spent).toBeLessThan(0.78);
+    const share = travelled / GOAL_TO_GOAL;
+    expect(share).toBeGreaterThan(0.33);
+    expect(share).toBeLessThan(0.5);
   });
 
-  it.runIf(CALIBRATION)("é usada de verdade numa partida, sem nunca esgotar", () => {
+  // O mínimo da partida sozinho não diz nada: tocar o fundo uma vez em dez minutos é
+  // compatível tanto com a barra viva quanto com ela grudada no topo. O que descreve o
+  // regime é quanto TEMPO o jogador passa cheio, esgotado e a média entre os dois.
+  it.runIf(CALIBRATION)("fica longe do topo e longe do fundo ao longo da partida", () => {
     const state = createMatchState(referenceMatchConfig(12_345));
-    const lowest = new Map<string, number>();
-    const burstTicks = new Map<string, number>();
+    const track = new Map<string, { sum: number; full: number; empty: number; burst: number }>();
     let ticks = 0;
 
     while (!state.finished) {
       stepMatch(state, DT);
       ticks += 1;
       for (const player of state.players) {
-        lowest.set(player.profile.id, Math.min(lowest.get(player.profile.id) ?? 1, player.sprintEnergy));
-        if (player.pace === "burst") {
-          burstTicks.set(player.profile.id, (burstTicks.get(player.profile.id) ?? 0) + 1);
-        }
+        const seen = track.get(player.profile.id) ?? { sum: 0, full: 0, empty: 0, burst: 0 };
+        seen.sum += player.sprintEnergy;
+        if (player.sprintEnergy > 0.9) seen.full += 1;
+        if (player.sprintEnergy < 0.1) seen.empty += 1;
+        if (player.pace === "burst") seen.burst += 1;
+        track.set(player.profile.id, seen);
       }
     }
 
     const outfielders = state.players.filter((player) => player.profile.position !== "goalkeeper");
-    const minima = outfielders.map((player) => lowest.get(player.profile.id) ?? 1);
-    const duty = outfielders.map((player) => (burstTicks.get(player.profile.id) ?? 0) / ticks);
+    const share = (pick: (seen: { sum: number; full: number; empty: number; burst: number }) => number) =>
+      outfielders.map((player) => pick(track.get(player.profile.id)!) / ticks);
+    const means = share((seen) => seen.sum);
+    const fullShare = share((seen) => seen.full);
+    const emptyShare = share((seen) => seen.empty);
+    const duty = share((seen) => seen.burst);
+    const average = (values: number[]) => values.reduce((sum, value) => sum + value, 0) / values.length;
     // eslint-disable-next-line no-console
     console.info("VOLATILE_CALIBRATION", JSON.stringify({
-      minima: minima.map((value) => Number(value.toFixed(3))),
-      duty: duty.map((value) => Number(value.toFixed(3))),
+      mean: Number(average(means).toFixed(3)),
+      fullShare: Number(average(fullShare).toFixed(3)),
+      emptyShare: Number(average(emptyShare).toFixed(3)),
+      maxEmptyShare: Number(Math.max(...emptyShare).toFixed(3)),
+      maxDuty: Number(Math.max(...duty).toFixed(3)),
+      means: means.map((value) => Number(value.toFixed(2))),
     }));
 
-    // O jogador mais acionado precisa sentir a barra: se todos terminarem perto de 100%, o
-    // pique virou decoração e não há decisão nenhuma em disparar.
-    // Re-baseline: a partida passou a ter dois tempos, e cada saída de bola devolve
-    // STAMINA.volatileDeadBallRecovery a todo mundo — com uma bola parada a mais no jogo, o
-    // mínimo desta partida subiu de ~0,79 para ~0,81. Mesmo regime, teto reajustado.
-    expect(Math.min(...minima)).toBeLessThan(0.85);
-    // E ninguém pode ficar sem pique: zerar a barra tira o jogador do jogo em vez de custar.
-    expect(Math.min(...minima)).toBeGreaterThan(0.3);
+    // A média do elenco é a régua do regime: perto de 1 o pique virou decoração (era ~0,97
+    // quando o ciclo pique/espera era lucrativo) e no fundo o jogo vira caminhada.
+    expect(average(means)).toBeLessThan(0.85);
+    expect(average(means)).toBeGreaterThan(0.5);
+    // Ninguém pode viver sem pique: barra no fundo tira o jogador do jogo em vez de custar.
+    expect(Math.max(...emptyShare)).toBeLessThan(0.12);
     // Disparar precisa ser parte do jogo, não um evento raro.
     expect(Math.max(...duty)).toBeGreaterThan(0.15);
   }, 120_000);
 
-  it("recupera do zero ao cheio em torno de 4 a 5 segundos parado", () => {
+  it("recupera do zero ao cheio em torno de 8 segundos parado", () => {
     const player = outfield();
     player.stamina = 1;
     player.sprintEnergy = 0;
     player.velocity = { x: 0, y: 0 };
     let elapsed = 0;
-    while (player.sprintEnergy < 1 && elapsed < 12) {
+    while (player.sprintEnergy < 1 && elapsed < 20) {
       applyStamina(player, "walk", DT);
       elapsed += DT;
     }
-    expect(elapsed).toBeGreaterThan(3.5);
-    expect(elapsed).toBeLessThan(5.5);
+    expect(elapsed).toBeGreaterThan(6.5);
+    expect(elapsed).toBeLessThan(11);
   });
 
-  it("o pique não recupera a volátil e o trote/parado recupera", () => {
+
+  // Os três regimes em ordem: o pique drena, o trote recupera pouco (a corrida cobra por
+  // cima da recarga) e só parado/andando a barra volta cheia. Se o trote deixar de recuperar,
+  // a barra espirala para zero só de jogar — é este o piso que o teste protege.
+  it("o pique drena, o trote recupera devagar e parado recupera rápido", () => {
     const player = outfield();
     player.stamina = 1;
-    player.sprintEnergy = 0.5;
-    player.velocity = { x: 24, y: 0 };
-    applyStamina(player, "burst", DT);
-    expect(player.sprintEnergy).toBeLessThan(0.5);
-    player.sprintEnergy = 0.5;
-    player.velocity = { x: 0, y: 0 };
-    applyStamina(player, "walk", DT);
-    expect(player.sprintEnergy).toBeGreaterThan(0.5);
+    const delta = (pace: MovementPace, speed: number): number => {
+      player.sprintEnergy = 0.5;
+      player.velocity = { x: speed, y: 0 };
+      applyStamina(player, pace, DT);
+      return player.sprintEnergy - 0.5;
+    };
+    expect(delta("burst", 24)).toBeLessThan(0);
+    expect(delta("run", 16)).toBeGreaterThan(0);
+    expect(delta("run", 16)).toBeLessThan(delta("walk", 0));
   });
 });
 
