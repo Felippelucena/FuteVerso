@@ -1,4 +1,4 @@
-import { FIELD, OFFSIDE, PHYSICS, POSSESSION } from "../config";
+import { FIELD, PHYSICS, POSSESSION, REFEREE } from "../config";
 import { add, clamp, distance, dot, length, normalize, scale, subtract } from "../../shared/math";
 import type { MatchState, PlayerRuntime } from "../model";
 import { emitMatchEvent } from "../runtime/events";
@@ -277,9 +277,9 @@ export const updatePossession = (state: MatchState, dt: number): void => {
 
 /**
  * Lei 11 aplicada no toque. Devolve `true` — interrompendo o domínio — quando o impedimento é
- * apitado; nesse caso congela a bola no ponto da infração e abre a janela da bandeira, que o
- * ciclo de vida conta antes de sair o tiro livre. Em qualquer outro toque, só dissolve a
- * vigilância e deixa a jogada seguir.
+ * apitado; nesse caso congela a bola no ponto da infração e abre o beat do apito, que o ciclo de
+ * vida conta antes de sair o tiro livre. Em qualquer outro toque, só dissolve a vigilância e
+ * deixa a jogada seguir.
  */
 const resolveOffsideOnTouch = (state: MatchState, toucher: PlayerRuntime): boolean => {
   const watch = state.offsideWatch;
@@ -293,13 +293,12 @@ const resolveOffsideOnTouch = (state: MatchState, toucher: PlayerRuntime): boole
   state.offsideCall = {
     team: watch.team,
     offenderId: toucher.profile.id,
-    lineProgress: watch.lineProgress,
     spot: {
       x: clamp(toucher.position.x, 4, FIELD.width - 4),
       y: clamp(toucher.position.y, 4, FIELD.height - 4),
     },
     calledAt: state.elapsed,
-    resolveAt: state.elapsed + OFFSIDE.freezeSeconds,
+    resolveAt: state.elapsed + REFEREE.whistleBeatSeconds,
   };
   // Congela a jogada: bola parada no ponto, sem dono nem passe/chute pendente.
   state.ball.velocity = { x: 0, y: 0 };
@@ -310,7 +309,13 @@ const resolveOffsideOnTouch = (state: MatchState, toucher: PlayerRuntime): boole
   if (state.pendingPass) emitCognitiveEvent(state, "passResolved", null, { passId: state.pendingPass.id, outcome: "out" });
   state.pendingPass = null;
   resolveShot(state, "dead");
-  emitMatchEvent(state, { type: "offside-called", team: watch.team, playerId: toucher.profile.id });
+  emitMatchEvent(state, {
+    type: "offside-called",
+    team: watch.team,
+    playerId: toucher.profile.id,
+    lineProgress: watch.lineProgress,
+    passAt: watch.passAt,
+  });
   return true;
 };
 

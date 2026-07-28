@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { referenceMatchConfig, smallSidedMatchConfig, startOpenPlay } from "./__fixtures__/reference-match";
-import { FIELD, FIXED_STEP, OFFSIDE } from "./config";
+import { FIELD, FIXED_STEP, REFEREE } from "./config";
 import { createMatchState, stepMatch } from "./index";
 import type { MatchState, PlayerRuntime } from "./model";
 import { executeBallAction } from "./systems/ball-system";
@@ -124,17 +124,21 @@ describe("Lei 11 — infração e reinício", () => {
       trajectory: "ground", range: "long", targeting: "feet", power: 0.9,
     });
 
+    const { passAt, lineProgress } = state.offsideWatch!;
     for (let tick = 0; tick < 600 && !state.offsideCall; tick += 1) stepMatch(state, FIXED_STEP);
     expect(state.offsideCall).toMatchObject({ team: "blue", offenderId: runner.profile.id });
-    expect(state.events.some((event) => event.type === "offside-called")).toBe(true);
+    // O evento carrega a geometria do julgamento — a linha e o instante do passe, anteriores ao
+    // apito. É do que a revisão do lance vive.
+    expect(state.events.find((event) => event.type === "offside-called")).toMatchObject({ passAt, lineProgress });
+    expect(passAt).toBeLessThan(state.offsideCall!.calledAt);
 
-    // Durante a bandeira a jogada fica congelada e a bola parada.
+    // Durante o apito a jogada fica congelada e a bola parada.
     const frozen = { ...state.ball.position };
     stepMatch(state, FIXED_STEP);
     expect(state.ball.position).toEqual(frozen);
 
-    // Passada a janela, sai o tiro livre para o coral e o impedimento se resolve.
-    for (let tick = 0; tick < OFFSIDE.freezeSeconds * 120 + 5 && state.offsideCall; tick += 1) stepMatch(state, FIXED_STEP);
+    // Passado o apito, sai o tiro livre para o coral e o impedimento se resolve.
+    for (let tick = 0; tick < REFEREE.whistleBeatSeconds * 120 + 5 && state.offsideCall; tick += 1) stepMatch(state, FIXED_STEP);
     expect(state.offsideCall).toBeNull();
     expect(state.events.some((event) => event.type === "restart-awarded"
       && event.team === "coral" && event.restartKind === "freeKick")).toBe(true);

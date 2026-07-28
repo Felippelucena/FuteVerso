@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { smallSidedMatchConfig, startOpenPlay } from "./__fixtures__/reference-match";
-import { DUEL, FIELD } from "./config";
+import { DUEL, FIELD, REFEREE } from "./config";
 import { createMatchState, stepMatch } from "./index";
 import { updateControlledBall } from "./systems/ball-system";
 import { updateEngagement } from "./systems/engagement-system";
@@ -114,7 +114,7 @@ describe("Lei 12 — falta e tiro livre", () => {
     const spot = { ...setup.state.foulCall!.spot };
 
     // A jogada fica congelada durante o apito e destrava no tiro livre.
-    for (let tick = 0; tick < (DUEL.freezeSeconds + 0.2) * 120 && setup.state.foulCall; tick += 1) {
+    for (let tick = 0; tick < (REFEREE.whistleBeatSeconds + 0.2) * 120 && setup.state.foulCall; tick += 1) {
       stepMatch(setup.state, 1 / 120);
     }
 

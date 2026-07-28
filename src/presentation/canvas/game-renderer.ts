@@ -1,7 +1,8 @@
 import { FIELD, GOALKEEPING, PHYSICS, RESTART } from "../../domain/match/config";
 import { clamp, distance, length } from "../../domain/shared/math";
 import { goalkeeperJumpHeight, progressToX } from "../../domain/match";
-import type { MatchState, OffsideCall, PlayerRuntime, Team, Vec2 } from "../../domain/match/model";
+import type { MatchState, PlayerRuntime, Team, Vec2 } from "../../domain/match/model";
+import type { OffsideReplay } from "../../application/match/match-session";
 import { PITCH_MARKINGS, PITCH_SPOT_RADIUS } from "./pitch-markings";
 
 const COLORS: Record<Team, { fill: string; dark: string; light: string }> = {
@@ -54,7 +55,7 @@ export class GameRenderer {
     return this.offsetY + value * this.scale;
   }
 
-  render(state: MatchState): void {
+  render(state: MatchState, offsideReplay: OffsideReplay | null = null): void {
     if (this.width === 0) this.resize();
     this.elapsed = state.elapsed;
     const ctx = this.context;
@@ -72,7 +73,9 @@ export class GameRenderer {
       this.drawPlayer(player, hasPossession, isBallTarget);
     }
     this.drawBall(state);
-    if (state.offsideCall) this.drawOffside(state, state.offsideCall);
+    // O apito em si não desenha nada — como na falta, a jogada só fica parada. O que se lê é a
+    // revisão, e ela acontece no quadro do passe.
+    if (offsideReplay) this.drawOffsideFlag(state, offsideReplay);
     else if (state.restart && !state.restart.ballInPlay) this.drawRestart(state);
   }
 
@@ -360,21 +363,20 @@ export class GameRenderer {
   }
 
   /**
-   * A "bandeira": a linha do impedimento cresce do centro para as pontas enquanto a jogada fica
-   * congelada, com o infrator destacado e o rótulo do lance. É elemento de transmissão, não
-   * overlay de diagnóstico — vive só na janela do apito e some quando sai o tiro livre.
+   * A "bandeira": a linha cresce do centro para as pontas no quadro em que a bola saiu do pé, com
+   * o infrator destacado e o rótulo do lance. Só existe durante a revisão — desenhá-la a partir de
+   * uma vigilância armada a transformaria em overlay de diagnóstico.
    */
-  private drawOffside(state: MatchState, call: OffsideCall): void {
+  private drawOffsideFlag(state: MatchState, replay: OffsideReplay): void {
     const ctx = this.context;
-    const span = Math.max(0.001, call.resolveAt - call.calledAt);
-    const progress = clamp((state.elapsed - call.calledAt) / span, 0, 1);
+    const { reveal } = replay;
     // Escurece o gramado como no pontapé de saída, mas de leve: a leitura é a linha, não o texto.
-    ctx.fillStyle = `rgba(9, 13, 11, ${0.32})`;
+    ctx.fillStyle = `rgba(9, 13, 11, ${0.32 * reveal})`;
     ctx.fillRect(this.x(0), this.y(0), FIELD.width * this.scale, FIELD.height * this.scale);
 
-    const lineX = this.x(progressToX(call.team, call.lineProgress));
+    const lineX = this.x(progressToX(replay.team, replay.lineProgress));
     const midY = this.y(FIELD.height / 2);
-    const half = (FIELD.height / 2) * this.scale * progress;
+    const half = (FIELD.height / 2) * this.scale * reveal;
     ctx.save();
     ctx.strokeStyle = "rgba(255, 209, 71, 0.95)";
     ctx.lineWidth = Math.max(2, this.scale * 0.4);
@@ -386,19 +388,19 @@ export class GameRenderer {
     ctx.setLineDash([]);
 
     // Anel no jogador impedido, pulsando com o avanço da animação.
-    const offender = state.players.find((player) => player.profile.id === call.offenderId);
+    const offender = state.players.find((player) => player.profile.id === replay.offenderId);
     if (offender) {
       const ox = this.x(offender.position.x);
       const oy = this.y(offender.position.y);
       ctx.strokeStyle = "rgba(255, 209, 71, 0.95)";
       ctx.lineWidth = Math.max(1.5, this.scale * 0.28);
       ctx.beginPath();
-      ctx.arc(ox, oy, (offender.radius + 1.2) * this.scale * (0.9 + progress * 0.2), 0, Math.PI * 2);
+      ctx.arc(ox, oy, (offender.radius + 1.2) * this.scale * (0.9 + reveal * 0.2), 0, Math.PI * 2);
       ctx.stroke();
     }
 
-    if (progress > 0.25) {
-      ctx.fillStyle = `rgba(255, 209, 71, ${clamp((progress - 0.25) / 0.35, 0, 1)})`;
+    if (reveal > 0.25) {
+      ctx.fillStyle = `rgba(255, 209, 71, ${clamp((reveal - 0.25) / 0.35, 0, 1)})`;
       ctx.font = `700 ${Math.max(14, this.scale * 2.2)}px ui-sans-serif, system-ui`;
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";

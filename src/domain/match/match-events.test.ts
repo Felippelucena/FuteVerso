@@ -16,7 +16,7 @@ describe("eventos estruturados do motor", () => {
     state.half = MATCH_HALVES;
     state.elapsed = MATCH_DURATION + 1;
     state.offsideCall = {
-      team: "blue", offenderId: state.players[0].profile.id, lineProgress: 0.5,
+      team: "blue", offenderId: state.players[0].profile.id,
       spot: { x: FIELD.width / 2, y: FIELD.height / 2 }, calledAt: state.elapsed, resolveAt: state.elapsed + 5,
     };
     stepMatch(state, FIXED_STEP);

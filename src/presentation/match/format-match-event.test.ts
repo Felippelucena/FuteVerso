@@ -39,7 +39,8 @@ describe("formatMatchEvent", () => {
   });
 
   it("formata o impedimento com o nome do infrator", () => {
-    expect(format({ id: 6, time: 5, type: "offside-called", team: "blue", playerId: "nilo-fw" })).toBe("Impedimento de Nilo");
-    expect(format({ id: 7, time: 6, type: "offside-called", team: "coral", playerId: "desconhecido" })).toBe("Impedimento de MAY");
+    const geometry = { lineProgress: 0.7, passAt: 4 };
+    expect(format({ id: 6, time: 5, type: "offside-called", team: "blue", playerId: "nilo-fw", ...geometry })).toBe("Impedimento de Nilo");
+    expect(format({ id: 7, time: 6, type: "offside-called", team: "coral", playerId: "desconhecido", ...geometry })).toBe("Impedimento de MAY");
   });
 });

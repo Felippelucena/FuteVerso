@@ -354,7 +354,7 @@ const armOffsideWatch = (state: MatchState, passer: PlayerRuntime, passId: numbe
   }
   const { offenders, lineProgress } = offsideOffendersAtPass(state, passer.team, passer.profile.id);
   state.offsideWatch = offenders.length > 0
-    ? { team: passer.team, passId, offenders, lineProgress }
+    ? { team: passer.team, passId, offenders, lineProgress, passAt: state.elapsed }
     : null;
 };
 

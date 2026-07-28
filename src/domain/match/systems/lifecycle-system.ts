@@ -27,9 +27,9 @@ export const accrueAddedTime = (state: MatchState, dt: number): void => {
 };
 
 /**
- * Impedimento apitado: congela a jogada e mostra a linha (a "bandeira") até `resolveAt`, quando
- * sai o tiro livre indireto do time que defende. Devolve `true` enquanto o jogo está parado, para
- * o motor pular o resto do tick — física e cognição ficam suspensas.
+ * Impedimento apitado: congela a jogada até `resolveAt`, quando sai o tiro livre indireto do time
+ * que defende. Devolve `true` enquanto o jogo está parado, para o motor pular o resto do tick —
+ * física e cognição ficam suspensas.
  */
 export const advanceOffside = (state: MatchState, dt: number): boolean => {
   const call = state.offsideCall;

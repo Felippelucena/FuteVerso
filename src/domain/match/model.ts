@@ -684,11 +684,18 @@ export interface RestartAwardedEvent extends MatchEventBase {
   restartKind: "throwIn" | "corner" | "goalKick" | "freeKick";
 }
 
+/**
+ * O evento carrega a geometria do julgamento — a linha e o instante do passe — porque é ela que
+ * a transmissão rebobina para mostrar. O motor não guarda isso para desenhar: guarda porque é o
+ * que descreve a infração.
+ */
 export interface OffsideCalledEvent extends MatchEventBase {
   type: "offside-called";
   /** Time que cometeu o impedimento. O tiro livre indireto sai para o adversário. */
   team: Team;
   playerId: string;
+  lineProgress: number;
+  passAt: number;
 }
 
 export interface FoulCalledEvent extends MatchEventBase {
@@ -799,17 +806,19 @@ export interface OffsideWatch {
   passId: number;
   offenders: string[];
   lineProgress: number;
+  /** Instante do julgamento: quando a bola saiu do pé. É o único frame em que a linha significa algo. */
+  passAt: number;
 }
 
 /**
- * Impedimento apitado e ainda não reiniciado. Enquanto existe, a jogada fica congelada e a linha
- * é desenhada sobre o gramado (a "bandeira") até `resolveAt`, quando sai o tiro livre indireto.
+ * Impedimento apitado e ainda não reiniciado: a jogada fica parada até `resolveAt`, quando sai o
+ * tiro livre indireto. É o beat do apito, igual ao da falta — a linha da bandeira não vive aqui,
+ * porque ela só faz sentido no instante do passe (a transmissão a mostra no replay).
  */
 export interface OffsideCall {
   /** Time que cometeu a infração (o que atacava). O tiro livre é do adversário. */
   team: Team;
   offenderId: string;
-  lineProgress: number;
   /** Ponto da infração: onde o impedido se envolveu na jogada. É de onde sai o reinício. */
   spot: Vec2;
   calledAt: number;

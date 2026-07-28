@@ -243,7 +243,7 @@ export class MatchScreen implements Screen {
   }
 
   frame(): void {
-    this.renderer.render(this.state);
+    this.renderer.render(this.state, this.session.offsideReplay);
   }
 
   resize(): void {
@@ -272,7 +272,7 @@ export class MatchScreen implements Screen {
   }
 
   private renderScrubFrame(): void {
-    this.renderer.render(this.state);
+    this.renderer.render(this.state, this.session.offsideReplay);
     this.render();
   }
 

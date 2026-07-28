@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { createMatchState, stepMatch } from "../../domain/match";
 import { FIXED_STEP } from "../../domain/match/config";
+import { emitMatchEvent } from "../../domain/match/runtime/events";
 import { createTestContext, createTestWorld } from "../__fixtures__/test-world";
 import { buildMatchConfig } from "./build-match-config";
 import { MatchSession, SIMULATION_SPEEDS } from "./match-session";
@@ -178,6 +179,68 @@ describe("MatchSession linha do tempo", () => {
     session.seek(999_999);
     expect(session.viewStep).toBe(live);
     expect(session.scrubbing).toBe(false);
+  });
+
+  /**
+   * O motor apitando o impedimento com a geometria certa é assunto de `offside.test.ts`. Aqui o
+   * que se cobra é o que a sessão faz com o apito: rebobinar até o passe, segurar em TEMPO REAL e
+   * devolver o jogo ao vivo sozinho.
+   */
+  it("o impedimento apitado rebobina a revisão até o instante do passe", () => {
+    const session = createSession(7);
+    advanceToStep(session, 480);
+    const passStep = session.liveStep - 120;
+    emitMatchEvent(session.liveState, {
+      type: "offside-called",
+      team: "blue",
+      playerId: session.liveState.players[0].profile.id,
+      lineProgress: 0.7,
+      passAt: passStep * FIXED_STEP,
+    });
+
+    session.setSpeed(8); // a pausa da bandeira não é tempo de jogo: acelerar não a encurta
+    session.advance(0.1);
+
+    expect(session.viewStep).toBe(passStep);
+    expect(session.offsideReplay).toMatchObject({ team: "blue", lineProgress: 0.7, reveal: 0 });
+
+    // Enquanto a pausa corre, nada avança e a linha vai sendo desenhada.
+    expect(session.advance(0.1)).toBe(0);
+    expect(session.viewStep).toBe(passStep);
+    expect(session.offsideReplay!.reveal).toBeCloseTo(0.1, 5);
+
+    // Passado 1s real, a linha está inteira e o lance volta a correr — do passe até o apito,
+    // reancorando ao vivo sozinho.
+    for (let frame = 0; frame < 9; frame += 1) session.advance(0.1);
+    expect(session.offsideReplay!.reveal).toBeCloseTo(1, 6);
+
+    // Orçamento de quadros em vez de laço aberto: se a revisão travasse, o teste falha na
+    // asserção seguinte em vez de pendurar a suíte.
+    for (let frame = 0; frame < 200 && session.scrubbing; frame += 1) session.advance(0.1);
+
+    expect(session.scrubbing).toBe(false);
+    expect(session.offsideReplay).toBeNull();
+    expect(session.state).toBe(session.liveState);
+  });
+
+  it("o usuário assumindo a linha do tempo encerra a revisão", () => {
+    const session = createSession(7);
+    advanceToStep(session, 480);
+    emitMatchEvent(session.liveState, {
+      type: "offside-called",
+      team: "blue",
+      playerId: session.liveState.players[0].profile.id,
+      lineProgress: 0.7,
+      passAt: (session.liveStep - 120) * FIXED_STEP,
+    });
+    session.advance(0.1);
+    expect(session.offsideReplay).not.toBeNull();
+
+    session.beginSeek();
+
+    expect(session.offsideReplay).toBeNull();
+    session.endSeek();
+    expect(session.advance(0.1)).toBeGreaterThan(0); // e o replay manual segue normal
   });
 
   it("descarta a linha do tempo ao reiniciar", () => {

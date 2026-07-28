@@ -1,4 +1,4 @@
-import { DUEL, FIELD, PHYSICS } from "../config";
+import { DUEL, FIELD, PHYSICS, REFEREE } from "../config";
 import { clamp, distance } from "../../shared/math";
 import type { Engagement, MatchState, PlayerRuntime } from "../model";
 import { clearDribbleOwner, keeperHoldingBall } from "../runtime/control";
@@ -110,7 +110,7 @@ const whistleFoul = (state: MatchState, engagement: Engagement): void => {
       y: clamp(victim.position.y, 4, FIELD.height - 4),
     },
     calledAt: state.elapsed,
-    resolveAt: state.elapsed + DUEL.freezeSeconds,
+    resolveAt: state.elapsed + REFEREE.whistleBeatSeconds,
   };
   state.stats[guilty.team].fouls += 1;
   state.ball.velocity = { x: 0, y: 0 };

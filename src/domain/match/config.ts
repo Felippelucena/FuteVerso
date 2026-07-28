@@ -603,7 +603,6 @@ export const DUEL = {
   // tranco e seguir jogando. Positivo porque atropelar funciona: só quem leva vantagem física
   // clara fica de pé, e aí o árbitro engole o apito.
   rideChallengeEdge: 0.1,
-  freezeSeconds: 0.9, // jogada parada enquanto o árbitro apita, antes do tiro livre
   // Balão baixo por cima da dividida (escolha do atacante, não desfecho do duelo).
   knockPastMinEnergy: 0.35, // energia volátil mínima para bancar a corrida atrás do balão
   knockPastProbe: 0.08, // até onde sondar espaço atrás do defensor (fração de width)
@@ -666,9 +665,13 @@ export const OFFSIDE = {
   // Margem para "estar à frente da linha" — empatar com o penúltimo adversário é legal, então
   // exige-se ultrapassá-lo por esta fração da largura, não por um resíduo de arredondamento.
   toleranceProgress: 0.004,
-  // A jogada congela e a linha é desenhada por este tempo antes do tiro livre sair. É a
-  // "animação da bandeira" pedida: tempo de leitura, não física.
-  freezeSeconds: 1.3,
+} as const;
+
+// Regra 5 — o apito. Impedimento e falta param a jogada pelo mesmo motivo (o árbitro interrompeu
+// e vai recolocar a bola), então param pelo mesmo tempo. Não é janela de animação: a leitura do
+// lance é tempo real da transmissão, não tempo de jogo.
+export const REFEREE = {
+  whistleBeatSeconds: 0.9,
 } as const;
 
 export const ANALYTICS_GRID = {

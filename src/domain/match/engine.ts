@@ -41,7 +41,7 @@ export function stepMatch(state: MatchState, dt: number): void {
     state.perceivedAt = state.elapsed;
   }
 
-  // Impedimento apitado congela a jogada e desenha a linha antes do tiro livre: uma parada de fato,
+  // Apito (impedimento ou falta) congela a jogada antes do tiro livre: uma parada de fato,
   // física e cognição suspensas, mas o relógio e o tempo tático correm. A bola parada NÃO congela —
   // é uma fase viva restrita (os jogadores caminham), tratada no fluxo normal por advanceRestart.
   if (advanceOffside(state, dt) || advanceFoul(state, dt)) {

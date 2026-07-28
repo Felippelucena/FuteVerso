@@ -1,6 +1,6 @@
 import { FIXED_STEP } from "../../domain/match/config";
 import { applyTeamAdjustment, captureMatchSnapshot, createMatchState, restoreMatchSnapshot, stepMatch } from "../../domain/match";
-import type { MatchConfig, MatchSnapshot, MatchState, TeamAdjustment } from "../../domain/match";
+import type { MatchConfig, MatchEvent, MatchSnapshot, MatchState, TeamAdjustment } from "../../domain/match";
 import type { Team } from "../../domain/shared/model";
 
 export const SIMULATION_SPEEDS = [0.5, 1, 2, 4, 8] as const;
@@ -8,6 +8,23 @@ export type SimulationSpeed = typeof SIMULATION_SPEEDS[number];
 
 const MAX_REAL_DELTA_SECONDS = 0.1;
 const MAX_STEPS_PER_ADVANCE = 140;
+
+// Quanto a jogada fica parada no quadro do passe antes do replay correr. É tempo REAL, não de
+// jogo: a velocidade da simulação não encurta a leitura de quem assiste.
+const OFFSIDE_REPLAY_HOLD_SECONDS = 1;
+
+/**
+ * O impedimento revisto como na transmissão: o apito rebobina até o instante do passe — o único
+ * em que a linha significa alguma coisa —, segura o quadro enquanto ela é desenhada e solta o
+ * replay dali, que reancora ao vivo sozinho ao alcançar a fronteira.
+ */
+export interface OffsideReplay {
+  readonly team: Team;
+  readonly offenderId: string;
+  readonly lineProgress: number;
+  /** 0→1 enquanto a linha cresce na pausa; 1 depois, com o lance correndo. */
+  readonly reveal: number;
+}
 
 // Guarda um snapshot a cada 2s de jogo. A simulação é determinística, então qualquer instante
 // entre dois keyframes é reconstruído restaurando o keyframe anterior e re-simulando os poucos
@@ -33,6 +50,9 @@ export class MatchSession {
   private liveStepCount = 0;
   private viewStepCount = 0;
   private keyframes: Keyframe[] = [];
+  private offside: Omit<OffsideReplay, "reveal"> | null = null;
+  private holdRemaining = 0;
+  private lastSeenEventId = 0;
 
   constructor(config: MatchConfig) {
     this.frontier = createMatchState(config);
@@ -80,6 +100,12 @@ export class MatchSession {
     return this.viewStepCount < this.liveStepCount;
   }
 
+  /** A bandeira do impedimento em revisão, ou nula em jogo normal. */
+  get offsideReplay(): OffsideReplay | null {
+    if (!this.offside) return null;
+    return { ...this.offside, reveal: 1 - this.holdRemaining / OFFSIDE_REPLAY_HOLD_SECONDS };
+  }
+
   advance(realDeltaSeconds: number): number {
     // Pausado ou arrastando a linha do tempo: nada avança sozinho.
     if (this.isPaused || this.isSeeking) {
@@ -89,6 +115,11 @@ export class MatchSession {
     const safeDelta = Number.isFinite(realDeltaSeconds)
       ? Math.min(Math.max(realDeltaSeconds, 0), MAX_REAL_DELTA_SECONDS)
       : 0;
+    // A pausa da bandeira congela tudo: o quadro do passe fica na tela, sem avançar um passo.
+    if (this.holdRemaining > 0) {
+      this.holdRemaining = Math.max(0, this.holdRemaining - safeDelta);
+      return 0;
+    }
     this.accumulator += safeDelta * this.currentSpeed;
     // Rebobinado, o play reproduz o passado; ao vivo, avança a fronteira.
     return this.scrubbing ? this.playReplayForward() : this.advanceFrontier();
@@ -107,11 +138,38 @@ export class MatchSession {
       if (this.liveStepCount % KEYFRAME_INTERVAL_STEPS === 0) this.recordKeyframe();
       this.accumulator -= FIXED_STEP;
       steps += 1;
+      // O apito corta o laço: a fronteira precisa parar NELE para o replay terminar na infração,
+      // e não alguns quadros adiante (a 8x, um quadro de tela são ~15 passos de jogo).
+      if (this.reviewOffsideIfCalled()) return steps;
     }
     // Ao vivo, a visão acompanha a fronteira (mesma referência, custo zero).
     this.viewStepCount = this.liveStepCount;
     this.viewState = this.frontier;
     return steps;
+  }
+
+  /**
+   * Abre a revisão quando o motor apita um impedimento. A geometria vem do próprio evento — a
+   * linha e o instante do passe são o que descreve a infração —, e o passo é a mesma equivalência
+   * que a linha do tempo já usa entre tempo de jogo e passo fixo.
+   */
+  private reviewOffsideIfCalled(): boolean {
+    if (this.frontier.eventCounter === this.lastSeenEventId) return false;
+    // O log é curto e vem do mais novo para o mais velho: basta varrer o que entrou desde a
+    // última leitura. Como isto roda a cada passo, nenhum apito cabe na folga.
+    let called: Extract<MatchEvent, { type: "offside-called" }> | null = null;
+    for (const event of this.frontier.events) {
+      if (event.id <= this.lastSeenEventId) break;
+      if (event.type === "offside-called") called = event;
+    }
+    this.lastSeenEventId = this.frontier.eventCounter;
+    if (!called) return false;
+    this.offside = { team: called.team, offenderId: called.playerId, lineProgress: called.lineProgress };
+    this.holdRemaining = OFFSIDE_REPLAY_HOLD_SECONDS;
+    // Ao menos um passo atrás da fronteira: é o replay chegando nela que encerra a revisão, então
+    // uma revisão que já nascesse ao vivo nunca teria fim.
+    this.seek(Math.min(Math.round(called.passAt / FIXED_STEP), this.liveStepCount - 1));
+    return true;
   }
 
   // Rebobinado: reproduz a história para frente re-simulando o clone exibido. A
@@ -129,11 +187,13 @@ export class MatchSession {
       this.accumulator -= FIXED_STEP;
       steps += 1;
     }
-    // Alcançou a fronteira? Reancora ao vivo (mesma referência, custo zero).
+    // Alcançou a fronteira? Reancora ao vivo (mesma referência, custo zero) e, com isso, encerra
+    // a revisão do impedimento: a bandeira existe enquanto o lance está sendo revisto.
     if (this.viewStepCount >= this.liveStepCount) {
       this.accumulator = 0;
       this.viewStepCount = this.liveStepCount;
       this.viewState = this.frontier;
+      this.endOffsideReplay();
     }
     return steps;
   }
@@ -148,12 +208,20 @@ export class MatchSession {
 
   /** Reancora a visão na fronteira ao vivo (fim da linha do tempo). */
   resumeLive(): void {
+    this.endOffsideReplay();
     this.seek(this.liveStepCount);
   }
 
   /** O usuário pegou o slider: suspende a reprodução automática enquanto arrasta. */
   beginSeek(): void {
+    // Quem pega a linha do tempo assume o lance: a revisão automática sai da frente na hora.
+    this.endOffsideReplay();
     this.isSeeking = true;
+  }
+
+  private endOffsideReplay(): void {
+    this.offside = null;
+    this.holdRemaining = 0;
   }
 
   /** O usuário soltou o slider: a reprodução automática volta a valer. */
@@ -219,6 +287,8 @@ export class MatchSession {
     this.liveStepCount = 0;
     this.viewStepCount = 0;
     this.keyframes = [];
+    this.lastSeenEventId = 0;
+    this.endOffsideReplay();
     this.recordKeyframe();
   }
 }
