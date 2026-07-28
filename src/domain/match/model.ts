@@ -362,6 +362,15 @@ export interface PendingPass {
   opponentEta: number;
   expectedHeight?: number;
   expectedSpeed?: number;
+  /**
+   * Quanto do voo a bola passou ao alcance de um jogador. A rasteira vale o voo inteiro; a
+   * erguida, só as pontas. É daqui que sai o prazo em que o passe ainda pode se completar —
+   * antes eram quatro constantes por variante que não conheciam a trajetória real.
+   *
+   * Opcional como os vizinhos: o cenário montado à mão não precisa conhecê-lo, e a ausência
+   * significa "alcançável o voo inteiro", que é a verdade de qualquer bola rasteira.
+   */
+  reachableSeconds?: number;
 }
 
 export interface ActiveShot {
@@ -536,6 +545,13 @@ export type AssignmentDuty =
   | "width"
   | "overlap"
   | "restDefense"
+  /**
+   * A tabela: quem se oferece ATRÁS da linha da bola para ela voltar e sair de novo. Era o
+   * buraco da forma — todo apoio vivia à frente do portador (de +7 a +35 m) e a única opção
+   * atrás era o rest defense, a 19-25 m e com alvo próprio. Entre um e outro não havia ninguém
+   * encarregado de se oferecer, e por isso a triangulação não tinha como acontecer.
+   */
+  | "recycle"
   // Sem a bola, com o time fora de posse.
   | "press"
   | "trackRunner"
@@ -566,6 +582,12 @@ export interface TeamShapePlacement {
    * esticado saindo para o jogo.
    */
   depth: number;
+  /**
+   * Deslize lateral do bloco inteiro, em fração da altura do campo: para o canal de ataque com a
+   * bola, para o lado da bola sem ela. Contínuo, e não um passo de linha na grade — o passo
+   * saturava na borda e esmagava o time contra uma lateral (ver `cellLane`).
+   */
+  lateralShift: number;
   /**
    * Profundidade máxima de qualquer célula, em % da largura. Para quem ataca é a última linha
    * adversária: é a restrição posicional que o impedimento cria, e sem ela os atacantes vivem

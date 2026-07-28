@@ -78,11 +78,28 @@ export const PHYSICS = {
   passiveCollisionRadiusFactor: 0.78,
   playerBounce: 0.25,
   kickDistance: 4.15,
-  // Até que altura um jogador de linha ainda alcança a bola. É o teto do domínio e da leitura
-  // da corrida: acima dele a bola passa por cima de todo mundo e não há disputa nenhuma.
+  // Até que altura um jogador de linha ainda alcança a bola — de cabeça, no alto do salto. É o
+  // teto do domínio e da leitura da corrida: acima dele a bola passa por cima de todo mundo e
+  // não há disputa nenhuma. Toda altura de contato sai daqui em fração (ver `CONTACT_BAND`),
+  // então este é o único número a mexer para subir ou baixar o jogo aéreo inteiro.
+  //
+  // O teto é `GOALKEEPING.standingReach` (2,85): quem joga com a cabeça não pode alcançar mais
+  // alto que o goleiro de mãos erguidas, senão o cruzamento deixa de ser da área do goleiro.
+  //
+  // Subir daqui foi MEDIDO e não compensa: a 2,6 o acerto de passe cai (0,44 → 0,40) e a
+  // interceptação sobe (0,42 → 0,46). Alcançar mais alto é um ganho simétrico, e quem tira
+  // proveito dele são os onze marcadores, não o recebedor — a bola alta vira disputa de todos
+  // em vez de entrega para um. Reabrir só se a bola aérea deixar de ser a exceção que é hoje.
   reachableBallHeight: 2.4,
   kickCooldown: 0.42,
   maxBallSpeed: 108,
+  // Velocidade que a perna imprime numa bola ERGUIDA. É o teto de força do lançamento, e é ele
+  // que decide se o passe aéreo sai rasante ou em parábola: a altura vem do corpo a transpor
+  // (ver `pass-trajectory`), e a distância, do que sobra de velocidade. Sem este teto o motor
+  // resolvia um lançamento de 38 m como um foguete rasante a 94 u/s — quase o dobro do que
+  // qualquer recepção amortece. Está na base da escala do chute (`lerp(54, 92, power)`): um
+  // passe erguido é batido como a mais suave das finalizações.
+  aerialPassLaunchSpeed: 56,
   walkSpeedFactor: 0.62,
   controlledSpeedFactor: 0.68,
   runSpeedFactor: 1.32,
@@ -292,14 +309,33 @@ export const DECISION = {
     finalThirdUrgency: 0.22,
   },
 
-  /** A nota do passe: o que a bola vale além do que a geometria já paga. */
+  /**
+   * A nota do passe: **o que a bola vale × a chance de ela chegar**, menos o que custa perdê-la.
+   *
+   * Antes era uma soma de valor MENOS uma soma de risco, e por isso um valor grande engolia
+   * qualquer risco: o ótimo da fórmula era a bola longa para o vazio, que o motor jogava 88% das
+   * vezes e completava 24%. Com o risco entrando como fator, e não como parcela, a bola de 24%
+   * perde para a de 90% sem precisar de penalidade nenhuma — e as penalidades ad-hoc que
+   * existiam para simular isso (pressão de linha, comprimento, desconto aéreo) saíram todas.
+   *
+   * O que mora aqui é só o VALOR: quanto vale receber em tal lugar, de tal jeito, servindo tal
+   * dever. A chance de chegar é geometria e sai de `runtime/pass-viability`.
+   */
   pass: {
     progressReference: 24,
     opennessReference: 14,
-    lengthPenaltyReference: 72,
+    /** Receber com espaço vale por si: dá o próximo lance. Não é mais o termo de risco que era. */
+    space: 0.42,
     centrality: 0.18,
     wallPass: 0.64,
-    backwardsSafety: 0.22,
+    /** Janela da tabela: por quanto tempo quem me passou a bola ainda é o parceiro da devolução. */
+    wallPassWindow: 4.2,
+    /**
+     * O que custa entregar a bola. Cresce quanto mais perto do próprio gol ela se perde — perder
+     * no ataque é um contra-ataque; perder na saída é um gol. É a única parcela que sobrou fora
+     * da multiplicação, porque ela é o preço do fracasso, não um desconto no sucesso.
+     */
+    turnoverCost: 1.15,
     channelAffinity: 0.2,
     /** Repertório: bola de cada tipo vale o que o futebol paga por ela. */
     purpose: { cutback: 0.42, crossToFinisher: 0.32, cross: 0.14, throughBall: 0.28, layoff: 0.22 },
@@ -316,6 +352,10 @@ export const DECISION = {
 export const POSSESSION = {
   confirmationSeconds: 0.32,
   looseBallGraceSeconds: 0.55,
+  // Prazo para dominar a bola do passe depois que ela chega. Uma constante, e não quatro por
+  // variante: o que muda de um passe para outro é quanto do voo a bola ficou ALTA demais para
+  // alguém, e isso `expirePendingPass` soma por cima, lendo a trajetória de verdade.
+  passControlSeconds: 0.6,
   phaseDebounceSeconds: 0.45,
   minimumPhaseSeconds: 0.75,
   finalThirdEnter: 0.68,
@@ -439,12 +479,17 @@ export const GOALKEEPING = {
   // quem segurou demais, e dispensa um caso especial que o obrigue a chutar.
   //
   // `releaseStandard` é uma nota na escala do `choosePass`, calibrada por medição: com o campo
-  // aberto o goleiro acha uma saída acima dela em ~1,2s e joga logo; num quadro fechado ele
-  // espera, e a posse média fica em ~2,7s. Acima de 8 ele segura até a janela quase estourar, e
-  // aí o passe sai pior do que sairia antes.
+  // aberto o goleiro acha uma saída acima dela e joga logo; num quadro fechado ele espera. Acima
+  // do dobro disto ele segura até a janela quase estourar, e aí o passe sai pior do que sairia
+  // antes.
+  //
+  // Reaferido quando a nota do passe virou valor × probabilidade: a escala encolheu (o teto de
+  // uma nota boa caiu de ~5 para ~2,5), e a régua antiga de 5 punha o goleiro segurando a bola
+  // 3,3s em média em vez dos ~2s de antes. Este número só faz sentido junto da escala de
+  // `DECISION.pass` — mexer numa exige remedir a outra.
   minimumHoldSeconds: 1.2,
   maximumHoldSeconds: 6,
-  releaseStandard: 5,
+  releaseStandard: 2.8,
   // Depois de espalmar/rebater, fica em alerta e se reposiciona em velocidade por este tempo.
   alertSeconds: 2.6,
   // Velocidade de reposicionamento durante o alerta (corrida, não a corridinha de ajuste).

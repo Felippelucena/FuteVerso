@@ -42,9 +42,16 @@ const duplicatedCells = (state: MatchState, team: Team): string[] => {
   return [...seen.entries()].filter(([, count]) => count > 1).map(([key]) => key);
 };
 
-const averageRow = (state: MatchState, team: Team): number => {
-  const zones = Object.values(planOf(state, team).assignments).map((assignment) => assignment.zone.row);
-  return zones.reduce((sum, row) => sum + row, 0) / zones.length;
+/**
+ * Onde o bloco está no GRAMADO, e não em que linha da grade ele caiu. O deslize lateral é
+ * contínuo (`placement.lateralShift`), então medir o índice da linha media o mecanismo em vez do
+ * comportamento — e travava a próxima mudança de mecanismo sem defender nada.
+ */
+const averageLane = (state: MatchState, team: Team): number => {
+  const players = state.players.filter((player) => player.team === team
+    && player.profile.position !== "goalkeeper");
+  const plan = planOf(state, team);
+  return players.reduce((sum, player) => sum + assignedAnchor(plan, player).y, 0) / players.length;
 };
 
 describe("incumbências coletivas", () => {
@@ -141,8 +148,8 @@ describe("incumbências coletivas", () => {
     nearRight.ball.position = { ...other.position };
     updateTacticalContext(nearRight, 0);
 
-    // O time sem a bola acompanha a bola como bloco: as células inteiras andam de lado.
-    expect(averageRow(nearRight, "coral")).toBeGreaterThan(averageRow(nearLeft, "coral"));
+    // O time sem a bola acompanha a bola como bloco: a forma inteira desliza para a faixa dela.
+    expect(averageLane(nearRight, "coral")).toBeGreaterThan(averageLane(nearLeft, "coral"));
   });
 
   it("sobe a linha do time com a bola adiantada e recua com ela no próprio campo", () => {

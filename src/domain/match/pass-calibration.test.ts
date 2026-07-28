@@ -1,20 +1,187 @@
 import { describe, expect, it } from "vitest";
 import { referenceMatchConfig } from "./__fixtures__/reference-match";
+import { CALIBRATION } from "./__fixtures__/calibration";
 import { createMatchState, stepMatch } from "./index";
 import { FIELD } from "./config";
-import type { PendingPass } from "./model";
+import type { MatchState, PendingPass, PlayerRuntime } from "./model";
+import { distance, distanceToSegment } from "../shared/math";
 import { evaluateForwardRunway } from "./runtime/dribble-runway";
 import { evaluateShotOpportunity } from "./runtime/shot-opportunity";
 import { dutyLeader } from "./systems/assignment-system";
 
-type Bucket = { total: number; intended: number; teammate: number; opponent: number; expired: number };
+const average = (values: number[]): number =>
+  values.reduce((sum, value) => sum + value, 0) / Math.max(1, values.length);
+
+const share = (part: number, whole: number): number => Number((part / Math.max(1, whole)).toFixed(3));
+
+const meters = (units: number): number => Number((units / FIELD.unitsPerMeter).toFixed(1));
+
+/**
+ * A composição do passe: QUE bola o motor escolhe jogar, e não só quanto ela acerta depois de
+ * escolhida. Medir só o acerto por variante deixa passar o motor que joga 88% de bola aérea e
+ * acerta 24% dela — cada faixa fecha isoladamente e o jogo é um chuveirinho. É por isso que o
+ * share entra aqui ao lado da precisão: as duas juntas descrevem a circulação, cada uma sozinha
+ * mente.
+ */
+interface PassBucket {
+  total: number;
+  intended: number;
+  teammate: number;
+  opponent: number;
+  expired: number;
+  distanceSum: number;
+}
+
+const emptyBucket = (): PassBucket =>
+  ({ total: 0, intended: 0, teammate: 0, opponent: 0, expired: 0, distanceSum: 0 });
+
+/** Fases em que a bola acabou de trocar de dono: jogo em transição, não em posse construída. */
+const TRANSITION_PHASES = new Set(["counterAttack", "counterPress", "recovery"]);
+
+describe("calibracao da circulacao de bola", () => {
+  // ALVO DA REFORMA DO PASSE, não retrato do motor de hoje: as faixas abaixo descrevem o
+  // futebol que se quer (~80% de acerto, bola aérea como exceção, circulação de ~11 passes/min)
+  // e ficam VERMELHAS até a reforma fechar. O relatório impresso é o instrumento de progresso;
+  // a asserção é o critério de pronto. Ver o plano da reforma e docs/architecture.md.
+  it.runIf(CALIBRATION)("joga o passe do futebol: composicao, acerto e largura em oito sementes", () => {
+    const buckets = new Map<string, PassBucket>();
+    const outcomes = { intercepted: 0, loose: 0, transition: 0 };
+    const widths: number[] = [];
+    const cleanLanes: number[] = [];
+    let minutes = 0;
+
+    for (let seed = 1; seed <= 8; seed += 1) {
+      const state = createMatchState(referenceMatchConfig(7000 + seed));
+      let tracked: (PendingPass & { travel: number; transition: boolean }) | null = null;
+      let nextShapeSample = 0;
+
+      const finishTracked = (): void => {
+        if (!tracked) return;
+        const bucket = buckets.get(`${tracked.range}-${tracked.trajectory}`) ?? emptyBucket();
+        bucket.total += 1;
+        bucket.distanceSum += tracked.travel;
+        if (tracked.transition) outcomes.transition += 1;
+        const resolution = [...state.cognitiveEvents].reverse()
+          .find((event) => event.type === "passResolved" && event.passId === tracked?.id);
+        const controller = state.players.find((player) =>
+          player.profile.id === (resolution?.controllerId ?? state.ball.controllerId));
+        if (resolution?.outcome === "received" || resolution?.outcome === "otherTeammate" || controller?.team === tracked.team) {
+          bucket.teammate += 1;
+          if (resolution?.outcome === "received" || controller?.profile.id === tracked.receiverId) bucket.intended += 1;
+        } else if (resolution?.outcome === "intercepted" || controller) {
+          bucket.opponent += 1;
+          outcomes.intercepted += 1;
+        } else {
+          bucket.expired += 1;
+          outcomes.loose += 1;
+        }
+        buckets.set(`${tracked.range}-${tracked.trajectory}`, bucket);
+      };
+
+      while (!state.finished) {
+        stepMatch(state, 1 / 120);
+        if (tracked && (!state.pendingPass || state.pendingPass.id !== tracked.id)) {
+          finishTracked();
+          tracked = null;
+        }
+        if (!tracked && state.pendingPass) {
+          const passer = state.players.find((player) => player.profile.id === state.pendingPass!.passerId);
+          tracked = {
+            ...state.pendingPass,
+            travel: passer ? distance(passer.position, state.pendingPass.landingPoint) : 0,
+            transition: TRANSITION_PHASES.has(state.tactics[state.pendingPass.team].phase),
+          };
+        }
+        if (state.elapsed < nextShapeSample) continue;
+        nextShapeSample += 0.5;
+        const controller = state.players.find((player) => player.profile.id === state.ball.controllerId);
+        if (!controller) continue;
+        // Largura do time COM a bola: é a medida que denuncia o bloco estreito, e é dela que
+        // sai (ou não) a linha de passe curta. Compactação em torno do centroide não serve —
+        // ela confunde estreiteza com profundidade.
+        const mates = state.players.filter((player) => player.team === controller.team
+          && player.profile.position !== "goalkeeper");
+        widths.push(Math.max(...mates.map((p) => p.position.y)) - Math.min(...mates.map((p) => p.position.y)));
+        const opponents = state.players.filter((player) => player.team !== controller.team);
+        cleanLanes.push(countCleanLanes(controller, mates, opponents));
+      }
+      finishTracked();
+      minutes += state.elapsed / 60;
+    }
+
+    const totals = [...buckets.values()].reduce((sum, bucket) => ({
+      total: sum.total + bucket.total,
+      teammate: sum.teammate + bucket.teammate,
+      intended: sum.intended + bucket.intended,
+      distanceSum: sum.distanceSum + bucket.distanceSum,
+    }), { total: 0, teammate: 0, intended: 0, distanceSum: 0 });
+    const aerial = (buckets.get("short-air")?.total ?? 0) + (buckets.get("long-air")?.total ?? 0);
+
+    const report = {
+      passes: totals.total,
+      perMinute: Number((totals.total / minutes).toFixed(1)),
+      accuracy: share(totals.teammate, totals.total),
+      intendedAccuracy: share(totals.intended, totals.total),
+      meanDistance_m: meters(totals.distanceSum / Math.max(1, totals.total)),
+      aerialShare: share(aerial, totals.total),
+      shortGroundShare: share(buckets.get("short-ground")?.total ?? 0, totals.total),
+      interceptedShare: share(outcomes.intercepted, totals.total),
+      looseShare: share(outcomes.loose, totals.total),
+      transitionShare: share(outcomes.transition, totals.total),
+      ownWidth_m: meters(average(widths)),
+      cleanLanes: Number(average(cleanLanes).toFixed(2)),
+      byVariant: Object.fromEntries([...buckets].map(([key, bucket]) => [key, {
+        share: share(bucket.total, totals.total),
+        accuracy: share(bucket.teammate, bucket.total),
+        intendedAccuracy: share(bucket.intended, bucket.total),
+        loose: share(bucket.expired, bucket.total),
+        meanDistance_m: meters(bucket.distanceSum / Math.max(1, bucket.total)),
+      }])),
+    };
+    // eslint-disable-next-line no-console
+    console.info("PASS_CIRCULATION", JSON.stringify(report, null, 1));
+
+    expect(report.passes).toBeGreaterThan(400);
+    // Composição: que bola o motor escolhe jogar.
+    expect(report.aerialShare).toBeLessThanOrEqual(0.2);
+    expect(report.shortGroundShare).toBeGreaterThanOrEqual(0.35);
+    expect(report.meanDistance_m).toBeGreaterThanOrEqual(16);
+    expect(report.meanDistance_m).toBeLessThanOrEqual(20);
+    // Precisão: quanto dela chega.
+    expect(report.accuracy).toBeGreaterThanOrEqual(0.78);
+    expect(report.accuracy).toBeLessThanOrEqual(0.85);
+    expect(report.byVariant["short-ground"]?.accuracy ?? 0).toBeGreaterThanOrEqual(0.86);
+    expect(report.looseShare).toBeLessThan(0.08);
+    // Ritmo e forma: o jogo que sai disso.
+    expect(report.perMinute).toBeGreaterThanOrEqual(9);
+    expect(report.perMinute).toBeLessThanOrEqual(13);
+    expect(report.transitionShare).toBeLessThan(0.35);
+    expect(report.ownWidth_m).toBeGreaterThanOrEqual(38);
+    expect(report.cleanLanes).toBeGreaterThanOrEqual(2);
+  }, 600_000);
+});
+
+/**
+ * Companheiros a distância de passe com o corredor limpo — a oferta real que o portador tem.
+ * É a medida da triangulação: muitos corpos por perto e nenhuma linha aberta é o retrato do
+ * time que se amontoa.
+ */
+const countCleanLanes = (
+  controller: PlayerRuntime,
+  mates: PlayerRuntime[],
+  opponents: PlayerRuntime[],
+): number => mates.filter((mate) => {
+  if (mate.profile.id === controller.profile.id) return false;
+  if (distance(mate.position, controller.position) >= FIELD.width * 0.22) return false;
+  return !opponents.some((opponent) =>
+    distanceToSegment(opponent.position, controller.position, mate.position) < FIELD.height * 0.06);
+}).length;
 
 describe("calibracao deterministica da partida", () => {
   // TODO: recalibrar. As defesas fisicas mudaram o equilibrio da partida de proposito
   // (o goleiro deixou de alcancar por halo e passou a alcancar por corpo), e as faixas
   // aqui ainda descrevem o goleiro magnetico. Reabrir depois de fechar o feel do mergulho.
-  it.skip("mantem passes, piques e energia nas faixas em doze sementes", () => {
-    const buckets = new Map<string, Bucket>();
+  it.skip("mantem piques, energia e finalizacao nas faixas em doze sementes", () => {
     const touches = { short: 0, medium: 0, long: 0 };
     const energy = {
       centerMid: { sum: 0, samples: 0, belowHalf: 0, atFloor: 0 },
@@ -35,26 +202,19 @@ describe("calibracao deterministica da partida", () => {
     let decisiveClearChances = 0;
     const activeClearChances = new Map<string, { startedAt: number; expiresAt: number }>();
     for (let seed = 1; seed <= 12; seed += 1) {
-      const state = createMatchState(referenceMatchConfig(7000 + seed));
+      const state: MatchState = createMatchState(referenceMatchConfig(7000 + seed));
       let tracked: PendingPass | null = null;
       let trackedFirstTimeShots = 0;
       let nextWorkloadSample = 0;
       const seenShots = new Set<number>();
       const seenSaveEvents = new Set<number>();
       const shotDistances = new Map<number, "close" | "medium" | "long">();
+      // O cruzamento só é medido aqui porque a pergunta é de ATAQUE — quanto cruzamento vira
+      // finalização de primeira —, e não de precisão de passe, que mora no teste acima.
       const finishTracked = () => {
         if (!tracked) return;
-        const key = `${tracked.range}-${tracked.trajectory}`;
-        const bucket = buckets.get(key) ?? { total: 0, intended: 0, teammate: 0, opponent: 0, expired: 0 };
-        bucket.total += 1;
         const resolution = [...state.cognitiveEvents].reverse().find((event) => event.type === "passResolved" && event.passId === tracked?.id);
         const controller = state.players.find((player) => player.profile.id === (resolution?.controllerId ?? state.ball.controllerId));
-        if (resolution?.outcome === "received" || resolution?.outcome === "otherTeammate" || controller?.team === tracked.team) {
-          bucket.teammate += 1;
-          if (resolution?.outcome === "received" || controller?.profile.id === tracked.receiverId) bucket.intended += 1;
-        } else if (resolution?.outcome === "intercepted" || controller) bucket.opponent += 1;
-        else bucket.expired += 1;
-        buckets.set(key, bucket);
         if (tracked.purpose === "cross" && (resolution?.outcome === "received" || resolution?.outcome === "otherTeammate" || controller?.team === tracked.team)) {
           attack.eligibleCrosses += 1;
           const currentFirstTimeShots = state.stats.blue.firstTimeShots + state.stats.coral.firstTimeShots;
@@ -71,8 +231,8 @@ describe("calibracao deterministica da partida", () => {
           if (shot.targetHeight > 2.4) keeper.highShots += 1;
           const shooter = state.players.find((player) => player.profile.id === shot.shooterId);
           const goal = { x: shot.team === "blue" ? FIELD.width : 0, y: FIELD.height / 2 };
-          const distance = shooter ? Math.hypot(shooter.position.x - goal.x, shooter.position.y - goal.y) : FIELD.width;
-          const category = distance < FIELD.width * 0.13 ? "close" : distance < FIELD.width * 0.25 ? "medium" : "long";
+          const shotDistance = shooter ? Math.hypot(shooter.position.x - goal.x, shooter.position.y - goal.y) : FIELD.width;
+          const category = shotDistance < FIELD.width * 0.13 ? "close" : shotDistance < FIELD.width * 0.25 ? "medium" : "long";
           shotDistances.set(shot.id, category);
           if (shot.onTarget) keeper.distance[category].onTarget += 1;
         }
@@ -160,12 +320,6 @@ describe("calibracao deterministica da partida", () => {
       }
     }
 
-    const report = Object.fromEntries([...buckets].map(([key, bucket]) => [key, {
-      ...bucket,
-      accuracy: Number((bucket.teammate / bucket.total).toFixed(3)),
-      intendedAccuracy: Number((bucket.intended / bucket.total).toFixed(3)),
-    }]));
-    console.info("PASS_CALIBRATION", JSON.stringify(report));
     const totalTouches = touches.short + touches.medium + touches.long;
     const touchReport = {
       perMatch: totalTouches / 12,
@@ -181,6 +335,7 @@ describe("calibracao deterministica da partida", () => {
         atFloor: role.atFloor / role.samples,
       }])),
     };
+    // eslint-disable-next-line no-console
     console.info("WORKLOAD_CALIBRATION", JSON.stringify(touchReport));
     const attackReport = {
       ...attack,
@@ -190,6 +345,7 @@ describe("calibracao deterministica da partida", () => {
       exposedShapeSamples,
       decisiveClearChanceRate: decisiveClearChances / Math.max(1, clearChanceSamples),
     };
+    // eslint-disable-next-line no-console
     console.info("ATTACK_CALIBRATION", JSON.stringify(attackReport));
     const keeperReport = {
       ...keeper,
@@ -198,20 +354,8 @@ describe("calibracao deterministica da partida", () => {
       parryRate: keeper.parries / Math.max(1, keeper.catches + keeper.parries),
       saveRate: Object.fromEntries(Object.entries(keeper.distance).map(([key, value]) => [key, value.saved / Math.max(1, value.onTarget)])),
     };
+    // eslint-disable-next-line no-console
     console.info("GOALKEEPER_CALIBRATION", JSON.stringify(keeperReport));
-    expect([...buckets.values()].reduce((sum, bucket) => sum + bucket.total, 0)).toBeGreaterThan(400);
-    for (const key of ["short-ground", "long-ground", "short-air", "long-air"]) {
-      expect(buckets.get(key)?.total ?? 0).toBeGreaterThan(15);
-    }
-    const accuracy = (key: string) => (buckets.get(key)?.teammate ?? 0) / (buckets.get(key)?.total ?? 1);
-    expect(accuracy("short-ground")).toBeGreaterThanOrEqual(0.65);
-    expect(accuracy("short-ground")).toBeLessThanOrEqual(0.75);
-    expect(accuracy("long-ground")).toBeGreaterThanOrEqual(0.55);
-    expect(accuracy("long-ground")).toBeLessThanOrEqual(0.65);
-    expect(accuracy("short-air")).toBeGreaterThanOrEqual(0.5);
-    expect(accuracy("short-air")).toBeLessThanOrEqual(0.6);
-    expect(accuracy("long-air")).toBeGreaterThanOrEqual(0.3);
-    expect(accuracy("long-air")).toBeLessThanOrEqual(0.45);
     expect(touchReport.perMatch).toBeGreaterThanOrEqual(18);
     expect(touchReport.perMatch).toBeLessThanOrEqual(32);
     expect(touchReport.distribution.short).toBeGreaterThanOrEqual(0.35);

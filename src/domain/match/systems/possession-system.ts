@@ -1,4 +1,4 @@
-import { FIELD, OFFSIDE, PHYSICS } from "../config";
+import { FIELD, OFFSIDE, PHYSICS, POSSESSION } from "../config";
 import { add, clamp, distance, dot, length, normalize, scale, subtract } from "../../shared/math";
 import type { MatchState, PlayerRuntime } from "../model";
 import { emitMatchEvent } from "../runtime/events";
@@ -10,6 +10,8 @@ import {
   registerControlledTeam,
   registerLooseBall,
 } from "../runtime/control";
+import { classifyReception, RECEPTION_NOISE, receptionMargin } from "../runtime/pass-viability";
+import { contactHeightBand } from "../runtime/reception-planning";
 import { signedMatchNoise } from "../runtime/random";
 import { restartForbidsTouch } from "../runtime/restart";
 import { resolveShot } from "../runtime/shot";
@@ -59,6 +61,10 @@ const registerPassOutcome = (state: MatchState, controller: PlayerRuntime): void
   state.pendingPass = null;
 };
 
+/**
+ * O primeiro toque: a mesma conta de `runtime/pass-viability`, com a bola REAL que chegou e o
+ * ruído do lance somado por cima. Quem decide o passe chama a mesma função com a bola prevista.
+ */
 const firstTouchOutcome = (
   state: MatchState,
   player: PlayerRuntime,
@@ -66,30 +72,24 @@ const firstTouchOutcome = (
   ownBox: boolean,
   continuesOwnDribble: boolean,
 ): "clean" | "heavy" | "miss" => {
-  const relativeSpeed = length(subtract(state.ball.velocity, player.velocity));
   const toBall = normalize(subtract(state.ball.position, player.position));
-  const facingAlignment = clamp((dot(player.facing, toBall) + 1) / 2, 0, 1);
-  const preparedReceiver = state.pendingPass?.receiverId === player.profile.id
+  const prepared = state.pendingPass?.receiverId === player.profile.id
     && Math.abs(state.elapsed - state.pendingPass.expectedArrivalAt) < 0.8;
-  const speedDifficulty = clamp(relativeSpeed / (ownBox ? 68 : 52), 0, 1) * (ownBox ? 0.5 : 0.64)
-    * (preparedReceiver ? 0.9 : 1);
-  const heightDifficulty = clamp(state.ball.height / 2.4, 0, 1) * 0.18;
-  const positioningDifficulty = (1 - facingAlignment) * 0.16;
-  const pressureDifficulty = pressureAt(state, player) * 0.1 * (1.22 - player.profile.mental.composure / 180);
-  const passControlDifficulty = state.pendingPass?.team === player.team
-    ? state.pendingPass.trajectory === "air"
-      ? state.pendingPass.range === "long" ? 0.24 : 0.19
-      : state.pendingPass.range === "long" ? 0.17 : 0.12
-    : 0;
-  const dribbleBonus = continuesOwnDribble ? 0.18 : 0;
-  const receptionBonus = preparedReceiver
-    ? facingAlignment * 0.03 + player.profile.mental.anticipation / 100 * 0.03
-    : 0;
-  const margin = quality * 0.72 + player.stamina * 0.1 + dribbleBonus + receptionBonus + signedMatchNoise(state) * 0.16
-    - speedDifficulty - heightDifficulty - positioningDifficulty - pressureDifficulty - passControlDifficulty;
-  if (margin > (ownBox ? 0.08 : 0.16)) return "clean";
-  if (margin > -0.13) return "heavy";
-  return "miss";
+  const margin = receptionMargin({
+    quality,
+    stamina: player.stamina,
+    composure: player.profile.mental.composure,
+    anticipation: player.profile.mental.anticipation,
+    relativeSpeed: length(subtract(state.ball.velocity, player.velocity)),
+    ballHeight: state.ball.height,
+    facingAlignment: clamp((dot(player.facing, toBall) + 1) / 2, 0, 1),
+    pressure: pressureAt(state, player),
+    ownBox,
+    continuesOwnDribble,
+    prepared,
+    reachableHeight: PHYSICS.reachableBallHeight,
+  });
+  return classifyReception(margin + signedMatchNoise(state) * RECEPTION_NOISE, ownBox);
 };
 
 const applyHeavyTouch = (state: MatchState, player: PlayerRuntime, quality: number): void => {
@@ -113,10 +113,11 @@ const tryPreparedContact = (state: MatchState, player: PlayerRuntime): boolean =
   if (prepared.passId !== (pending.id ?? 0)) return false;
   if (state.elapsed < prepared.validFrom - 0.08 || state.elapsed > prepared.expiresAt) return false;
   const height = state.ball.height;
-  const heightValid = prepared.technique === "header" ? height >= 0.9 && height <= 2.4
-    : prepared.technique === "volley" ? height >= 0.2 && height <= 1.85
-      : prepared.technique === "redirect" ? height <= 2
-        : height <= 0.75;
+  const band = contactHeightBand(prepared.technique === "header" ? "header"
+    : prepared.technique === "volley" ? "volley"
+      : prepared.technique === "redirect" ? "redirect"
+        : "placed");
+  const heightValid = height >= band.low && height <= band.high;
   if (!heightValid || Math.abs(length(state.ball.velocity) - prepared.expectedSpeed) > 32) return false;
   const techniqueBase = prepared.kind === "pass"
     ? (player.profile.skills.passing * 0.5 + player.profile.skills.control * 0.3
@@ -190,7 +191,7 @@ export const updatePossession = (state: MatchState, dt: number): void => {
   } else {
     registerLooseBall(state);
   }
-  if (state.ball.height > 2.4) {
+  if (state.ball.height > PHYSICS.reachableBallHeight) {
     if (!dribbleOwner && !inFlightPassTeam) state.contestedSeconds += dt;
     return;
   }
@@ -329,9 +330,13 @@ export const expirePendingPass = (state: MatchState): void => {
   // desvio que interessa ao jogador é o que muda quem chega primeiro, e disso quem cuida é
   // `runtime/ball-situation` — quem deixou de ser o favorito para de esperar a bola no mesmo
   // quadro. Matar o `pendingPass` junto só apagava o crédito do passe que ainda se completava.
-  const controlWindow = pending.trajectory === "air"
-    ? pending.range === "long" ? 0.16 : 0.35
-    : pending.range === "long" ? 0.48 : 0.75;
+  //
+  // O prazo é o de sempre MAIS o tempo em que a bola esteve alta demais para alguém: esse pedaço
+  // do voo não foi chance de domínio nenhuma, e cobrá-lo do recebedor era o que matava metade
+  // dos lançamentos antes de qualquer um poder encostar neles.
+  const flightSeconds = pending.expectedArrivalAt - pending.startedAt;
+  const controlWindow = POSSESSION.passControlSeconds
+    + Math.max(0, flightSeconds - (pending.reachableSeconds ?? flightSeconds));
   if (state.elapsed <= pending.expectedArrivalAt + controlWindow) return;
   // O passe morreu no ar sem chegar ao impedido: aí sim não há mais o que vigiar.
   if (state.offsideWatch?.passId === pending.id) state.offsideWatch = null;

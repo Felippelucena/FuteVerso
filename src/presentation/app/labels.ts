@@ -130,6 +130,7 @@ export const DUTY_LABELS: Record<AssignmentDuty, string> = {
   support: "apoio",
   width: "amplitude",
   overlap: "sobreposição",
+  recycle: "tabela",
   restDefense: "retaguarda",
   press: "pressão",
   trackRunner: "marcação",

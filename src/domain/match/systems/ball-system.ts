@@ -18,7 +18,8 @@ import { beginRestart, registerRestartKick } from "../runtime/restart";
 import { offsideOffendersAtPass } from "../runtime/offside";
 import { playerSkillSpeed } from "../runtime/player-metrics";
 import { signedMatchNoise } from "../runtime/random";
-import { solvePassTrajectory, targetAlongDirection } from "../runtime/pass-trajectory";
+import { estimatePassDuration, reachableFlightSeconds, solvePassTrajectory, targetAlongDirection } from "../runtime/pass-trajectory";
+import { laneClearance } from "../runtime/pass-viability";
 import { beginShot, resolveShot } from "../runtime/shot";
 import { predictShotPoint, solveShotTrajectory } from "../runtime/shot-trajectory";
 import { resolveGoalkeeperContact } from "./goalkeeper-system";
@@ -270,16 +271,33 @@ export const executeBallAction = (state: MatchState, player: PlayerRuntime, acti
   }
   const baseQuality = (player.profile.skills.passing * 0.68 + player.profile.skills.vision * 0.32) / 100;
   const passDistance = distance(state.ball.position, action.target);
-  const distanceDifficulty = action.range === "long" ? clamp(passDistance / FIELD.width, 0.08, 0.34) * 0.42 + 0.015 : 0;
-  const difficulty = distanceDifficulty + (action.trajectory === "air" ? 0.07 : action.range === "short" ? 0.12 : 0)
+  // Dificuldade CONTÍNUA na distância: não existe degrau entre "curto" e "longo", existe um passe
+  // mais longo que o outro. O rótulo escolhe o tipo de bola, não o quanto ela é difícil de bater.
+  //
+  // Antes o rasteiro curto — o passe mais fácil do futebol — era o mais difícil da tabela (+0,12
+  // contra +0,07 do aéreo e +0 do rasteiro longo) e ainda levava o maior erro angular (0,82
+  // contra 0,56 do longo). Era compensação: sem ela o curto dominava a nota antiga. Com a nota
+  // valendo valor × probabilidade, conter o curto é trabalho da nota, não da perna.
+  const distanceDifficulty = clamp(passDistance / FIELD.width, 0, 0.4) * 0.5;
+  const difficulty = distanceDifficulty + (action.trajectory === "air" ? 0.06 : 0)
     + pressure * 0.2 + (1 - player.stamina) * 0.12;
   const quality = clamp(baseQuality - difficulty, 0.18, 0.97);
-  const angularError = action.range === "long" ? 0.56 : action.trajectory === "air" ? 0.48 : 0.82;
+  // Um erro angular só, porque a mira é a mesma em qualquer passe. A bola erguida espalha um
+  // pouco mais: é o contato de chapa que se controla menos. A distância já entra pela qualidade.
+  const angularError = action.trajectory === "air" ? 0.58 : 0.5;
   const direction = rotate(normalize(subtract(action.target, state.ball.position)), signedMatchNoise(state) * (1 - quality) * angularError);
   const distancePower = clamp(passDistance / (action.range === "long" ? 76 : 48), 0, 1);
   const chosenPower = clamp(Math.max(action.power, 0.44 + distancePower * 0.44), 0.42, 1);
   const executedTarget = targetAlongDirection(state.ball.position, action.target, direction);
-  const solution = solvePassTrajectory(state.ball.position, executedTarget, action.trajectory, action.range, action.targeting, chosenPower);
+  // A altura do passe é a do corpo que ele transpõe: quem ergue a bola sobre um corredor limpo
+  // paga o voo e não compra nada, e é o solver que agora diz isso.
+  const clearance = laneClearance(
+    state.ball.position,
+    executedTarget,
+    state.players.filter((candidate) => candidate.team !== player.team),
+    estimatePassDuration(passDistance, action.trajectory, action.range, action.targeting, chosenPower),
+  );
+  const solution = solvePassTrajectory(state.ball.position, executedTarget, action.trajectory, action.range, action.targeting, chosenPower, clearance);
   releaseBall(state, player, normalize(solution.velocity), length(solution.velocity), solution.verticalVelocity);
   state.ball.lastAction = "pass";
   // O ataque seguiu com outra bola: um chute que ainda estivesse em curso morreu aqui.
@@ -310,8 +328,9 @@ export const executeBallAction = (state: MatchState, player: PlayerRuntime, acti
     expectedArrivalAt: state.elapsed + solution.duration,
     receiverEta: action.receiverEta ?? solution.duration,
     opponentEta: action.opponentEta ?? solution.duration,
-    expectedHeight: action.trajectory === "air" ? 1.2 : 0,
+    expectedHeight: action.trajectory === "air" ? PHYSICS.reachableBallHeight / 2 : 0,
     expectedSpeed: length(solution.velocity) * Math.exp(-(action.trajectory === "air" ? PHYSICS.airBallDrag : PHYSICS.ballDrag) * solution.duration),
+    reachableSeconds: reachableFlightSeconds(solution),
   };
   if (purpose === "cross") state.stats[player.team].crosses += 1;
   else if (purpose === "cutback") state.stats[player.team].cutbacks += 1;

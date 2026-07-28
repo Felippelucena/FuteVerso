@@ -71,7 +71,7 @@ describe("caracterizacao deterministica", () => {
       short: hashFingerprint(actual.short),
       long: hashFingerprint(actual.long),
     };
-    expect(hashes).toEqual({ short: "0dd968a7", long: "6d90f6d4" });
+    expect(hashes).toEqual({ short: "35cc9c65", long: "a3ec9eb0" });
     // Timeout explícito: com 22 jogadores em campo a simulação custa ~2,4× o que custava no
     // 5x5, e o padrão de 5s estourava quando a suíte roda em paralelo.
   }, 60_000);

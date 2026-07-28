@@ -2,7 +2,7 @@ import { FIELD, TACTICS } from "../config";
 import { add, distance, normalize, scale, subtract } from "../../shared/math";
 import type { AssignmentDuty, DecisionReason, MatchState, PlayerRuntime, Vec2 } from "../model";
 import { attackDirection } from "../runtime/formation-geometry";
-import { channelY, clampToField, edgeRisk, fieldX, fieldY } from "../runtime/pitch";
+import { clampToField, edgeRisk, fieldX, fieldY } from "../runtime/pitch";
 import { predictPlayerPosition, predictionHorizon } from "../runtime/prediction";
 import { assignedAnchor, assignmentOf } from "../systems/assignment-system";
 import { blend, nearestPlayer, perceptionDepth } from "./shared";
@@ -24,6 +24,9 @@ const DUTY_DEPTH: Record<AssignmentDuty, { fast: number; final: number; base: nu
   width: { fast: 18, final: 15, base: 12 },
   support: { fast: 12, final: 9, base: 7 },
   restDefense: { fast: -22, final: -24, base: -18 },
+  // A tabela vive logo atrás da bola: perto o bastante para a devolução sair de primeira, longe
+  // o bastante para o marcador do portador não cobrir os dois.
+  recycle: { fast: -5, final: -7, base: -6 },
   holdLine: { fast: 8, final: 6, base: 4 },
   // Deveres que nunca chegam aqui (quem tem a bola, quem pressiona, o goleiro) ficam neutros.
   carry: { fast: 0, final: 0, base: 0 },
@@ -35,7 +38,7 @@ const DUTY_DEPTH: Record<AssignmentDuty, { fast: number; final: number; base: nu
 
 /** Largura do bolsão de recepção que cada dever procura, em unidades verticais do campo. */
 const DUTY_WIDTH: Record<AssignmentDuty, number> = {
-  width: 22, support: 21, overlap: 20, runInBehind: 16, restDefense: 10,
+  width: 22, support: 21, overlap: 20, runInBehind: 16, recycle: 12, restDefense: 10,
   holdLine: 10, press: 10, trackRunner: 10, carry: 0, receive: 0, goalkeep: 0,
 };
 
@@ -66,13 +69,18 @@ export const supportTarget = (
   const reason: DecisionReason = assignment?.rationale ?? "giveWidth";
   const horizon = predictionHorizon(player, phaseIsFast ? 0.82 : 0.42);
   const predictedController = predictPlayerPosition(controller, horizon * 0.55);
-  const preferredY = collective
-    ? channelY(collective.attackChannel)
-    : controller.position.y + side * roleWidth;
-  const channelPull = duty === "runInBehind" ? 0.72 : duty === "support" ? 0.42 : duty === "width" ? 0.1 : 0.18;
+  // O bolsão sai do dever: cada incumbência procura a própria faixa (`DUTY_WIDTH`), a uma
+  // profundidade própria (`DUTY_DEPTH`). O canal de ataque NÃO entra aqui.
+  //
+  // Entrava: todo apoio era puxado para `channelY`, um único y, com força de até 0,72. Isso
+  // desfazia exatamente o escalonamento que `DUTY_WIDTH` desenha — os deveres se empilhavam na
+  // mesma faixa em vez de ocuparem faixas distintas, e o time jogava com 29 m de largura num
+  // campo de 64. O canal já age onde lhe cabe: desliza a grade inteira (`laneShift`) e enviesa
+  // a escolha de célula, que a invariante de exclusividade então espalha. Dois atratores
+  // concorrentes para a mesma decisão eram um a mais.
   const passingPocket = {
     x: predictedController.x + direction * anticipatedRoleDepth,
-    y: blend({ x: 0, y: predictedController.y + side * roleWidth }, { x: 0, y: preferredY }, channelPull).y,
+    y: predictedController.y + side * roleWidth,
   };
   if (duty === "restDefense") {
     const gap = fieldX(phase === "buildUp" ? 18 : phase === "progression" ? 20 : phaseIsFast ? 22 : 24);
@@ -102,7 +110,14 @@ export const supportTarget = (
     y: anchor.y + (controller.position.y - FIELD.height / 2) * (duty === "width" ? 0.12 : 0.28),
   };
   const candidate = blend(passingPocket, base, 0.35 + supportDepth * 0.4);
-  if (controllerNearEdge > 0.35) candidate.y = blend(candidate, { x: candidate.x, y: FIELD.height / 2 }, controllerNearEdge * 0.65).y;
+  // Portador encurralado na linha: quem se recolhe para dentro é quem está DO MESMO LADO que
+  // ele — é esse o amontoado. Quem está do outro lado fica onde está, porque é justamente a
+  // largura do lado oposto que dá a saída. Puxar todos para o eixo fechava o campo no momento
+  // exato em que ele precisava ser aberto, e era uma das razões de o time nunca passar de 30 m.
+  const crowdedSide = (candidate.y - FIELD.height / 2) * (controller.position.y - FIELD.height / 2) > 0;
+  if (controllerNearEdge > 0.35 && crowdedSide) {
+    candidate.y = blend(candidate, { x: candidate.x, y: FIELD.height / 2 }, controllerNearEdge * 0.65).y;
+  }
   const nearby = state.players.filter((candidatePlayer) => candidatePlayer.team === player.team && candidatePlayer.profile.id !== player.profile.id);
   const separation = nearby.reduce((force, teammate) => {
     const gap = distance(candidate, teammate.position);

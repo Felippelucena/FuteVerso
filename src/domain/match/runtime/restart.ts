@@ -336,11 +336,12 @@ const restartLayoutShape = (player: PlayerRuntime, restart: RestartState): Vec2 
 const goalKickTarget = (player: PlayerRuntime, restart: RestartState): Vec2 => {
   const kicking = player.team === restart.team;
   const placement: TeamShapePlacement = kicking
-    ? { lineHeight: RESTART.goalKickBuildUpLineHeight, width: RESTART.goalKickBuildUpWidth, depth: 1, forwardLimit: 94 }
+    ? { lineHeight: RESTART.goalKickBuildUpLineHeight, width: RESTART.goalKickBuildUpWidth, depth: 1, lateralShift: 0, forwardLimit: 94 }
     : {
       lineHeight: RESTART.goalKickPressLineHeight,
       width: RESTART.goalKickWidth,
       depth: 1,
+      lateralShift: 0,
       forwardLimit: RESTART.goalKickPressForwardLimit,
     };
   return cellAnchor(baseCell(player), player.team, placement);
@@ -354,8 +355,8 @@ const goalKickTarget = (player: PlayerRuntime, restart: RestartState): Vec2 => {
 const cornerTarget = (player: PlayerRuntime, restartTeam: Team): Vec2 => {
   const attacking = player.team === restartTeam;
   const placement: TeamShapePlacement = attacking
-    ? { lineHeight: 58, width: 0.5, depth: 1, forwardLimit: RESTART.cornerAttackForwardLimit }
-    : { lineHeight: RESTART.cornerDefendLineHeight, width: 0.5, depth: 1, forwardLimit: 94 };
+    ? { lineHeight: 58, width: 0.5, depth: 1, lateralShift: 0, forwardLimit: RESTART.cornerAttackForwardLimit }
+    : { lineHeight: RESTART.cornerDefendLineHeight, width: 0.5, depth: 1, lateralShift: 0, forwardLimit: 94 };
   return cellAnchor(baseCell(player), player.team, placement);
 };
 
@@ -370,7 +371,7 @@ const throwInTarget = (player: PlayerRuntime, restart: RestartState): Vec2 => {
   const lineHeight = attacking
     ? NEUTRAL_LINE_HEIGHT + progress * 22
     : NEUTRAL_LINE_HEIGHT - (1 - progress) * 6;
-  const placement: TeamShapePlacement = { lineHeight, width: 0.72, depth: 1, forwardLimit: 94 };
+  const placement: TeamShapePlacement = { lineHeight, width: 0.72, depth: 1, lateralShift: 0, forwardLimit: 94 };
   const anchor = cellAnchor(baseCell(player), player.team, placement);
   return { x: anchor.x, y: anchor.y + (restart.spot.y - anchor.y) * 0.25 };
 };

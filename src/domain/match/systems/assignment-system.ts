@@ -1,7 +1,7 @@
 import { clamp, distance } from "../../shared/math";
 import { mentalityBias, type TacticalMentality } from "../../tactics/model";
 import { TACTICAL_GRID } from "../../tactics/slots";
-import { DEFENSE, FIELD, MENTALITY, OFFSIDE } from "../config";
+import { DECISION, DEFENSE, FIELD, MENTALITY, OFFSIDE } from "../config";
 import type {
   AssignmentDuty,
   AssignmentZone,
@@ -92,6 +92,7 @@ const DUTY_CLAIM: Record<AssignmentDuty, number> = {
   press: 7,
   trackRunner: 6,
   restDefense: 5,
+  recycle: 4.5,
   overlap: 4,
   runInBehind: 3.5,
   width: 3,
@@ -107,6 +108,7 @@ const DUTY_FREEDOM: Record<AssignmentDuty, number> = {
   press: 1,
   trackRunner: 1.1,
   restDefense: 0.6,
+  recycle: 1,
   overlap: 1.2,
   runInBehind: 1.2,
   width: 0.9,
@@ -123,6 +125,7 @@ const DUTY_REASON: Record<AssignmentDuty, DecisionReason> = {
   width: "giveWidth",
   overlap: "overlapRun",
   restDefense: "restDefense",
+  recycle: "wallPass",
   press: "pressBall",
   trackRunner: "markThreat",
   holdLine: "holdZone",
@@ -255,12 +258,23 @@ const assignInPossession = (
     remaining.push(player);
   }
 
+  // A tabela: quem acabou de entregar a bola se oferece para a devolução, enquanto a janela da
+  // parede estiver aberta. O bônus já existia na nota do passe (`DECISION.pass.wallPass`) e não
+  // tinha corpo nenhum para receber — quem passava virava apoio comum e voltava para o bolsão
+  // dele, à frente da bola. É a mesma janela e o mesmo parceiro que `choosePass` premia.
+  const partner = state.lastAssist && state.lastAssist.team === team
+    && state.elapsed - state.lastAssist.time < DECISION.pass.wallPassWindow
+    ? remaining.find((player) => player.profile.id === state.lastAssist?.playerId)
+    : undefined;
+  if (partner) duties.set(partner.profile.id, { duty: "recycle", priority: 0, targetPlayerId: null });
+
   // Rest defense: que fatia do time fica atrás da bola. Quanto mais risco, menos gente. É uma
   // proporção e não um número fixo porque o motor aceita qualquer formato: três homens de
   // retaguarda num 11x11 é um bloco, num 5x5 é o time inteiro parado.
+  const available = remaining.filter((player) => !duties.has(player.profile.id));
   const restShare = context.risk > 0.7 ? 0.22 : context.risk < 0.35 ? 0.42 : 0.33;
-  const restCount = clamp(Math.round(remaining.length * restShare), 1, Math.max(1, remaining.length - 2));
-  const ranked = [...remaining].sort((first, second) =>
+  const restCount = clamp(Math.round(available.length * restShare), 1, Math.max(1, available.length - 2));
+  const ranked = [...available].sort((first, second) =>
     safetyScore(second, team, context) - safetyScore(first, team, context) || byId(first, second));
   const best = ranked[0] ?? null;
   // Histerese: o último homem anterior só perde o posto para alguém claramente melhor. Trocar
@@ -460,13 +474,20 @@ const teamWidthFor = (state: MatchState, team: Team, context: AssignmentContext)
   return clamp(base + mentalityBias(mentalityOf(state, team).width) * MENTALITY.teamWidth, 0.24, 0.96);
 };
 
-/** Deslizamento lateral do bloco: para o canal de ataque com a bola, para a bola sem ela. */
+/**
+ * Quanto o bloco desliza de lado, em fração da altura do campo: para o canal de ataque com a
+ * bola, para o lado da bola sem ela. Metade do caminho até o eixo do corredor — deslizar o
+ * bloco inteiro até lá deixaria o flanco oposto vazio, que é justamente o defeito que o passo
+ * discreto de linha produzia.
+ */
+const LANE_SLIDE = 0.14;
+
 const laneShift = (state: MatchState, context: AssignmentContext): number => {
   if (context.posture === "inPossession") {
-    return context.attackChannel === "left" ? -1 : context.attackChannel === "right" ? 1 : 0;
+    return context.attackChannel === "left" ? -LANE_SLIDE : context.attackChannel === "right" ? LANE_SLIDE : 0;
   }
   const lane = clamp(state.ball.position.y / FIELD.height, 0, 1);
-  return Math.round((lane - 0.5) * 2);
+  return (lane - 0.5) * 2 * LANE_SLIDE;
 };
 
 const desiredCell = (
@@ -475,7 +496,6 @@ const desiredCell = (
   player: PlayerRuntime,
   choice: DutyChoice,
   placement: TeamShapePlacement,
-  rowShift: number,
   attackingCells: AssignmentZone[],
 ): AssignmentZone => {
   const base = baseCell(player);
@@ -490,7 +510,9 @@ const desiredCell = (
   }
   // A coluna já não carrega a subida do bloco — isso é a altura de linha. O que sobra aqui é o
   // desenho: quem ataca a profundidade vive uma linha à frente, quem protege uma atrás.
-  const shifted = shiftCell(base, 0, rowShift);
+  // O deslize lateral do bloco mora na colocação (`placement.lateralShift`), contínuo. Aqui só
+  // resta o desenho: quem ataca a profundidade vive uma linha à frente, quem protege uma atrás.
+  const shifted = base;
   if (choice.duty === "runInBehind" || choice.duty === "overlap") return shiftCell(shifted, 1, 0);
   if (choice.duty === "restDefense") {
     // Recuar uma linha, mas nunca até a coluna do goleiro: ali a profundidade é a linha do gol.
@@ -546,6 +568,7 @@ export const placementFor = (state: MatchState, team: Team, context: AssignmentC
     lineHeight: lineHeightFor(state, team, context, depth),
     width: teamWidthFor(state, team, context),
     depth,
+    lateralShift: laneShift(state, context),
     forwardLimit: forwardLimitFor(state, team, context),
   };
 };
@@ -569,7 +592,6 @@ export const buildAssignments = (
     : (assignOutOfPossession(state, team, context, outfield, opponents, duties), null);
 
   const placement = placementFor(state, team, context);
-  const rowShift = laneShift(state, context);
   const chosen = players.map((player) => ({
     player,
     // Rede de segurança: se alguma trilha nova esquecer um jogador, ele sustenta a zona dele em
@@ -580,12 +602,12 @@ export const buildAssignments = (
   const attackers = chosen.filter(({ choice }) => choice.duty === "runInBehind" || choice.duty === "overlap");
   // De onde saiu quem foi atacar: é a referência de quem apoia (sobe para o espaço aberto) e de
   // quem segura a amplitude (estica para levar o marcador embora dali).
-  const attackingCells = attackers.map(({ player }) => shiftCell(baseCell(player), 0, rowShift));
+  const attackingCells = attackers.map(({ player }) => baseCell(player));
   const attackingRows = new Set(attackers.map(({ player }) => baseCell(player).row));
   const wanted = chosen.map(({ player, choice }) => ({
     player,
     choice,
-    cell: desiredCell(state, team, player, choice, placement, rowShift, attackingCells),
+    cell: desiredCell(state, team, player, choice, placement, attackingCells),
     lateralPull: lateralPullFor(player, choice, attackingRows),
   }));
 

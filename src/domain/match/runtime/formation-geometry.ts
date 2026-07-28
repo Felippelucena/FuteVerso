@@ -62,6 +62,7 @@ export const NEUTRAL_PLACEMENT: TeamShapePlacement = {
   lineHeight: NEUTRAL_LINE_HEIGHT,
   width: 0.5,
   depth: 1,
+  lateralShift: 0,
   forwardLimit: 94,
 };
 
@@ -90,9 +91,17 @@ export const cellDepth = (zone: AssignmentZone, placement: TeamShapePlacement = 
       Math.min(94, placement.forwardLimit),
     );
 
-/** Faixa lateral da célula, de 0 (borda de cima) a 1 (borda de baixo). */
+/**
+ * Faixa lateral da célula, de 0 (borda de cima) a 1 (borda de baixo), já com o deslize do bloco.
+ *
+ * O deslize é CONTÍNUO, e não um passo de linha na grade. Era um passo: `shiftCell(base, 0, ±1)`,
+ * e `stepAlong` satura nas bordas — com o bloco deslizado para um lado, duas linhas colapsavam na
+ * primeira e a última ficava vazia. `firstFreeCell` então empurrava o duplicado para longe, e o
+ * resultado era o time esmagado contra uma lateral com o flanco oposto deserto. Como o canal é
+ * lateral em ~97% do tempo, isso valia quase a partida inteira.
+ */
 export const cellLane = (zone: AssignmentZone, placement: TeamShapePlacement = NEUTRAL_PLACEMENT): number =>
-  clamp(0.5 + (zone.row / LAST_GRID_ROW - 0.5) * placement.width, 0.04, 0.96);
+  clamp(0.5 + (zone.row / LAST_GRID_ROW - 0.5) * placement.width + placement.lateralShift, 0.04, 0.96);
 
 /** Grade → gramado. O time coral joga espelhado no eixo da profundidade. */
 export const cellAnchor = (

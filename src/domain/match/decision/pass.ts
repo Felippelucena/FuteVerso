@@ -1,20 +1,33 @@
-import { DECISION, FIELD, OFFSIDE } from "../config";
-import { clamp, distance, distanceToSegment } from "../../shared/math";
+import { CONTEST, DECISION, FIELD, OFFSIDE, PHYSICS } from "../config";
+import { clamp, distance, length } from "../../shared/math";
 import type { BallAction, DecisionReason, MatchState, PlayerRuntime } from "../model";
 import { attackDirection } from "../runtime/formation-geometry";
 import { offsideLineProgress } from "../runtime/offside";
 import { classifyPassPurpose } from "../runtime/pass-purpose";
-import { estimatePassDuration } from "../runtime/pass-trajectory";
-import { attackingProgress, centrality, channelAffinity, clampToField, edgeRisk, fieldX, fieldY } from "../runtime/pitch";
+import { estimatePassDuration, reachableFlightSeconds, solvePassTrajectory } from "../runtime/pass-trajectory";
+import {
+  completionChance,
+  controlChance,
+  laneClearance,
+  laneSurvival,
+  passLaneThreat,
+  raceChance,
+  receptionMargin,
+} from "../runtime/pass-viability";
+import { attackingProgress, centrality, channelAffinity, clampToField, edgeRisk, fieldX } from "../runtime/pitch";
 import { etaToPoint } from "../runtime/player-metrics";
-import { interceptionThreat, predictPlayerAlongPlan } from "../runtime/prediction";
+import { predictPlayerAlongPlan } from "../runtime/prediction";
 import { assignmentOf } from "../systems/assignment-system";
 import { blend } from "./shared";
 
 /**
  * A escolha do passe: para quem, por onde e como. Enumera todo companheiro contra as oito
- * variantes de bola (chão/ar × curto/longo × pé/espaço) e devolve a melhor — a nota é a mesma
- * escala que o goleiro usa para decidir quando soltar a bola.
+ * variantes de bola (chão/ar × curto/longo × pé/espaço) e devolve a melhor.
+ *
+ * A nota é **valor esperado**: o que a bola vale multiplicado pela chance de ela chegar, menos o
+ * que custa perdê-la. A chance vem inteira de `runtime/pass-viability`, que é a mesma conta que o
+ * `possession-system` aplica no primeiro toque de verdade — decisão e execução deixaram de ter
+ * opiniões próprias sobre o que é um passe difícil.
  */
 
 export const PASS_VARIANTS = (["ground", "air"] as const).flatMap((trajectory) =>
@@ -56,37 +69,61 @@ export const choosePass = (player: PlayerRuntime, teammates: PlayerRuntime[], op
       const predictedTarget = variant.targeting === "feet"
         ? blend(teammate.position, routeProjection, 0.72)
         : routeProjection;
+      // O corpo a transpor decide a altura da bola, e a altura decide o resto: quanto tempo ela
+      // voa, com que força chega e quanto do voo ela passa ao alcance de alguém.
+      const clearance = laneClearance(player.position, predictedTarget, opponents, initialTime);
       const passDistance = distance(player.position, predictedTarget);
-      const travelTime = estimatePassDuration(passDistance, variant.trajectory, variant.range, variant.targeting);
+      const travelTime = estimatePassDuration(passDistance, variant.trajectory, variant.range, variant.targeting, 0.7, clearance);
       const receiverFuture = predictPlayerAlongPlan(state, teammate, travelTime);
       const target = variant.targeting === "space" ? blend(predictedTarget, receiverFuture, 0.68) : predictedTarget;
       const purpose = classifyPassPurpose(player, teammate, target, variant.trajectory, variant.targeting);
       const progress = direction * (target.x - player.position.x);
-      const opponentFutures = opponents.map((opponent) => ({ opponent, position: predictPlayerAlongPlan(state, opponent, travelTime) }));
-      const openness = Math.min(...opponentFutures.map(({ position }) => distance(target, position)));
-      const rawLanePressure = opponentFutures.reduce((risk, { position }) => {
-        const laneDistance = distanceToSegment(position, player.position, target);
-        return risk + clamp(1 - laneDistance / fieldY(4), 0, 1);
-      }, 0) + interceptionThreat(player.position, target, opponents, travelTime) * 0.58;
-      const landingContest = clamp(1 - openness / fieldX(9), 0, 1);
-      const effectivePressure = variant.trajectory === "air"
-        ? rawLanePressure * 0.34 + landingContest * 1.2
-        : rawLanePressure;
-      const blocked = effectivePressure > 0.82;
+
+      // --- A chance de a bola chegar, pela geometria e pela mesma régua de domínio do motor ---
+      const solution = solvePassTrajectory(player.position, target, variant.trajectory, variant.range, variant.targeting, 0.7, clearance);
+      const drag = variant.trajectory === "air" ? PHYSICS.airBallDrag : PHYSICS.ballDrag;
+      const arrivalSpeed = length(solution.velocity) * Math.exp(-drag * solution.duration);
+      const reachableSeconds = reachableFlightSeconds(solution);
+      // Só conta quem alcança a bola ONDE ela passa por ele: erguer a bola compra exatamente os
+      // corpos sob a parte alta do voo, e nenhum a mais.
+      const threat = passLaneThreat(player.position, target, opponents, solution, drag);
+      const receiverEta = etaToPoint(teammate, target);
+      const opponentEta = Math.min(...opponents.map((opponent) => etaToPoint(opponent, target)));
+      const margin = receptionMargin({
+        quality: (teammate.profile.skills.control * 0.62 + teammate.profile.skills.acceleration * 0.15
+          + teammate.profile.skills.vision * 0.13 + teammate.profile.skills.defending * 0.1
+          + teammate.profile.mental.anticipation * 0.06 + teammate.profile.mental.composure * 0.03) / 100,
+        stamina: teammate.stamina,
+        composure: teammate.profile.mental.composure,
+        anticipation: teammate.profile.mental.anticipation,
+        relativeSpeed: arrivalSpeed,
+        ballHeight: variant.trajectory === "air" ? PHYSICS.reachableBallHeight / 2 : 0,
+        facingAlignment: 1,
+        pressure: clamp(1 - opponentEta / CONTEST.horizonSeconds, 0, 1),
+        ownBox: false,
+        continuesOwnDribble: false,
+        prepared: true,
+        reachableHeight: PHYSICS.reachableBallHeight,
+      });
+      const completion = completionChance(
+        controlChance(margin),
+        // Duas corridas, e as duas precisam dar certo: chegar antes DELE, e chegar antes que a
+        // bola morra. A segunda é o desfecho que o motor mais produzia — o passe que expira sem
+        // ninguém — e que a nota não enxergava de jeito nenhum.
+        raceChance(opponentEta - receiverEta, CONTEST.settleMargin)
+          * raceChance(solution.duration + reachableSeconds - receiverEta, CONTEST.settleMargin),
+        laneSurvival(threat),
+      );
+
+      // --- O que a bola VALE se chegar ---
+      const openness = Math.min(...opponents.map((opponent) => distance(target, predictPlayerAlongPlan(state, opponent, solution.duration))));
       const passerTechnique = (player.profile.skills.passing + player.profile.skills.vision) / 200;
       const longProgression = progress > fieldX(18) && (phase === "buildUp" || phase === "progression" || phase === "counterAttack");
       const crossesPitch = (player.position.y - FIELD.height / 2) * (target.y - FIELD.height / 2) < 0;
       const switchValue = carrierEdgeRisk * centrality(target) * (crossesPitch ? 1.2 : 0.42);
-      const wallPass = state.lastAssist?.playerId === teammate.profile.id && state.elapsed - state.lastAssist.time < 4.2;
-      const wallPassBonus = wallPass ? DECISION.pass.wallPass : 0;
+      const wallPass = state.lastAssist?.playerId === teammate.profile.id
+        && state.elapsed - state.lastAssist.time < DECISION.pass.wallPassWindow;
       const roleBonus = teammate.profile.role === "finisher" ? Math.max(0, progress) / fieldX(35) : 0;
-      const backwardsSafety = progress < 0 && openness > fieldX(7) ? DECISION.pass.backwardsSafety : 0;
-      const rangePenalty = variant.range === "short"
-        ? clamp((passDistance - fieldX(24)) / fieldX(12), 0, 1) * 0.85
-        : clamp((fieldX(13) - passDistance) / fieldX(8), 0, 1) * 0.72;
-      const aerialValue = variant.trajectory === "air"
-        ? (rawLanePressure > 0.9 ? 0.3 : -0.16) - landingContest * 0.72 - (variant.range === "long" ? 0.08 : 0)
-        : 0;
       // O valor de passar para alguém sai do dever dele, não de um id nomeado no plano. Cada
       // dever decai com a ordem (`priority`), para o time não despejar tudo no mesmo corredor
       // só porque três jogadores foram encarregados de atacar as costas da linha.
@@ -114,21 +151,22 @@ export const choosePass = (player: PlayerRuntime, teammates: PlayerRuntime[], op
           : purpose === "throughBall" ? value.throughBall
             : purpose === "layoff" && wallPass ? value.layoff
               : 0;
-      // Passar para um companheiro já impedido é jogar fora a posse: penalidade dura, que só o
-      // deixa competitivo se todas as outras saídas forem piores ainda (um raro chutão de aposta).
-      const offsidePenalty = isOffsideNow(teammate) ? DECISION.pass.offsidePenalty : 0;
-      const score = clamp(progress / fieldX(DECISION.pass.progressReference), -0.8, 1.45)
-        + clamp(openness / fieldX(DECISION.pass.opennessReference), 0, 1.18)
+      const worth = clamp(progress / fieldX(DECISION.pass.progressReference), -0.8, 1.45)
+        + clamp(openness / fieldX(DECISION.pass.opennessReference), 0, 1) * DECISION.pass.space
         + centrality(target) * DECISION.pass.centrality + roleBonus
-        + switchValue + wallPassBonus + backwardsSafety + collectiveBonus + aerialValue + purposeBonus
+        + switchValue + (wallPass ? DECISION.pass.wallPass : 0) + collectiveBonus + purposeBonus
         + (longProgression ? passerTechnique * 0.36 : 0)
         + (player.profile.mental.teamwork - 50) / 100 * 0.22
         + (player.profile.mental.decisionMaking - 50) / 100 * 0.16
-        + (player.profile.mental.creativity - 50) / 100 * (blocked ? 0.2 : 0.06)
-        - passDistance / fieldX(DECISION.pass.lengthPenaltyReference) - rangePenalty - offsidePenalty
-        - effectivePressure * (passDistance > fieldX(18) ? 0.58 : 0.86) * (1.08 - player.profile.mental.creativity / 500);
-      const receiverEta = etaToPoint(teammate, target);
-      const opponentEta = Math.min(...opponents.map((opponent) => etaToPoint(opponent, target)));
+        + (player.profile.mental.creativity - 50) / 100 * 0.06;
+
+      // Perder a bola custa o que ela vale ao adversário no ponto em que ele a recolhe: perto do
+      // nosso gol é quase um gol, no ataque é só um contra-ataque.
+      const turnoverCost = DECISION.pass.turnoverCost * (1 - attackingProgress(player.team, target.x));
+      // Passar para um companheiro já impedido é jogar fora a posse: penalidade dura, fora da
+      // multiplicação, que só o deixa competitivo se todas as outras saídas forem piores ainda.
+      const offsidePenalty = isOffsideNow(teammate) ? DECISION.pass.offsidePenalty : 0;
+      const score = worth * completion - turnoverCost * (1 - completion) - offsidePenalty;
       const reason: DecisionReason = wallPass ? "wallPass" : switchValue > 0.52 ? "switchPlay" : "progressivePass";
       return { teammate, target, passDistance, score, reason, variant, purpose, receiverEta, opponentEta };
     }))

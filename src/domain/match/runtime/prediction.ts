@@ -80,6 +80,27 @@ export const predictedSpaceAt = (
   seconds: number,
 ): number => Math.min(...opponents.map((opponent) => distance(position, predictPlayerPosition(opponent, seconds))));
 
+/**
+ * Risco que UM adversário oferece à rota: quanto ele chega perto dela, e onde. Por adversário e
+ * não em bloco porque a bola erguida passa por cima de quem está no meio do caminho e não de quem
+ * está nas pontas — quem soma precisa poder olhar a altura da bola sobre cada corpo.
+ */
+export const interceptionRisk = (
+  start: Vec2,
+  end: Vec2,
+  opponent: PlayerRuntime,
+  travelSeconds: number,
+): { risk: number; atFraction: number } => {
+  const future = predictPlayerPosition(opponent, travelSeconds * 0.62);
+  const closest = closestPointOnSegment(start, end, future);
+  const reach = opponent.radius + 1.2 + length(opponent.velocity) * travelSeconds * 0.22
+    + opponent.profile.skills.acceleration / 100 * travelSeconds * 3.4;
+  return {
+    risk: clamp(1 - distance(future, closest.point) / Math.max(1, reach), 0, 1),
+    atFraction: closest.amount,
+  };
+};
+
 export const interceptionThreat = (
   start: Vec2,
   end: Vec2,
@@ -89,11 +110,6 @@ export const interceptionThreat = (
   // Rota degenerada não tem o que interceptar — e o guarda também poupa a projeção de todo mundo.
   const segment = { x: end.x - start.x, y: end.y - start.y };
   if (segment.x * segment.x + segment.y * segment.y < 0.001) return 0;
-  return opponents.reduce((risk, opponent) => {
-    const future = predictPlayerPosition(opponent, travelSeconds * 0.62);
-    const closest = closestPointOnSegment(start, end, future).point;
-    const reach = opponent.radius + 1.2 + length(opponent.velocity) * travelSeconds * 0.22
-      + opponent.profile.skills.acceleration / 100 * travelSeconds * 3.4;
-    return risk + clamp(1 - distance(future, closest) / Math.max(1, reach), 0, 1);
-  }, 0);
+  return opponents.reduce((risk, opponent) =>
+    risk + interceptionRisk(start, end, opponent, travelSeconds).risk, 0);
 };

@@ -7,12 +7,38 @@ import { evaluateShotOpportunity } from "./shot-opportunity";
 import { pressureAt } from "./control";
 import { fieldX } from "./pitch";
 
+/**
+ * Onde a bola está no corpo, em **fração do alcance vertical** (`PHYSICS.reachableBallHeight`).
+ * Fração e não altura absoluta porque as duas coisas são a mesma: subir o quanto um jogador
+ * alcança sobe junto a altura em que ele cabeceia. Enquanto eram seis números soltos em dois
+ * módulos, mexer no alcance deixava cinco deles mentindo.
+ *
+ * `plan` é a faixa que o recebedor PROCURA ao escolher a técnica; `execute` é a que ele ainda
+ * aceita no contato. A segunda é mais larga de propósito: planeja-se a cabeçada na altura da
+ * testa e ainda se cabeceia um palmo abaixo dela.
+ */
+export const CONTACT_BAND = {
+  plan: { header: 0.48, volley: 0.117 },
+  execute: {
+    header: { low: 0.375, high: 1 },
+    volley: { low: 0.083, high: 0.771 },
+    redirect: { low: 0, high: 0.833 },
+    placed: { low: 0, high: 0.313 },
+  },
+} as const;
+
+/** A mesma faixa, já em unidades de altura. */
+export const contactHeightBand = (technique: keyof typeof CONTACT_BAND.execute): { low: number; high: number } => {
+  const band = CONTACT_BAND.execute[technique];
+  return { low: band.low * PHYSICS.reachableBallHeight, high: band.high * PHYSICS.reachableBallHeight };
+};
+
 const expectedContactHeight = (state: MatchState): number => {
   const pending = state.pendingPass;
   if (!pending || pending.trajectory === "ground") return 0;
   const remaining = Math.max(0, pending.expectedArrivalAt - state.elapsed);
   const height = state.ball.height + state.ball.verticalVelocity * remaining - PHYSICS.gravity * remaining * remaining / 2;
-  return clamp(height, 0, 2.4);
+  return clamp(height, 0, PHYSICS.reachableBallHeight);
 };
 
 export const prepareReceptionAction = (state: MatchState, player: PlayerRuntime): PreparedReceptionAction | null => {
@@ -31,8 +57,8 @@ export const prepareReceptionAction = (state: MatchState, player: PlayerRuntime)
   const virtualPlayer = { ...player, position: contact };
   const purpose = pending.purpose ?? "feet";
   const directContext = purpose === "cross" || purpose === "cutback";
-  const technique: ShotTechnique = expectedHeight > 1.15 ? "header"
-    : expectedHeight > 0.28 ? "volley"
+  const technique: ShotTechnique = expectedHeight > CONTACT_BAND.plan.header * PHYSICS.reachableBallHeight ? "header"
+    : expectedHeight > CONTACT_BAND.plan.volley * PHYSICS.reachableBallHeight ? "volley"
       : "placed";
   const shot = evaluateShotOpportunity(virtualPlayer, opponents, state, true, technique);
   const arrivalPressure = clamp(1 - predictedSpaceAt(contact, opponents, Math.max(0.12, pending.expectedArrivalAt - state.elapsed)) / fieldX(8), 0, 1);
@@ -74,7 +100,8 @@ export const prepareReceptionAction = (state: MatchState, player: PlayerRuntime)
     return { ...base, kind: "pass", target: passTarget.target, receiverId: passTarget.teammate.profile.id, score: passScore };
   }
   if (directContext && shot && shotScore >= controlScore - 0.12 && pressureAt(state, virtualPlayer) > 0.42) {
-    return { ...base, kind: "redirect", technique: expectedHeight > 1.15 ? "header" : "redirect", target: shot.action.target, score: shotScore };
+    const headerHeight = CONTACT_BAND.plan.header * PHYSICS.reachableBallHeight;
+    return { ...base, kind: "redirect", technique: expectedHeight > headerHeight ? "header" : "redirect", target: shot.action.target, score: shotScore };
   }
   return { ...base, kind: "control", target: contact, score: controlScore };
 };
