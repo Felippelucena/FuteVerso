@@ -1,6 +1,6 @@
 import { FIXED_STEP } from "../../domain/match/config";
-import { applyTeamAdjustment, createMatchState, stepMatch } from "../../domain/match";
-import type { MatchConfig, MatchState, TeamAdjustment } from "../../domain/match";
+import { applyTeamAdjustment, captureMatchSnapshot, createMatchState, restoreMatchSnapshot, stepMatch } from "../../domain/match";
+import type { MatchConfig, MatchSnapshot, MatchState, TeamAdjustment } from "../../domain/match";
 import type { Team } from "../../domain/shared/model";
 
 export const SIMULATION_SPEEDS = [0.5, 1, 2, 4, 8] as const;
@@ -9,13 +9,14 @@ export type SimulationSpeed = typeof SIMULATION_SPEEDS[number];
 const MAX_REAL_DELTA_SECONDS = 0.1;
 const MAX_STEPS_PER_ADVANCE = 140;
 
-// Guarda um snapshot completo a cada 2s de jogo. A simulação é determinística,
-// então qualquer instante entre dois keyframes é reconstruído restaurando o
-// keyframe anterior e re-simulando os poucos passos que faltam (< 2s ≈ 16ms).
-// 2s @ 120Hz => 240 passos por keyframe; ~300 keyframes numa partida de 10min (~6,5MB).
+// Guarda um snapshot a cada 2s de jogo. A simulação é determinística, então qualquer instante
+// entre dois keyframes é reconstruído restaurando o keyframe anterior e re-simulando os poucos
+// passos que faltam (< 2s ≈ 16ms). 2s @ 120Hz => 240 passos por keyframe; uma partida de vinte
+// minutos guarda ~600 deles, e é por isso que o snapshot não carrega o elenco junto
+// (ver captureMatchSnapshot).
 const KEYFRAME_INTERVAL_STEPS = 240;
 
-type Keyframe = { readonly step: number; readonly snapshot: MatchState };
+type Keyframe = { readonly step: number; readonly snapshot: MatchSnapshot };
 
 export class MatchSession {
   // Fronteira: o estado mais avançado já simulado. Só ele avança no tempo.
@@ -162,7 +163,7 @@ export class MatchSession {
 
   private reconstructAt(step: number): MatchState {
     const keyframe = this.keyframeAtOrBefore(step);
-    const state = structuredClone(keyframe.snapshot);
+    const state = restoreMatchSnapshot(keyframe.snapshot);
     for (let current = keyframe.step; current < step; current += 1) stepMatch(state, FIXED_STEP);
     return state;
   }
@@ -177,7 +178,7 @@ export class MatchSession {
   }
 
   private recordKeyframe(): void {
-    this.keyframes.push({ step: this.liveStepCount, snapshot: structuredClone(this.frontier) });
+    this.keyframes.push({ step: this.liveStepCount, snapshot: captureMatchSnapshot(this.frontier) });
   }
 
   setPaused(paused: boolean): void {
