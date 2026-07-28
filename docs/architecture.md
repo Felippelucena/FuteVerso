@@ -184,7 +184,7 @@ Os sistemas ficam em `domain/match/systems`:
 - lifecycle controla relógio, tempos (Regra 7: dois de `HALF_DURATION`, com nova saída de bola no intervalo), acréscimos (o tempo de bola morta volta como tempo adicional) e o encerramento com contexto (o apito espera a próxima bola morta ou o fim do lance);
 - runtime/restart guarda toda a bola parada: escolhe o cobrador, põe a bola no ponto, dá o alvo de caminhada de cada um (a fonte de incumbência do reinício), entrega a posse quando o cobrador chega e mantém a Regra 8 (bola parada até o primeiro toque, sem toque duplo do cobrador — o que obriga o primeiro toque a ser um passe);
 - runtime/kickoff guarda só a agenda dos tempos (quem cobra a saída de cada tempo, qual é o último); runtime/dead-ball responde "a bola está morta?", o predicado que a bola parada e os acréscimos compartilham;
-- runtime/offside guarda a geometria pura da Lei 11 (linha do penúltimo adversário, quem está impedido no instante do passe). A aplicação se reparte: ball-system arma a vigilância no passe, possession-system apita quando um vigiado toca a bola, lifecycle congela a jogada (a "bandeira") e reinicia com tiro livre indireto. O passador evita receptores impedidos (ai.ts/choosePass) — é esse o pente que deixa o impedimento "de vez em quando" em vez de a cada passe;
+- runtime/offside guarda a geometria pura da Lei 11 (linha do penúltimo adversário, quem está impedido no instante do passe). A aplicação se reparte: ball-system arma a vigilância no passe, possession-system apita quando um vigiado toca a bola, lifecycle congela a jogada (a "bandeira") e reinicia com tiro livre indireto. O passador evita receptores impedidos (decision/pass) — é esse o pente que deixa o impedimento "de vez em quando" em vez de a cada passe;
 - analytics acumula mapas e métricas espaciais;
 - cognition renova e resolve planos da IA;
 - movement atualiza deslocamento, energia e limites;
@@ -224,6 +224,74 @@ Os geradores encadeiam `generatePlayer` → `generateSquad` → `generateClub` �
 
 O time que o treinador escala é o time que entra em campo: onze contra onze. `buildMatchConfig` percorre os slots ocupados do plano e entrega a cada participante o `slotId`, o `positionFit` e a `instruction` já resolvidos — o motor nunca conhece `TeamTacticalPlan`. O motor não fixa o número de jogadores em lugar nenhum: os testes de comportamento rodam num fixture reduzido de cinco por lado, onde o cenário é legível, e caracterização e calibragem rodam no 11x11.
 
+O **regulamento** da partida é dado, não constante de compilação: `MatchRules` (`match/rules.ts`)
+carrega tempos, duração, acréscimos e o que vale — hoje só a Lei 11, por `offsideEnabled`. Viaja no
+`MatchConfig` e vive em `state.rules`, onde todo sistema já chega. As dimensões de campo ainda são
+globais; o desenho as comporta quando entrarem.
+
+## Relógio comprimido
+
+**A partida dura 2 × 10 min — vinte minutos de jogo, que é também o teto
+(`MAXIMUM_MATCH_DURATION`). Não é limitação técnica, é decisão medida.**
+
+| duração | uma partida sem tela | rodada (10) | temporada (380) |
+| --- | --- | --- | --- |
+| 10 min (padrão anterior) | 6,5 s | 1,1 min | 41 min |
+| **20 min (padrão e teto)** | **13 s** | **2,2 min** | **1,4 h** |
+| 90 min | 58 s | 10 min | **6,1 h** |
+
+Vinte minutos é o maior valor que mantém uma temporada inteira ao alcance de um job de fundo.
+Abaixo de quinze, o ajuste do treinador no meio do jogo quase não tem pista para virar placar, nem
+a estamina tempo para doer.
+
+O que decidiu o número foi o placar, não o custo: aos dez minutos a partida sai em **0,8 gol e 11
+finalizações** — não faz tabela de liga; aos vinte, em **3,4 gols e 24 finalizações**, o placar do
+futebol sem precisar inflar densidade de evento nenhuma.
+
+**O fator tem nome.** `rules.compression` é a duração desta partida sobre os 90 minutos de futebol,
+e **tudo que é "por partida" deriva dele** — do mesmo jeito que `GOAL_TO_GOAL_SPRINT` faz o custo de
+estamina não depender do tamanho do campo. A compressão já existia antes disso, implícita: a
+estamina estava calibrada para terminar em ~55% depois de dez minutos (ou seja, dez minutos já
+custavam uma partida inteira de desgaste) e o bloco defensivo tratava "faltam 120 s" como fim de
+jogo, que era 20% da partida. Sem o fator com nome, dobrar a duração era recalibrar tudo à mão;
+com ele, é trocar um campo do config. Quem foi calibrado numa duração se corrige por
+`REFERENCE_COMPRESSION / rules.compression`.
+
+**A consequência, aceita de olhos abertos:** percentuais (posse, precisão de passe, taxa de defesa)
+são invariantes à duração e seguem realistas; **contagens** (gols, finalizações, km) não são. Por
+isso a calibragem do motor mira o placar e não o minuto, e por isso o futebol em campo é mais
+direto e com mais transição que o futebol real — é o que EA FC e eFootball fazem, e é o preço de
+uma tabela de liga que lê como futebol. Duas regras seguem daí: a **distância percorrida** deve ser
+exibida dividida pela compressão, senão a ficha do atleta mente; e **teste de partida inteira não
+afere contagem, afere taxa** — foi assim que os tetos de posse perdida e de entrada no terço final
+viraram "por minuto de jogo".
+
+Fora de escopo, registrado: simular uma temporada com o motor completo custa ~1,4 h de CPU mesmo
+aos vinte minutos. Se virar requisito, é um modelo rápido separado, não uma otimização deste motor.
+
+## Orçamento de custo do tick
+
+O custo do tick no 11x11 é o número que decide o que o motor consegue ser, então ele é medido:
+`engine-budget.test.ts`, atrás de `BUDGET=1` e **rodando sozinha** (a suíte inteira em paralelo
+infla a medida). A medida é de partida inteira, não de uma janela — o tique de bola morta é bem
+mais barato, e uma janela de vinte segundos mede ~193 µs onde a partida mede ~87.
+
+Estado atual: **~87 µs/tick, ~96× o tempo real**, contra 137 µs no começo desta reforma. Os dois
+cortes que renderam: a **percepção saiu da taxa da física** (30 Hz contra 120 Hz, −35%) e a
+**cognição passou a calcular a decisão só de quem vai repensar** naquele quadro (−10%).
+
+**É um instrumento, não uma guarda, e o teto reflete isso.** Relógio de parede numa máquina de
+desenvolvimento diz mais sobre a máquina que sobre o motor: a mesma build mede 87 µs com o
+computador livre e 180 a 600 µs com editor e navegador abertos. Normalizar contra uma carga de
+referência medida junto derruba o espalhamento de 237% para 75%, o que ainda não separa uma
+regressão de 40% do barulho — foi tentado e descartado por não pagar a complexidade. Quem quer
+comparar roda com a máquina quieta e lê o número impresso. A guarda de verdade seria contar
+trabalho em vez de tempo, e custaria instrumentar o motor com contadores que ele hoje não tem.
+
+O rebobinar tem o custo do outro lado: `captureMatchSnapshot` guarda o instante e compartilha o
+`profile` dos atletas por referência (nenhum sistema o escreve em jogo), o que tirou 25% de cada
+keyframe — 24,3 MB → 18,1 MB numa partida de vinte minutos, que guarda ~600 deles.
+
 ## Cadeia de decisão
 
 Cinco níveis, do mais lento ao mais rápido, cada um alimentando o seguinte:
@@ -231,10 +299,18 @@ Cinco níveis, do mais lento ao mais rápido, cada um alimentando o seguinte:
 | Nível | Quem decide | Quando | Onde |
 | --- | --- | --- | --- |
 | 0 · Plano | treinador, fora da partida | nunca muda em jogo | `TeamTacticalPlan` |
-| 1 · Momento | time | a cada tick | `updateTacticalContext` |
+| 1 · Momento | time | a cada quadro de percepção (30 Hz) | `updateTacticalContext` |
 | 2 · Estratégia | time | a cada refresh do plano | `createCollectivePlan` |
 | 3 · Incumbência | jogador | herdada do nível 2 | `buildAssignments` |
 | 4 · Ação | jogador | a cada think tick | `carrierDecision`, `choosePass` |
+
+A física roda a 120 Hz; a **percepção**, a `COGNITION.perceptionSeconds` (30 Hz). Ler o campo é
+caro e ninguém joga reagindo a 8 ms: `perceive` e `updateTacticalContext` rodam num tick em cada
+quatro, com o `dt` acumulado para as integrais de forma e `phaseSeconds` seguirem exatas. Foi de
+onde saiu o maior corte de custo do motor (−35%). No nível 4, a cognição calcula a decisão **só de
+quem vai repensar** naquele quadro — e de todos eles a partir do mesmo quadro, em duas passagens,
+senão quem decide depois leria o plano recém-escrito de quem decidiu antes e a ordem da escalação
+viraria resultado.
 
 O nível 3 é a entrega do coletivo para o individual. `buildAssignments`
 (`systems/assignment-system.ts`) devolve um `PlayerAssignment` para **cada** jogador — dever,
@@ -305,7 +381,7 @@ demanda): sobreposição das faixas, adversários dentro da própria faixa e def
 e o próprio gol.
 
 Ligar um botão novo do plano tático significa mudar **como a incumbência é escolhida**, não
-passar mais um booleano por dentro de `ai.ts`. Os reinícios de jogo já usam esse gancho:
+passar mais um booleano por dentro da cadeia de decisão. Os reinícios de jogo já usam esse gancho:
 `restartLayoutTarget` (`runtime/restart`) é uma fonte de incumbência com prioridade sobre a
 normal, injetada no topo de `decideAll` enquanto a bola está parada. Jogadas ensaiadas entram
 por aí, refinando esse alvo por tipo de cobrança.
