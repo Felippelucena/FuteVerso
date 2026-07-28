@@ -170,9 +170,13 @@ describe("bola parada — cobrança caminhada", () => {
     stepMatch(state, FIXED_STEP);
     expect(state.restart?.kind).toBe("corner");
     expect(state.restart?.takerId).toBe(winger.profile.id);
-    // Lei 17: a bola INTEIRA dentro do arco desenhado na quina, não a dois passos dele.
+    // Lei 17: a bola INTEIRA dentro do arco desenhado na quina, não a dois passos dele. Por
+    // construção (RESTART.cornerBallInset) ela encosta na borda interna do arco, então a
+    // comparação cai exatamente no limite — a tolerância absorve o resíduo do ponto flutuante
+    // da diagonal, não uma folga de verdade.
     const corner = { x: FIELD.width, y: 0 };
-    expect(distance(state.restart!.spot, corner) + FIELD.ballRadius).toBeLessThanOrEqual(FIELD.cornerArcRadius);
+    const ballEdgeToCorner = distance(state.restart!.spot, corner) + FIELD.ballRadius;
+    expect(ballEdgeToCorner).toBeLessThanOrEqual(FIELD.cornerArcRadius + 1e-9);
     const delay = promotionDelay(state);
     expect(delay).toBeGreaterThanOrEqual(RESTART.minSetupSeconds - FIXED_STEP * 3);
     expect(delay).toBeLessThan(RESTART.maxSetupSeconds - 1);

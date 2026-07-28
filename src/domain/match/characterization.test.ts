@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { referenceMatchConfig } from "./__fixtures__/reference-match";
 import { createMatchState, stepMatch } from "./index";
-import { CALIBRATION } from "./__fixtures__/calibration";
 import type { MatchState } from "./model";
 
 const round = (value: number): number => Number(value.toFixed(6));
@@ -55,10 +54,14 @@ const simulate = (seed: number, seconds: number) => {
   return fingerprint(state);
 };
 
-// Teste de calibragem (fingerprint): dispara a CADA mudança de trajetória do motor, por desenho.
-// Fica fora da suíte padrão enquanto o motor está em obra — rode sob demanda (CALIBRATE=1) e
-// rebaseline o hash. Ver __fixtures__/calibration.
-describe.runIf(CALIBRATION)("caracterizacao deterministica", () => {
+// Fingerprint: dispara a CADA mudança de trajetória do motor, por desenho. Fica na suíte padrão
+// justamente porque o motor está em obra — é o alarme que separa "mudei de propósito" de "mudei
+// sem perceber", e é o contrato de determinismo de que o rewind da MatchSession depende.
+//
+// Quando ele ficar vermelho: confira que a mudança era intencional, rode a bateria de calibragem
+// (CALIBRATE=1) para ver o que mexeu nas métricas de partida inteira, e só então atualize os
+// hashes — sempre num commit só do rebaseline, para o diff do baseline ser auditável.
+describe("caracterizacao deterministica", () => {
   it("preserva o fingerprint de duas partidas", () => {
     const actual = {
       short: simulate(12_345, 15),
@@ -68,11 +71,7 @@ describe.runIf(CALIBRATION)("caracterizacao deterministica", () => {
       short: hashFingerprint(actual.short),
       long: hashFingerprint(actual.long),
     };
-    // Rebaseline sob demanda: como o teste é gated (CALIBRATE=1), atualize estes hashes quando
-    // rodá-lo e o motor tiver mudado de propósito. O hash anterior estava defasado de várias
-    // mudanças atrás — é o preço de um teste que ninguém roda, e a razão de o rebaseline vir
-    // sempre num commit só dele: só assim o diff do baseline é auditável.
-    expect(hashes).toEqual({ short: "918845fe", long: "eba9cc60" });
+    expect(hashes).toEqual({ short: "6fbc0863", long: "f4f0e582" });
     // Timeout explícito: com 22 jogadores em campo a simulação custa ~2,4× o que custava no
     // 5x5, e o padrão de 5s estourava quando a suíte roda em paralelo.
   }, 60_000);
