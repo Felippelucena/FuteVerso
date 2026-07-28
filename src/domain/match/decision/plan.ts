@@ -1,5 +1,5 @@
 import { COGNITION, PHYSICS } from "../config";
-import { add, blend, clamp, distanceSquared, limit, scale, subtract } from "../../shared/math";
+import { add, blend, clamp, subtract } from "../../shared/math";
 import type { AgentDecision, MatchState, PlanTarget, PlayerPlan, PlayerRuntime, Vec2 } from "../model";
 import { activeBallPlayerId } from "../runtime/control";
 import { assignedAnchor } from "../runtime/formation-geometry";
@@ -7,7 +7,7 @@ import { clampToField } from "../runtime/pitch";
 import { prepareReceptionAction } from "../runtime/reception-planning";
 import { goalkeeperMovementTarget } from "../systems/goalkeeper-system";
 import { decideAll, decideFor, type FrameContext, type TeamContext } from "./decide";
-import { outOfPositionCost } from "./shared";
+import { crowdShift, outOfPositionCost } from "./shared";
 
 /**
  * Do que se decide para o que se sustenta. A decisão é instantânea; o PLANO tem duração, âncora
@@ -118,16 +118,7 @@ export const planAll = (state: MatchState): Map<string, PlayerPlan> => {
  */
 const personalSpaceShift = (player: PlayerRuntime, target: Vec2, state: MatchState): Vec2 => {
   const room = player.radius * 2 * PHYSICS.personalSpaceFactor;
-  const roomSquared = room * room;
-  let shift = { x: 0, y: 0 };
-  for (const teammate of state.players) {
-    if (teammate.team !== player.team || teammate.profile.id === player.profile.id) continue;
-    const squared = distanceSquared(target, teammate.position);
-    if (squared >= roomSquared || squared < 0.0001) continue;
-    const gap = Math.sqrt(squared);
-    shift = add(shift, scale(subtract(target, teammate.position), (room - gap) / gap));
-  }
-  return limit(shift, room);
+  return crowdShift(target, state.players, room, room, player.team, player.profile.id);
 };
 
 export const resolvePlanDecision = (player: PlayerRuntime, state: MatchState): AgentDecision => {

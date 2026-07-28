@@ -1,11 +1,11 @@
 import { FIELD, TACTICS } from "../config";
-import { add, blend, distance, normalize, scale, subtract } from "../../shared/math";
+import { add, blend, distance } from "../../shared/math";
 import type { AssignmentDuty, DecisionReason, MatchState, PlayerRuntime, TargetFrame, Vec2 } from "../model";
 import { assignedAnchor, attackDirection } from "../runtime/formation-geometry";
 import { clampToField, edgeRisk, fieldX, fieldY } from "../runtime/pitch";
 import { predictPlayerPosition, predictionHorizon } from "../runtime/prediction";
 import { assignmentOf } from "../systems/assignment-system";
-import { nearestPlayer, perceptionDepth } from "./shared";
+import { crowdShift, perceptionDepth } from "./shared";
 
 /**
  * Onde se oferecer quando o time tem a bola e ela não é sua. O alvo sai do DEVER que o coletivo
@@ -124,12 +124,14 @@ export const supportTarget = (
   }
   // A separação entre companheiros saiu daqui para `resolvePlanDecision`: ali ela é recalculada a
   // cada quadro contra posições vivas, em vez de ser congelada no plano — e vale para os vinte e
-  // dois, não só para quem apoia. Fugir da sombra do MARCADOR é outro conceito, e fica.
-  const nearestOpponent = nearestPlayer(candidate, state.players.filter((candidatePlayer) => candidatePlayer.team !== player.team));
-  const escapeOpponent = nearestOpponent && distance(nearestOpponent.position, candidate) < fieldX(7)
-    ? scale(normalize(subtract(candidate, nearestOpponent.position)), fieldX(4))
-    : { x: 0, y: 0 };
-  const target = clampToField(add(candidate, escapeOpponent), 5);
+  // dois, não só para quem apoia. Fugir da cobertura do MARCADOR é outro conceito, e fica.
+  //
+  // A mesma conta do espaço pessoal, com adversários no lugar de companheiros (ver `crowdShift`):
+  // uma soma contínua, não o empurrão do mais próximo. Aquele era um `argmax`, trocava de vencedor
+  // sem aviso e respondia sozinho por 38% do tremor do alvo de apoio.
+  const escapeCover = crowdShift(candidate, state.players, fieldX(7), fieldX(4),
+    player.team === "blue" ? "coral" : "blue");
+  const target = clampToField(add(candidate, escapeCover), 5);
   const targetGap = distance(player.position, target);
   const forwardProgress = direction * (target.x - player.position.x);
   const transitionAge = state.elapsed - state.controlChangedAt;
