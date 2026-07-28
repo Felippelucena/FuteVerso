@@ -1,12 +1,8 @@
-import { FIELD, PHYSICS, TACTICS } from "../config";
+import { PHYSICS, TACTICS } from "../config";
 import type { MatchState, PlayerRuntime, Vec2 } from "../model";
-import { add, clamp, distance, length, scale } from "../../shared/math";
+import { add, clamp, closestPointOnSegment, distance, length, scale } from "../../shared/math";
 import { playerSkillAcceleration, playerSkillSpeed } from "./player-metrics";
-
-const clampToField = (position: Vec2, margin: number): Vec2 => ({
-  x: clamp(position.x, margin, FIELD.width - margin),
-  y: clamp(position.y, margin, FIELD.height - margin),
-});
+import { clampToField } from "./pitch";
 
 export const predictionHorizon = (player: PlayerRuntime, urgency = 0.5): number => {
   const anticipation = player.profile.mental.anticipation / 100;
@@ -90,13 +86,12 @@ export const interceptionThreat = (
   opponents: PlayerRuntime[],
   travelSeconds: number,
 ): number => {
+  // Rota degenerada não tem o que interceptar — e o guarda também poupa a projeção de todo mundo.
   const segment = { x: end.x - start.x, y: end.y - start.y };
-  const squared = segment.x * segment.x + segment.y * segment.y;
-  if (squared < 0.001) return 0;
+  if (segment.x * segment.x + segment.y * segment.y < 0.001) return 0;
   return opponents.reduce((risk, opponent) => {
     const future = predictPlayerPosition(opponent, travelSeconds * 0.62);
-    const amount = clamp(((future.x - start.x) * segment.x + (future.y - start.y) * segment.y) / squared, 0, 1);
-    const closest = { x: start.x + segment.x * amount, y: start.y + segment.y * amount };
+    const closest = closestPointOnSegment(start, end, future).point;
     const reach = opponent.radius + 1.2 + length(opponent.velocity) * travelSeconds * 0.22
       + opponent.profile.skills.acceleration / 100 * travelSeconds * 3.4;
     return risk + clamp(1 - distance(future, closest) / Math.max(1, reach), 0, 1);

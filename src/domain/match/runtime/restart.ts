@@ -6,7 +6,7 @@ import { emitCognitiveEvent } from "./cognitive-events";
 import { emitMatchEvent } from "./events";
 import { attackDirection, baseCell, cellAnchor, formationAnchor, insidePenaltyArea, kickoffBallPosition, kickoffPosition, kickoffTaker, NEUTRAL_LINE_HEIGHT } from "./formation-geometry";
 import { goalkeeperGuardPost } from "./goalkeeper-geometry";
-import { attackingProgress } from "./offside";
+import { attackingProgress } from "./pitch";
 
 /**
  * Bola parada com CAMINHADA, não teleporte. A jogada morre, a bola é posta no ponto, o cobrador

@@ -1,12 +1,11 @@
-import { FIELD, PHYSICS } from "../config";
+import { PHYSICS } from "../config";
 import { clamp, distance, length } from "../../shared/math";
 import type { MatchState, PlayerRuntime, PreparedReceptionAction, ShotTechnique } from "../model";
 import { playerSkillSpeed } from "./player-metrics";
 import { predictPlayerAlongPlan, predictedSpaceAt } from "./prediction";
 import { evaluateShotOpportunity } from "./shot-opportunity";
 import { pressureAt } from "./control";
-
-const fieldX = (value: number): number => value * FIELD.width / 100;
+import { fieldX } from "./pitch";
 
 const expectedContactHeight = (state: MatchState): number => {
   const pending = state.pendingPass;

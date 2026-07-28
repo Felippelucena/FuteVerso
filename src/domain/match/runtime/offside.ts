@@ -1,5 +1,6 @@
-import { FIELD, OFFSIDE } from "../config";
+import { OFFSIDE } from "../config";
 import type { MatchState, PlayerRuntime, Team } from "../model";
+import { attackingProgress } from "./pitch";
 
 /**
  * Lei 11 (impedimento), a parte que é geometria e não estado. Tudo aqui é **puro**: lê posições,
@@ -13,14 +14,6 @@ import type { MatchState, PlayerRuntime, Team } from "../model";
  * - **Punição:** só depois, quando um desses jogadores **se envolve na jogada** (encosta na
  *   bola). Estar em posição de impedimento nunca é, por si, infração.
  */
-
-/** Progresso rumo ao gol atacado: 0 no próprio gol, 1 na linha de fundo adversária. */
-export const attackingProgress = (team: Team, x: number): number =>
-  team === "blue" ? x / FIELD.width : (FIELD.width - x) / FIELD.width;
-
-/** Volta de progresso para X do gramado — usado para desenhar a linha da bandeira. */
-export const progressToX = (team: Team, progress: number): number =>
-  team === "blue" ? progress * FIELD.width : FIELD.width - progress * FIELD.width;
 
 /**
  * A linha do impedimento: o **penúltimo** adversário rumo ao próprio gol (contando o goleiro).

@@ -1,6 +1,5 @@
-import type { MatchState } from "../../domain/match";
+import { goalkeeperQuality, type MatchState } from "../../domain/match";
 import type { PlayerRuntime } from "../../domain/match/model";
-import { goalkeeperQuality } from "../../domain/match/systems/goalkeeper-system";
 import type { Team } from "../../domain/shared/model";
 import { DRIBBLE_RANGE_REASON_LABELS, DRIBBLE_TOUCH_LABELS, INTENT_LABELS, PACE_LABELS, PASS_PURPOSE_LABELS, percentage, POSITION_LABELS, REASON_LABELS, ROLE_LABELS, SHOT_TECHNIQUE_LABELS, teamLabel, type TeamNames } from "../app/labels";
 

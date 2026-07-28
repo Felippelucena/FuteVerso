@@ -1,8 +1,9 @@
 import { FIELD, GOALKEEPING } from "../config";
-import { add, clamp, distance, dot, normalize, scale, subtract } from "../../shared/math";
+import { clamp, distance, distanceToSegment, dot, normalize, subtract } from "../../shared/math";
 import type { BallAction, MatchState, PlayerRuntime, ShotTechnique, Vec2 } from "../model";
 import { predictPlayerPosition } from "./prediction";
 import { pressureAt } from "./control";
+import { fieldX } from "./pitch";
 
 export interface ShotOpportunity {
   action: Extract<BallAction, { kind: "shot" }>;
@@ -13,16 +14,6 @@ export interface ShotOpportunity {
   goalkeeperGap: number;
   isLong: boolean;
 }
-
-const fieldX = (value: number): number => value * FIELD.width / 100;
-
-const distanceToSegment = (point: Vec2, start: Vec2, end: Vec2): number => {
-  const segment = subtract(end, start);
-  const squared = dot(segment, segment);
-  if (squared < 0.001) return distance(point, start);
-  const amount = clamp(dot(subtract(point, start), segment) / squared, 0, 1);
-  return distance(point, add(start, scale(segment, amount)));
-};
 
 export const evaluateShotOpportunity = (
   player: PlayerRuntime,

@@ -1,5 +1,5 @@
 import { COGNITION, CONDUCT, CONTEST, DEFENSE, DUEL, FIELD, GOALKEEPING, MENTALITY, OFFSIDE, PHYSICS, TACTICS } from "./config";
-import { add, clamp, distance, dot, normalize, scale, subtract } from "../shared/math";
+import { add, clamp, distance, distanceToSegment, dot, normalize, scale, subtract } from "../shared/math";
 import { mentalityBias, type FreedomInstruction } from "../tactics/model";
 import type { AgentDecision, AssignmentDuty, BallAction, DecisionReason, DribbleStyle, MatchState, PlanTarget, PlayerPlan, PlayerRuntime, Team, Vec2 } from "./model";
 import { chasersFor, readBallSituation } from "./runtime/ball-situation";
@@ -8,7 +8,17 @@ import { goalkeeperReleasePost } from "./runtime/goalkeeper-geometry";
 import { resolveMarking, type MarkingAssignment } from "./runtime/marking";
 import { duelEdge, duelStrength } from "./runtime/duel";
 import { isRestartTaker, restartLayoutTarget } from "./runtime/restart";
-import { attackingProgress, offsideLineProgress } from "./runtime/offside";
+import { offsideLineProgress } from "./runtime/offside";
+import {
+  attackingProgress,
+  centrality,
+  channelAffinity,
+  channelY,
+  clampToField,
+  edgeRisk,
+  fieldX,
+  fieldY,
+} from "./runtime/pitch";
 import {
   interceptionThreat,
   predictBallPosition,
@@ -37,9 +47,6 @@ export const PASS_VARIANTS = (["ground", "air"] as const).flatMap((trajectory) =
   ),
 );
 
-const fieldX = (original: number): number => original * FIELD.width / 100;
-const fieldY = (original: number): number => original * FIELD.height / 60;
-
 const PERCEPTION = {
   intervention: fieldX(12),
   support: fieldX(28),
@@ -50,24 +57,6 @@ const blend = (a: Vec2, b: Vec2, amount: number): Vec2 => ({
   x: a.x * (1 - amount) + b.x * amount,
   y: a.y * (1 - amount) + b.y * amount,
 });
-
-const clampToField = (target: Vec2, margin = 4): Vec2 => ({
-  x: clamp(target.x, margin, FIELD.width - margin),
-  y: clamp(target.y, margin, FIELD.height - margin),
-});
-
-const edgeRisk = (position: Vec2): number => {
-  const nearestTouchline = Math.min(position.y, FIELD.height - position.y);
-  const nearestGoalLine = Math.min(position.x, FIELD.width - position.x);
-  return clamp(1 - Math.min(nearestTouchline / fieldY(10), nearestGoalLine / fieldX(7)), 0, 1);
-};
-
-const centrality = (position: Vec2): number => 1 - clamp(Math.abs(position.y - FIELD.height / 2) / (FIELD.height / 2), 0, 1);
-
-const channelAffinity = (position: Vec2, channel: "left" | "center" | "right"): number => {
-  const targetY = channel === "left" ? FIELD.height * 0.22 : channel === "right" ? FIELD.height * 0.78 : FIELD.height * 0.5;
-  return 1 - clamp(Math.abs(position.y - targetY) / (FIELD.height * 0.42), 0, 1);
-};
 
 /**
  * Custo de jogar fora de posição, em cima do encaixe (`positionFit`) que o plano tático
@@ -86,14 +75,6 @@ const decisionNoise = (player: PlayerRuntime, state: MatchState, salt: number): 
   const normalized = hash / 0xffff_ffff * 2 - 1;
   return normalized * (1 - player.profile.mental.decisionMaking / 100) * 0.34
     * (1 + outOfPositionCost(player) * 0.6);
-};
-
-const distanceToSegment = (point: Vec2, start: Vec2, end: Vec2): number => {
-  const segment = subtract(end, start);
-  const squared = dot(segment, segment);
-  if (squared < 0.001) return distance(point, start);
-  const amount = clamp(dot(subtract(point, start), segment) / squared, 0, 1);
-  return distance(point, add(start, scale(segment, amount)));
 };
 
 const nearestPlayer = (origin: Vec2, players: PlayerRuntime[]): PlayerRuntime | null =>
@@ -530,7 +511,7 @@ const supportTarget = (
   const horizon = predictionHorizon(player, phaseIsFast ? 0.82 : 0.42);
   const predictedController = predictPlayerPosition(controller, horizon * 0.55);
   const preferredY = collective
-    ? collective.attackChannel === "left" ? FIELD.height * 0.22 : collective.attackChannel === "right" ? FIELD.height * 0.78 : FIELD.height * 0.5
+    ? channelY(collective.attackChannel)
     : controller.position.y + side * roleWidth;
   const channelPull = duty === "runInBehind" ? 0.72 : duty === "support" ? 0.42 : duty === "width" ? 0.1 : 0.18;
   const passingPocket = {

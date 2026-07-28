@@ -2,6 +2,7 @@ import { clamp } from "../../shared/math";
 import { findSlot, TACTICAL_GRID } from "../../tactics/slots";
 import { FIELD } from "../config";
 import type { AssignmentZone, PlayerRuntime, Team, TeamShapePlacement, Vec2 } from "../model";
+import { fieldX } from "./pitch";
 
 /**
  * Tradução entre a grade tática 7x5 — a mesma em que o treinador escala — e as coordenadas do
@@ -18,7 +19,6 @@ import type { AssignmentZone, PlayerRuntime, Team, TeamShapePlacement, Vec2 } fr
  * Enquanto as duas estavam na mesma tabela, a forma tinha um teto: o jogador mais avançado
  * nunca passava de 53% do campo, e os dois times viviam cada um na sua metade sem se misturar.
  */
-const fieldX = (original: number): number => original * FIELD.width / 100;
 
 export const attackDirection = (team: Team): number => (team === "blue" ? 1 : -1);
 

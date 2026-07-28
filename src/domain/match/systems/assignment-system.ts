@@ -33,6 +33,7 @@ import {
 } from "../runtime/formation-geometry";
 import { chasersFor } from "../runtime/ball-situation";
 import { rankThreats } from "../runtime/marking";
+import { attackingProgress, centrality, channelAffinity, channelY } from "../runtime/pitch";
 import { predictPlayerPosition, predictionHorizon } from "../runtime/prediction";
 
 /**
@@ -145,18 +146,6 @@ const ALL_CELLS: readonly AssignmentZone[] = TACTICAL_GRID.columns
   .filter((column) => column !== GOALKEEPER_COLUMN)
   .flatMap((column) => TACTICAL_GRID.rows.map((row) => ({ column, row })));
 
-const attackingProgress = (team: Team, x: number): number =>
-  team === "blue" ? x / FIELD.width : (FIELD.width - x) / FIELD.width;
-
-const channelY = (channel: AttackChannel): number => channel === "left"
-  ? FIELD.height * 0.22
-  : channel === "right"
-    ? FIELD.height * 0.78
-    : FIELD.height * 0.5;
-
-const channelAffinity = (position: { y: number }, channel: AttackChannel): number =>
-  1 - clamp(Math.abs(position.y - channelY(channel)) / (FIELD.height * 0.42), 0, 1);
-
 const byId = (first: PlayerRuntime, second: PlayerRuntime): number =>
   first.profile.id.localeCompare(second.profile.id);
 
@@ -238,7 +227,7 @@ const forwardness = (player: PlayerRuntime, context: AssignmentContext): number 
 /** Quem serve de último homem: defende bem, lê o jogo e já está do lado certo da bola. */
 const safetyScore = (player: PlayerRuntime, team: Team, context: AssignmentContext): number => {
   const goalSide = 1 - attackingProgress(team, player.position.x);
-  const central = 1 - clamp(Math.abs(player.position.y - FIELD.height / 2) / (FIELD.height / 2), 0, 1);
+  const central = centrality(player.position);
   const fromInstruction = player.instruction.support === "hold" ? 8 : player.instruction.support === "attack" ? -8 : 0;
   return player.profile.skills.defending * 0.42 + player.profile.mental.decisionMaking * 0.2
     + player.profile.mental.anticipation * 0.18 + player.profile.mental.teamwork * 0.12

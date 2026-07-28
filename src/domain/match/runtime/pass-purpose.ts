@@ -1,7 +1,6 @@
 import { FIELD } from "../config";
-import type { PassPurpose, PassTargeting, PassTrajectory, PlayerRuntime, Team, Vec2 } from "../model";
-
-const attackingProgress = (team: Team, x: number): number => team === "blue" ? x / FIELD.width : (FIELD.width - x) / FIELD.width;
+import type { PassPurpose, PassTargeting, PassTrajectory, PlayerRuntime, Vec2 } from "../model";
+import { attackingProgress } from "./pitch";
 
 export const classifyPassPurpose = (
   passer: PlayerRuntime,

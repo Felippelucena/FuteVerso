@@ -1,5 +1,5 @@
 import { FIELD, FIXED_STEP, GOALKEEPING } from "../config";
-import { add, clamp, distance, dot, length, limit, normalize, scale, subtract } from "../../shared/math";
+import { add, clamp, closestPointOnSegment, distance, dot, length, limit, normalize, scale, subtract } from "../../shared/math";
 import type { AgentDecision, GoalkeeperAction, GoalkeeperAttempt, GoalkeeperSource, MatchState, PlayerRuntime, SaveOutcome, Vec2 } from "../model";
 import { clearDribbleOwner, registerControlledTeam, registerLooseBall } from "../runtime/control";
 import { emitCognitiveEvent, relevantPlayersNear } from "../runtime/cognitive-events";
@@ -478,13 +478,6 @@ export const goalkeeperDecision = (goalkeeper: PlayerRuntime, state: MatchState)
   return { movementTarget, burst: false, posture: "outOfPossession", intent, reason, ballAction: { kind: "none" } };
 };
 
-const closestSegmentPoint = (start: Vec2, end: Vec2, point: Vec2): { point: Vec2; amount: number } => {
-  const segment = subtract(end, start);
-  const squared = dot(segment, segment);
-  const amount = squared < 0.0001 ? 1 : clamp(dot(subtract(point, start), segment) / squared, 0, 1);
-  return { point: add(start, scale(segment, amount)), amount };
-};
-
 const setAttemptResult = (
   state: MatchState,
   goalkeeper: PlayerRuntime,
@@ -628,7 +621,7 @@ export const resolveGoalkeeperContact = (
   for (const goalkeeper of state.players.filter((player) => player.profile.position === "goalkeeper")) {
     const attempt = goalkeeper.goalkeeperAttempt;
     if (!attempt || attempt.outcome !== null) continue;
-    const { point, amount } = closestSegmentPoint(previousPosition, state.ball.position, goalkeeper.position);
+    const { point, amount } = closestPointOnSegment(previousPosition, state.ball.position, goalkeeper.position);
     const contactTime = state.elapsed - dt + amount * dt;
     if (contactTime + 0.0001 < attempt.reactionReadyAt || !ownsPenaltyArea(goalkeeper, point)) continue;
 

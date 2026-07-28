@@ -40,3 +40,18 @@ export const rotate = (value: Vec2, angle: number): Vec2 => ({
   x: value.x * Math.cos(angle) - value.y * Math.sin(angle),
   y: value.x * Math.sin(angle) + value.y * Math.cos(angle),
 });
+
+/**
+ * Ponto do segmento `[start, end]` mais próximo de `point`, com a fração do caminho até ele.
+ * `amount` interessa a quem precisa saber QUANDO o encontro acontece — a varredura do contato do
+ * goleiro usa a fração para datar o toque dentro do quadro.
+ */
+export const closestPointOnSegment = (start: Vec2, end: Vec2, point: Vec2): { point: Vec2; amount: number } => {
+  const segment = subtract(end, start);
+  const squared = dot(segment, segment);
+  const amount = squared < 0.0001 ? 1 : clamp(dot(subtract(point, start), segment) / squared, 0, 1);
+  return { point: add(start, scale(segment, amount)), amount };
+};
+
+export const distanceToSegment = (point: Vec2, start: Vec2, end: Vec2): number =>
+  distance(point, closestPointOnSegment(start, end, point).point);

@@ -16,6 +16,7 @@ import type {
 } from "../model";
 import { readBallSituation } from "../runtime/ball-situation";
 import { activeBallPlayerId } from "../runtime/control";
+import { attackingProgress, channelY } from "../runtime/pitch";
 import { predictPlayerPosition, predictedSpaceAt, predictionHorizon } from "../runtime/prediction";
 import { buildAssignments, placementFor } from "./assignment-system";
 
@@ -40,8 +41,6 @@ export const createTacticalState = (directives: TeamDirectives): TeamTacticalSta
   collectivePlan: null,
   safetyPlayerId: null,
 });
-
-const attackingProgress = (team: Team, x: number): number => team === "blue" ? x / FIELD.width : (FIELD.width - x) / FIELD.width;
 
 const collectivePosture = (state: MatchState, team: Team): "inPossession" | "outOfPossession" => {
   const actor = state.players.find((player) => player.profile.id === activeBallPlayerId(state));
@@ -82,12 +81,6 @@ const detectPhase = (state: MatchState, team: Team, shape: TeamShape): TacticalP
   if (progress < 0.34) return "lowBlock";
   return "midBlock";
 };
-
-const channelY = (channel: AttackChannel): number => channel === "left"
-  ? FIELD.height * 0.22
-  : channel === "right"
-    ? FIELD.height * 0.78
-    : FIELD.height * 0.5;
 
 const average = (players: PlayerRuntime[], value: (player: PlayerRuntime) => number): number =>
   players.reduce((sum, player) => sum + value(player), 0) / Math.max(1, players.length);

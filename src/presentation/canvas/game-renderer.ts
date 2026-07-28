@@ -1,7 +1,6 @@
 import { FIELD, GOALKEEPING, PHYSICS, RESTART } from "../../domain/match/config";
 import { clamp, distance, length } from "../../domain/shared/math";
-import { goalkeeperJumpHeight } from "../../domain/match/systems/goalkeeper-system";
-import { progressToX } from "../../domain/match/runtime/offside";
+import { goalkeeperJumpHeight, progressToX } from "../../domain/match";
 import type { MatchState, OffsideCall, PlayerRuntime, Team, Vec2 } from "../../domain/match/model";
 import { PITCH_MARKINGS, PITCH_SPOT_RADIUS } from "./pitch-markings";
 
