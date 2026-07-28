@@ -1,11 +1,11 @@
 import { FIELD, TACTICS } from "../config";
-import { add, distance, normalize, scale, subtract } from "../../shared/math";
-import type { AssignmentDuty, DecisionReason, MatchState, PlayerRuntime, Vec2 } from "../model";
-import { attackDirection } from "../runtime/formation-geometry";
+import { add, blend, distance, normalize, scale, subtract } from "../../shared/math";
+import type { AssignmentDuty, DecisionReason, MatchState, PlayerRuntime, TargetFrame, Vec2 } from "../model";
+import { assignedAnchor, attackDirection } from "../runtime/formation-geometry";
 import { clampToField, edgeRisk, fieldX, fieldY } from "../runtime/pitch";
 import { predictPlayerPosition, predictionHorizon } from "../runtime/prediction";
-import { assignedAnchor, assignmentOf } from "../systems/assignment-system";
-import { blend, nearestPlayer, perceptionDepth } from "./shared";
+import { assignmentOf } from "../systems/assignment-system";
+import { nearestPlayer, perceptionDepth } from "./shared";
 
 /**
  * Onde se oferecer quando o time tem a bola e ela não é sua. O alvo sai do DEVER que o coletivo
@@ -46,7 +46,7 @@ export const supportTarget = (
   player: PlayerRuntime,
   controller: PlayerRuntime,
   state: MatchState,
-): { target: Vec2; reason: DecisionReason; burst: boolean } => {
+): { target: Vec2; frame: TargetFrame; reason: DecisionReason; burst: boolean } => {
   const direction = attackDirection(player.team);
   const collective = state.tactics[player.team].collectivePlan;
   const assignment = assignmentOf(collective, player.profile.id);
@@ -97,19 +97,23 @@ export const supportTarget = (
       : Math.max(ballLine, threatGuard, state.ball.position.x + fieldX(7));
     return {
       target: clampToField({ x: safeX, y: blend(anchor, { x: safeX, y: state.ball.position.y }, 0.34).y }, 5),
+      // A retaguarda não acompanha o portador: ela acompanha a linha da bola, que já é a
+      // profundidade da própria célula.
+      frame: { anchor, bodyId: null, bodyShare: 0 },
       reason: "restDefense",
       burst: false,
     };
   }
-  // A profundidade da âncora **é** o acompanhamento da bola: a altura de linha do time sai da
-  // posição dela. Somar aqui outra vez faria o bloco perseguir a bola em dobro e se esticar.
-  // Quem segura a largura quase não desliza atrás do portador: a função dele é justamente não
-  // fechar a faixa que o time precisa manter aberta.
-  const base = {
-    x: anchor.x,
-    y: anchor.y + (controller.position.y - FIELD.height / 2) * (duty === "width" ? 0.12 : 0.28),
-  };
-  const candidate = blend(passingPocket, base, 0.35 + supportDepth * 0.4);
+  // A célula É o gramado: a profundidade dela já acompanha a bola (a altura de linha sai da posição
+  // dela) e o deslize lateral do bloco já é `placement.lateralShift`. O que sobra de "seguir o
+  // portador" é o BOLSÃO, e ele entra pela fatia — somar aqui um segundo puxão em y era o mesmo
+  // defeito do puxão para `channelY` que o comentário acima descreve: dois atratores para a mesma
+  // decisão, e o time jogando 31 m de largura com as células abertas em 45.
+  //
+  // A fatia é o complemento do peso da mistura, e é ela que o plano guarda: bola perto, o apoio
+  // vive mais do portador; bola longe, mais da própria célula.
+  const carrierShare = 0.65 - supportDepth * 0.4;
+  const candidate = blend(passingPocket, anchor, 1 - carrierShare);
   // Portador encurralado na linha: quem se recolhe para dentro é quem está DO MESMO LADO que
   // ele — é esse o amontoado. Quem está do outro lado fica onde está, porque é justamente a
   // largura do lado oposto que dá a saída. Puxar todos para o eixo fechava o campo no momento
@@ -118,17 +122,14 @@ export const supportTarget = (
   if (controllerNearEdge > 0.35 && crowdedSide) {
     candidate.y = blend(candidate, { x: candidate.x, y: FIELD.height / 2 }, controllerNearEdge * 0.65).y;
   }
-  const nearby = state.players.filter((candidatePlayer) => candidatePlayer.team === player.team && candidatePlayer.profile.id !== player.profile.id);
-  const separation = nearby.reduce((force, teammate) => {
-    const gap = distance(candidate, teammate.position);
-    if (gap >= fieldX(10) || gap < 0.01) return force;
-    return add(force, scale(normalize(subtract(candidate, teammate.position)), (fieldX(10) - gap) * 0.72));
-  }, { x: 0, y: 0 });
+  // A separação entre companheiros saiu daqui para `resolvePlanDecision`: ali ela é recalculada a
+  // cada quadro contra posições vivas, em vez de ser congelada no plano — e vale para os vinte e
+  // dois, não só para quem apoia. Fugir da sombra do MARCADOR é outro conceito, e fica.
   const nearestOpponent = nearestPlayer(candidate, state.players.filter((candidatePlayer) => candidatePlayer.team !== player.team));
   const escapeOpponent = nearestOpponent && distance(nearestOpponent.position, candidate) < fieldX(7)
     ? scale(normalize(subtract(candidate, nearestOpponent.position)), fieldX(4))
     : { x: 0, y: 0 };
-  const target = clampToField(add(add(candidate, separation), escapeOpponent), 5);
+  const target = clampToField(add(candidate, escapeOpponent), 5);
   const targetGap = distance(player.position, target);
   const forwardProgress = direction * (target.x - player.position.x);
   const transitionAge = state.elapsed - state.controlChangedAt;
@@ -144,5 +145,5 @@ export const supportTarget = (
     && (phaseIsFinal || phaseIsFast || controller.velocity.x * direction > 2.5);
   const workThreshold = 0.58 - player.profile.mental.intensity / 500;
   const burst = player.sprintEnergy > workThreshold && player.sprintCooldown <= 0 && (transitionRun || depthRun);
-  return { target, reason, burst };
+  return { target, frame: { anchor, bodyId: controller.profile.id, bodyShare: carrierShare }, reason, burst };
 };

@@ -1,4 +1,4 @@
-import { planFor, readFrame, readTeam, resolvePlanDecision, thinkingInterval } from "../decision";
+import { planFor, readFrame, readTeam, resolvePlanDecision, targetReference, thinkingInterval } from "../decision";
 import { COGNITION, CONTEST } from "../config";
 import { distance } from "../../shared/math";
 import type { AgentDecision, MatchState, PlayerRuntime } from "../model";
@@ -14,9 +14,12 @@ const planNeedsRefresh = (player: PlayerRuntime, state: MatchState): boolean => 
   if (plan.ballAction.kind !== "none"
     && state.ball.controllerId !== player.profile.id
     && state.ball.dribbleOwnerId !== player.profile.id) return true;
-  if (plan.target.kind === "point"
+  // Alvo POSICIONAL cumprido é objetivo cumprido: chegou, repensa. Não vale para alvo colado num
+  // corpo que se mexe — esse nunca está "cumprido", e o gatilho viraria repensar a cada quadro.
+  const positional = plan.target.kind === "point" || (plan.target.kind === "anchored" && !plan.target.bodyId);
+  if (positional
     && state.elapsed - plan.startedAt > 0.2
-    && distance(player.position, plan.target.position) < player.radius * 2) return true;
+    && distance(player.position, resolvePlanDecision(player, state).movementTarget) < player.radius * 2) return true;
   // Bola em aberto e eu no páreo: repensar agora, não no próximo pensamento. É a diferença
   // entre investir na bola adiantada e vê-la passar — antes este gatilho se calava justamente
   // quando havia um pique ou um passe em curso, que é quando a chance aparece.
@@ -63,8 +66,7 @@ export const updateCognition = (state: MatchState): Map<string, AgentDecision> =
       if (!invalid) {
         player.nextThinkAt = state.elapsed + thinkingInterval(player);
         const current = player.plan!;
-        const sameTargetReference = current.target.kind === candidate.target.kind
-          && (current.target.kind !== "player" || candidate.target.kind !== "player" || current.target.playerId === candidate.target.playerId);
+        const sameTargetReference = targetReference(current.target) === targetReference(candidate.target);
         const sameBallAction = current.ballAction.kind === candidate.ballAction.kind
           && (current.ballAction.kind !== "dribble" || candidate.ballAction.kind !== "dribble" || current.ballAction.style === candidate.ballAction.style)
           && (current.ballAction.kind !== "dribble" || candidate.ballAction.kind !== "dribble"

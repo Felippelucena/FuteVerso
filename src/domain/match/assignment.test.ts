@@ -3,7 +3,8 @@ import { referenceMatchConfig, startOpenPlay } from "./__fixtures__/reference-ma
 import { FIELD, FIXED_STEP } from "./config";
 import { createMatchState, stepMatch } from "./index";
 import { cellKey } from "./runtime/formation-geometry";
-import { assignedAnchor, dutyHolders } from "./systems/assignment-system";
+import { assignedAnchor } from "./runtime/formation-geometry";
+import { dutyHolders } from "./systems/assignment-system";
 import { updateTacticalContext } from "./systems/tactics-system";
 import { TEAM_SIZE } from "../tactics/model";
 import { findSlot } from "../tactics/slots";

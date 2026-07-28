@@ -18,7 +18,7 @@
  * O eixo vertical (altura da bola, alcance do goleiro) NÃO usa esta escala — ele tem a própria
  * calibragem, herdada e presa a `goalHeight`. Mexer nele é outra conversa.
  */
-const UNITS_PER_METER = 2.4;
+const UNITS_PER_METER = 2.7;
 const meters = (value: number): number => value * UNITS_PER_METER;
 
 const fieldWidth = meters(105);
@@ -55,7 +55,7 @@ export const FIELD = {
   // Corpo e bola ficam ~2× maiores que na vida real (1,25 m de largura, bola de 42 cm) para
   // seguirem legíveis no zoom em que o campo inteiro cabe na tela. Os dois crescem junto, então
   // a bola continua um terço do jogador, como no futebol de verdade.
-  playerRadius: 1.5,
+  playerRadius: 1.3,
   ballRadius: 0.5,
 } as const;
 
@@ -76,6 +76,11 @@ export const PHYSICS = {
   controlAttemptCooldown: 0.2,
   heavyTouchCooldown: 0.32,
   passiveCollisionRadiusFactor: 0.78,
+  // Espaço pessoal do POSICIONAMENTO: quantos encostos de corpo um companheiro pede de distância.
+  // 2 quer dizer "cabe um corpo inteiro de grama entre nós" — 2,5 m entre centros. É piso de
+  // ocupação, não alvo: medido, o vizinho mais próximo fica a 1,5 m em 10% do tempo, ou seja
+  // colado. Vale só entre companheiros, e nunca para quem vai à bola: disputá-la é o jogo.
+  personalSpaceFactor: 2,
   playerBounce: 0.25,
   kickDistance: 4.15,
   // Até que altura um jogador de linha ainda alcança a bola — de cabeça, no alto do salto. É o
@@ -130,7 +135,7 @@ export const GOAL_TO_GOAL_SPRINT = fieldWidth - 10;
 // contínua, e o trote também cobra — recupera-se de verdade parando, não trotando. Com os
 // valores antigos (0,7 e 0,18 contra 0,22/s de recarga) o ciclo pique/espera era lucrativo e a
 // barra vivia grudada no topo: disparar não custava decisão nenhuma.
-const VOLATILE_BURST_PER_CROSSING = 2;
+const VOLATILE_BURST_PER_CROSSING = 1.7;
 const VOLATILE_RUN_PER_CROSSING = 0.6;
 
 export const STAMINA = {

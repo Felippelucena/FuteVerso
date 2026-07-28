@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { referenceMatchConfig } from "./__fixtures__/reference-match";
 import { FIELD, FIXED_STEP } from "./config";
 import { createMatchState, stepMatch } from "./index";
-import { assignedAnchor } from "./systems/assignment-system";
+import { assignedAnchor } from "./runtime/formation-geometry";
 import type { MatchState, Team } from "./model";
 
 /**

@@ -300,7 +300,7 @@ describe("qualidade coletiva da simulacao", () => {
     state.ball.position = { ...controller.position };
     state.possessionTeam = "blue";
     state.ballControlTeam = "blue";
-    perceive(state);
+    updateTacticalContext(state, 0);
     const plans = planAll(state);
     supporter.plan = plans.get(supporter.profile.id)!;
     const plan = supporter.plan;
@@ -310,9 +310,52 @@ describe("qualidade coletiva da simulacao", () => {
     controller.position.y += 4;
     const after = resolvePlanDecision(supporter, state).movementTarget;
 
+    // Acompanha o portador em profundidade, mas não é rebocado 1:1: a parte do alvo que veio da
+    // célula não viaja com ele. Rebocar tudo era o que soldava o bloco de apoio no portador e
+    // fazia o alvo estalar de volta a cada replanejamento.
+    expect(after.x - before.x).toBeGreaterThan(0);
+    expect(after.x - before.x).toBeLessThan(9);
+
+    // E a outra metade: a âncora é viva. Mexer a colocação do bloco move o alvo, sem plano novo.
+    const shifted = (() => {
+      state.tactics.blue.collectivePlan!.placement.lineHeight += 6;
+      return resolvePlanDecision(supporter, state).movementTarget;
+    })();
+    expect(Math.abs(shifted.x - after.x)).toBeGreaterThan(1);
     expect(supporter.plan).toBe(plan);
-    expect(after.x - before.x).toBeCloseTo(9, 5);
-    expect(after.y - before.y).toBeCloseTo(4, 5);
+  });
+
+  it("afasta o alvo do companheiro que ja ocupa o palmo de grama, mas nao perto da bola", () => {
+    const state = createTestMatch(3311);
+    startOpenPlay(state);
+    state.elapsed = 20;
+    const [first, second] = state.players.filter((player) => player.team === "blue"
+      && player.profile.position !== "goalkeeper");
+    const spot = { x: FIELD.width * 0.5, y: FIELD.height * 0.5 };
+    // Bola bem longe: o que se mede é a ocupação do espaço, não a disputa.
+    state.ball.position = { x: FIELD.width * 0.06, y: FIELD.height * 0.9 };
+    state.ball.controllerId = null;
+    perceive(state);
+    // Só os dois no lance: qualquer outro companheiro perto do ponto contaminaria a medida.
+    state.players.forEach((player, index) => {
+      if (player !== first && player !== second) player.position = { x: FIELD.width * 0.04, y: 4 + index * 6 };
+    });
+    first.position = { x: spot.x - 20, y: spot.y };
+    second.position = { x: FIELD.width * 0.9, y: FIELD.height * 0.1 };
+    first.plan = { ...planAll(state).get(first.profile.id)!, target: { kind: "point", position: spot } };
+
+    expect(distance(resolvePlanDecision(first, state).movementTarget, spot)).toBeLessThan(0.001);
+
+    second.position = { x: spot.x + 1, y: spot.y };
+    const crowded = resolvePlanDecision(first, state).movementTarget;
+    // A colisão sozinha separa exatamente no encosto dos corpos; o espaço pessoal abre MAIS que
+    // isso — é esse excedente que distingue posicionar-se de se empurrar.
+    expect(distance(crowded, second.position)).toBeGreaterThan(first.radius + second.radius);
+
+    // Alvo ancorado na bola não tem espaço pessoal: disputá-la é o jogo.
+    first.plan = { ...first.plan, target: { kind: "ball", offset: { x: 0, y: 0 } }, intent: "pressing" };
+    state.ball.position = { ...spot };
+    expect(distance(resolvePlanDecision(first, state).movementTarget, spot)).toBeLessThan(0.001);
   });
 
   it("acompanha um alvo marcado sem trocar o plano", () => {
@@ -335,19 +378,25 @@ describe("qualidade coletiva da simulacao", () => {
       player.profile.mental.aggression = 1;
       player.profile.mental.intensity = 1;
     }
-    perceive(state);
+    // A marcação sai do plano coletivo (`resolveMarking` lê os deveres): sem ele não há marcador
+    // nenhum para medir — e era por isso que este teste achava um APOIADOR coral por acidente.
+    updateTacticalContext(state, 0);
     const plans = planAll(state);
     for (const player of state.players) player.plan = plans.get(player.profile.id)!;
-    const marker = state.players.find((player) => player.plan?.target.kind === "player")!;
-    const targetId = marker.plan!.target.kind === "player" ? marker.plan!.target.playerId : "";
+    const marker = state.players.find((player) => player.team === "blue" && player.plan?.intent === "marking")!;
+    expect(marker).toBeDefined();
+    const targetId = marker.plan!.target.kind === "anchored" ? marker.plan!.target.bodyId : null;
     const target = state.players.find((player) => player.profile.id === targetId)!;
+    expect(target).toBeDefined();
     const before = resolvePlanDecision(marker, state).movementTarget;
     const startedAt = marker.plan!.startedAt;
     target.position = { x: target.position.x + 5, y: target.position.y - 3 };
     const after = resolvePlanDecision(marker, state).movementTarget;
 
-    expect(after.x - before.x).toBeCloseTo(5, 5);
-    expect(after.y - before.y).toBeCloseTo(-3, 5);
+    // Vai com o homem, ao vivo e sem plano novo. O quanto ele vai junto é a firmeza da marcação
+    // (`bodyShare`), que a situação decide — cravar 1:1 aqui amarraria o teste à calibragem dela.
+    expect(after.x - before.x).toBeGreaterThan(0);
+    expect(after.y - before.y).toBeLessThan(0);
     expect(marker.plan!.startedAt).toBe(startedAt);
   });
 

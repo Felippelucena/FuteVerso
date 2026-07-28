@@ -16,6 +16,13 @@ export const length = (value: Vec2): number => Math.hypot(value.x, value.y);
 
 export const distance = (a: Vec2, b: Vec2): number => length(subtract(a, b));
 
+/** Distância ao quadrado: para comparar contra um raio sem pagar a raiz em laço quente. */
+export const distanceSquared = (a: Vec2, b: Vec2): number => {
+  const dx = a.x - b.x;
+  const dy = a.y - b.y;
+  return dx * dx + dy * dy;
+};
+
 export const normalize = (value: Vec2): Vec2 => {
   const magnitude = length(value);
   return magnitude > 0.0001 ? scale(value, 1 / magnitude) : { x: 0, y: 0 };
@@ -28,6 +35,12 @@ export const limit = (value: Vec2, maximum: number): Vec2 => {
 
 export const lerp = (from: number, to: number, amount: number): number =>
   from + (to - from) * amount;
+
+/** `lerp` de vetor: 0 devolve `a`, 1 devolve `b`. */
+export const blend = (a: Vec2, b: Vec2, amount: number): Vec2 => ({
+  x: a.x * (1 - amount) + b.x * amount,
+  y: a.y * (1 - amount) + b.y * amount,
+});
 
 export const dot = (a: Vec2, b: Vec2): number => a.x * b.x + a.y * b.y;
 

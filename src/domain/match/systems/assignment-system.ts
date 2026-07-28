@@ -18,11 +18,9 @@ import type {
   TeamCollectivePlan,
   TeamPosture,
   TeamShapePlacement,
-  Vec2,
 } from "../model";
 import {
   baseCell,
-  cellAnchor,
   cellAt,
   cellDistance,
   cellKey,
@@ -653,17 +651,3 @@ export const dutyHolders = (plan: TeamCollectivePlan | null | undefined, duty: A
 /** Quem manda no dever: o primeiro pressionador, o último homem, o corredor de referência. */
 export const dutyLeader = (plan: TeamCollectivePlan | null | undefined, duty: AssignmentDuty): string | null =>
   dutyHolders(plan, duty)[0] ?? null;
-
-/**
- * Âncora da célula em que o jogador foi encarregado de viver agora, já com a colocação do time e
- * o esticamento lateral aplicados. Sem plano — cenário de teste montado à mão, primeiro tick —
- * cai na âncora fixa da formação.
- */
-export const assignedAnchor = (plan: TeamCollectivePlan | null | undefined, player: PlayerRuntime): Vec2 => {
-  const assignment = plan?.assignments[player.profile.id];
-  if (!plan || !assignment) return player.homeAnchor;
-  const anchor = cellAnchor(assignment.zone, player.team, plan.placement);
-  const outward = assignment.zone.row < CENTER_ROW ? -1 : assignment.zone.row > CENTER_ROW ? 1 : 0;
-  const stretched = anchor.y + outward * assignment.lateralPull * FIELD.height * 0.1;
-  return { x: anchor.x, y: clamp(stretched, FIELD.height * 0.03, FIELD.height * 0.97) };
-};

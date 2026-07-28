@@ -137,6 +137,7 @@ export const decideFor = (
       intent: "supporting",
       reason: support.reason,
       ballAction: { kind: "none" },
+      targetFrame: support.frame,
     };
   }
   // Ir à bola tem duas origens, e uma só forma de andar: ganhar a corrida por ela, ou ter sido
@@ -148,12 +149,17 @@ export const decideFor = (
   }
   // Por quem ele responde vem da leitura do quadro, não de um id decidido segundos atrás: o vizinho
   // que entrou na faixa dele agora é o problema dele agora.
-  const { target, intent, burst, reason, burstDuration } = defensiveTarget(
-    player,
-    context.marking.get(player.profile.id) ?? null,
-    state,
-  );
-  return { movementTarget: target, burst, burstDuration, posture: "outOfPossession", intent, reason, ballAction: { kind: "none" } };
+  const defence = defensiveTarget(player, context.marking.get(player.profile.id) ?? null, state);
+  return {
+    movementTarget: defence.target,
+    burst: defence.burst,
+    burstDuration: defence.burstDuration,
+    posture: "outOfPossession",
+    intent: defence.intent,
+    reason: defence.reason,
+    ballAction: { kind: "none" },
+    targetFrame: defence.frame,
+  };
 };
 
 export const decideAll = (state: MatchState): Map<string, AgentDecision> => {

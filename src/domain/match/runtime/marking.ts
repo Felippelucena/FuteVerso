@@ -1,6 +1,7 @@
 import { clamp, distance } from "../../shared/math";
 import { DEFENSE, FIELD } from "../config";
 import type { MatchState, PlayerRuntime, Team, TeamCollectivePlan } from "../model";
+import { activeBallPlayerId } from "./control";
 import { goalCenter } from "./formation-geometry";
 
 /**
@@ -22,14 +23,23 @@ export interface MarkingAssignment {
   tightness: number;
 }
 
-/** Adversários por perigo — o mais perigoso primeiro. Perto do nosso gol, perto da bola, no meio. */
+/**
+ * Adversários por perigo — o mais perigoso primeiro. Perto do nosso gol, perto da bola, no meio.
+ *
+ * Quem está com a bola fica de fora, junto do goleiro: ele é objeto do dever `press`, e marcar é
+ * responder pelas SAÍDAS dele. Como o peso da distância à bola é o maior da conta e o portador tem
+ * distância zero, ele era sempre a ameaça nº 1 — e levava um zagueiro colado, com firmeza máxima,
+ * em cima de quem o pressionador já estava. Dois homens na mesma bola é buraco atrás, e é
+ * exatamente o que `CONTEST.pressSlots` recusa a gastar.
+ */
 export const rankThreats = (state: MatchState, team: Team, opponents: PlayerRuntime[]): PlayerRuntime[] => {
   const ownGoal = goalCenter(team, true);
+  const actorId = activeBallPlayerId(state);
   const threat = (opponent: PlayerRuntime): number => distance(opponent.position, ownGoal) * 0.54
     + distance(opponent.position, state.ball.position) * 0.34
     + Math.abs(opponent.position.y - FIELD.height / 2) * 0.12;
   return [...opponents]
-    .filter((opponent) => opponent.profile.position !== "goalkeeper")
+    .filter((opponent) => opponent.profile.position !== "goalkeeper" && opponent.profile.id !== actorId)
     .sort((first, second) => threat(first) - threat(second)
       || first.profile.id.localeCompare(second.profile.id));
 };

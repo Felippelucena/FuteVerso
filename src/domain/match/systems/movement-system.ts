@@ -109,12 +109,22 @@ const updatePlayer = (state: MatchState, player: PlayerRuntime, decision: AgentD
   // conta como disparada; avançar em velocidade exige soltar a bola (knock-on).
   player.pace = controlsBall ? "closeControl" : player.sprintTimer > 0 || goalkeeperAlert ? "burst" : running || goalkeeperSetting ? "run" : "walk";
   const maximumSpeed = baseSpeed * speedFactor * fatigueSpeedFactor(player);
-  const desired = scale(normalize(subtract(decision.movementTarget, player.position)), maximumSpeed);
-  const steering = subtract(desired, player.velocity);
   const reactionFactor = player.reactionTimer > 0 ? 0.38 : 1;
   const burstAcceleration = player.sprintTimer > 0 ? PHYSICS.burstAccelerationFactor : 1;
   // Explosividade vem da barra volátil: sem pique na perna, a arrancada é mais fraca.
-  const acceleration = scale(normalize(steering), playerSkillAcceleration(player) * (0.72 + player.sprintEnergy * 0.28) * reactionFactor * burstAcceleration);
+  const accelerationRate = playerSkillAcceleration(player)
+    * (0.72 + player.sprintEnergy * 0.28) * reactionFactor * burstAcceleration;
+  // Chegada: nunca pedir mais velocidade do que ainda dá para frear até o alvo (v² = 2·a·d, com o
+  // MESMO `a` da arrancada). Sem isto o corpo cruza o alvo em velocidade cheia e o quadro seguinte
+  // pede a volta — é a oscilação que amontoa gente em cima do mesmo palmo de grama. Só morde no
+  // último metro (a 46 u/s² o envelope alcança o trote a 2,9 u), então nem o cobrador da bola
+  // parada nem quem corre para receber engatinham o trecho final.
+  const approachSpeed = Math.min(maximumSpeed, Math.sqrt(2 * accelerationRate * movementGap));
+  const desired = scale(normalize(subtract(decision.movementTarget, player.position)), approachSpeed);
+  // A arrancada nunca passa do que falta para atingir a velocidade pedida NESTE passo. Acelerar
+  // sempre no máximo fazia o corpo tremer em torno do alvo: a correção mínima e a máxima saíam
+  // iguais, e `facing` piscava com um jogador parado.
+  const acceleration = limit(scale(subtract(desired, player.velocity), 1 / dt), accelerationRate);
   player.velocity = add(player.velocity, scale(acceleration, dt));
   player.velocity = scale(player.velocity, Math.exp(-PHYSICS.playerDrag * dt));
   player.velocity = limit(player.velocity, maximumSpeed * (player.reactionTimer > 0 ? 0.7 : 1));

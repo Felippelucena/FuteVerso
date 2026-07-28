@@ -1,7 +1,8 @@
 import { PHYSICS, TACTICS } from "../config";
 import type { MatchState, PlayerRuntime, Vec2 } from "../model";
-import { add, clamp, closestPointOnSegment, distance, length, scale } from "../../shared/math";
+import { add, blend, clamp, closestPointOnSegment, distance, length, scale } from "../../shared/math";
 import { playerSkillAcceleration, playerSkillSpeed } from "./player-metrics";
+import { assignedAnchor } from "./formation-geometry";
 import { clampToField } from "./pitch";
 
 export const predictionHorizon = (player: PlayerRuntime, urgency = 0.5): number => {
@@ -26,9 +27,15 @@ const planTargetPosition = (state: MatchState, player: PlayerRuntime): Vec2 | nu
   if (!target) return null;
   if (target.kind === "point") return target.position;
   if (target.kind === "ball") return add(state.ball.position, target.offset);
-  if (target.kind === "player") {
-    const targetPlayer = state.players.find((candidate) => candidate.profile.id === target.playerId);
-    return targetPlayer ? add(targetPlayer.position, target.offset) : null;
+  if (target.kind === "anchored") {
+    // Mesma resolução de `resolvePlanDecision`. Sem este ramo a cadeia cai no `null` do fim e todo
+    // apoiador e todo defensor voltam à extrapolação balística — em silêncio, e justamente na conta
+    // que o passador usa para servir quem se movimenta.
+    const anchored = add(assignedAnchor(state.tactics[player.team].collectivePlan, player), target.anchorOffset);
+    const body = target.bodyId
+      ? state.players.find((candidate) => candidate.profile.id === target.bodyId) ?? null
+      : null;
+    return body ? blend(anchored, add(body.position, target.bodyOffset), target.bodyShare) : anchored;
   }
   return null;
 };
@@ -48,7 +55,10 @@ export const predictPlayerAlongPlan = (state: MatchState, player: PlayerRuntime,
     const delta = { x: target.x - position.x, y: target.y - position.y };
     const gap = length(delta);
     if (gap < player.radius) break;
-    const desired = scale(delta, maximumSpeed / Math.max(0.001, gap));
+    // Mesmo envelope de frenagem do integrador de verdade (`movement-system`): sem ele a previsão
+    // e a realidade divergiriam justamente no último metro, que é onde a recepção acontece.
+    const approachSpeed = Math.min(maximumSpeed, Math.sqrt(2 * acceleration * gap));
+    const desired = scale(delta, approachSpeed / Math.max(0.001, gap));
     const steering = { x: desired.x - velocity.x, y: desired.y - velocity.y };
     const steeringLength = length(steering);
     if (steeringLength > 0.001) velocity = add(velocity, scale(steering, acceleration * dt / steeringLength));

@@ -1,5 +1,5 @@
 import { CONTEST, DECISION, FIELD, OFFSIDE, PHYSICS } from "../config";
-import { clamp, distance, length } from "../../shared/math";
+import { blend, clamp, distance, length } from "../../shared/math";
 import type { BallAction, DecisionReason, MatchState, PlayerRuntime } from "../model";
 import { attackDirection } from "../runtime/formation-geometry";
 import { offsideLineProgress } from "../runtime/offside";
@@ -18,7 +18,7 @@ import { attackingProgress, centrality, channelAffinity, clampToField, edgeRisk,
 import { etaToPoint } from "../runtime/player-metrics";
 import { predictPlayerAlongPlan } from "../runtime/prediction";
 import { assignmentOf } from "../systems/assignment-system";
-import { blend } from "./shared";
+
 
 /**
  * A escolha do passe: para quem, por onde e como. Enumera todo companheiro contra as oito

@@ -16,11 +16,6 @@ const PERCEPTION = {
   cooperation: fieldX(47),
 } as const;
 
-export const blend = (a: Vec2, b: Vec2, amount: number): Vec2 => ({
-  x: a.x * (1 - amount) + b.x * amount,
-  y: a.y * (1 - amount) + b.y * amount,
-});
-
 /**
  * Custo de jogar fora de posição, em cima do encaixe (`positionFit`) que o plano tático
  * calculou. Encaixe 1 (posição natural) não cobra nada; o pior improviso possível hoje é 0,55.

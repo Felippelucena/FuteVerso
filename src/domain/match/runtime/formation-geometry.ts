@@ -1,7 +1,7 @@
 import { clamp } from "../../shared/math";
 import { findSlot, TACTICAL_GRID } from "../../tactics/slots";
 import { FIELD } from "../config";
-import type { AssignmentZone, PlayerRuntime, Team, TeamShapePlacement, Vec2 } from "../model";
+import type { AssignmentZone, PlayerRuntime, Team, TeamCollectivePlan, TeamShapePlacement, Vec2 } from "../model";
 import { fieldX } from "./pitch";
 
 /**
@@ -178,6 +178,26 @@ export const cellKey = (zone: AssignmentZone): string => `${zone.column}:${zone.
 
 /** Célula-base do jogador: a que o treinador escolheu ao escalá-lo. */
 export const baseCell = (player: PlayerRuntime): AssignmentZone => findSlot(player.slotId)?.zone ?? FALLBACK_CELL;
+
+export const CENTER_ROW = TACTICAL_GRID.rows[(TACTICAL_GRID.rows.length - 1) / 2];
+
+/**
+ * Âncora da célula em que o jogador foi encarregado de viver agora, já com a colocação do time e
+ * o esticamento lateral aplicados. Sem plano — cenário de teste montado à mão, primeiro tick —
+ * cai na âncora fixa da formação.
+ *
+ * Mora aqui, e não no sistema de incumbências, porque é tradução grade→gramado como o resto do
+ * arquivo: quem prevê a rota de um companheiro (`runtime/prediction`) precisa dela, e o sistema
+ * de incumbências já importa a previsão — no outro sentido seria ciclo.
+ */
+export const assignedAnchor = (plan: TeamCollectivePlan | null | undefined, player: PlayerRuntime): Vec2 => {
+  const assignment = plan?.assignments[player.profile.id];
+  if (!plan || !assignment) return player.homeAnchor;
+  const anchor = cellAnchor(assignment.zone, player.team, plan.placement);
+  const outward = assignment.zone.row < CENTER_ROW ? -1 : assignment.zone.row > CENTER_ROW ? 1 : 0;
+  const stretched = anchor.y + outward * assignment.lateralPull * FIELD.height * 0.1;
+  return { x: anchor.x, y: clamp(stretched, FIELD.height * 0.03, FIELD.height * 0.97) };
+};
 
 /**
  * Âncora de formação: a célula-base na colocação neutra. É a posição fixa da escalação, usada

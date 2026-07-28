@@ -7,5 +7,5 @@
  * para quem vive no ciclo de cognição.
  */
 export { decideAll, decideFor, readFrame, readTeam, type FrameContext, type TeamContext } from "./decide";
-export { planAll, planFor, resolvePlanDecision, thinkingInterval } from "./plan";
+export { planAll, planFor, resolvePlanDecision, targetReference, thinkingInterval } from "./plan";
 export { choosePass, PASS_VARIANTS, type PassOption } from "./pass";

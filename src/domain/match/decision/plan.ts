@@ -1,12 +1,13 @@
-import { COGNITION } from "../config";
-import { add, clamp, subtract } from "../../shared/math";
+import { COGNITION, PHYSICS } from "../config";
+import { add, blend, clamp, distanceSquared, limit, scale, subtract } from "../../shared/math";
 import type { AgentDecision, MatchState, PlanTarget, PlayerPlan, PlayerRuntime, Vec2 } from "../model";
 import { activeBallPlayerId } from "../runtime/control";
+import { assignedAnchor } from "../runtime/formation-geometry";
 import { clampToField } from "../runtime/pitch";
 import { prepareReceptionAction } from "../runtime/reception-planning";
 import { goalkeeperMovementTarget } from "../systems/goalkeeper-system";
 import { decideAll, decideFor, type FrameContext, type TeamContext } from "./decide";
-import { nearestPlayer, outOfPositionCost } from "./shared";
+import { outOfPositionCost } from "./shared";
 
 /**
  * Do que se decide para o que se sustenta. A decisão é instantânea; o PLANO tem duração, âncora
@@ -19,26 +20,41 @@ const GOALKEEPER_INTENTS: ReadonlySet<AgentDecision["intent"]> = new Set([
   "goalkeeping", "preparingSave", "diving", "jumping", "claimingHighBall", "recoveringSave",
 ]);
 
-const planTarget = (player: PlayerRuntime, decision: AgentDecision, state: MatchState): PlanTarget => {
+/**
+ * De ponto congelado para referências vivas. O plano guarda de que o alvo é FEITO, não onde ele
+ * estava: quem calcula o alvo declara o quadro (`decision.targetFrame`), e aqui só se converte
+ * para deslocamentos. Adivinhar o quadro pela intenção — como se fazia — tratava o alvo inteiro
+ * do apoio como relativo ao portador, inclusive a parte que vinha da célula presa ao gramado.
+ */
+const planTarget = (decision: AgentDecision, state: MatchState): PlanTarget => {
   // O alvo do goleiro é contínuo: a bola se move a cada tick, e o ajuste de pés tem que
   // acompanhar a rota sem esperar o próximo pensamento. O plano guarda a referência, não o ponto.
   if (GOALKEEPER_INTENTS.has(decision.intent)) return { kind: "goalkeeper" };
   if (decision.intent === "pressing") {
     return { kind: "ball", offset: subtract(decision.movementTarget, state.ball.position) };
   }
-  if (decision.intent === "marking") {
-    const opponent = nearestPlayer(decision.movementTarget, state.players.filter((candidate) => candidate.team !== player.team));
-    if (opponent) return { kind: "player", playerId: opponent.profile.id, offset: subtract(decision.movementTarget, opponent.position) };
-  }
-  if (decision.intent === "supporting") {
-    const actorId = activeBallPlayerId(state);
-    const actor = state.players.find((candidate) => candidate.profile.id === actorId);
-    if (actor && actor.profile.id !== player.profile.id) {
-      return { kind: "player", playerId: actor.profile.id, offset: subtract(decision.movementTarget, actor.position) };
-    }
+  const frame = decision.targetFrame;
+  if (frame) {
+    const body = frame.bodyId
+      ? state.players.find((candidate) => candidate.profile.id === frame.bodyId) ?? null
+      : null;
+    return {
+      kind: "anchored",
+      anchorOffset: subtract(decision.movementTarget, frame.anchor),
+      bodyId: body?.profile.id ?? null,
+      bodyOffset: body ? subtract(decision.movementTarget, body.position) : { x: 0, y: 0 },
+      bodyShare: body ? frame.bodyShare : 0,
+    };
   }
   return { kind: "point", position: { ...decision.movementTarget } };
 };
+
+/**
+ * Que referência VIVA o alvo persegue. Dois planos com a mesma referência são a mesma ideia — é o
+ * que a cognição pergunta para decidir se vale a pena trocar o plano em curso.
+ */
+export const targetReference = (target: PlanTarget): string =>
+  target.kind === "anchored" ? `anchored:${target.bodyId ?? "-"}` : target.kind;
 
 export const thinkingInterval = (player: PlayerRuntime): number => {
   const read = (player.profile.mental.decisionMaking * 0.72 + player.profile.mental.anticipation * 0.28) / 100;
@@ -50,7 +66,7 @@ export const thinkingInterval = (player: PlayerRuntime): number => {
 
 /** O plano de um jogador a partir da decisão dele. Ver `planFor` para o caminho da cognição. */
 const planFromDecision = (state: MatchState, player: PlayerRuntime, decision: AgentDecision): PlayerPlan => ({
-  target: planTarget(player, decision, state),
+  target: planTarget(decision, state),
   burst: decision.burst,
   burstDuration: decision.burstDuration,
   posture: decision.posture,
@@ -86,6 +102,34 @@ export const planAll = (state: MatchState): Map<string, PlayerPlan> => {
     [player.profile.id, planFromDecision(state, player, decisions.get(player.profile.id)!)]));
 };
 
+/**
+ * Espaço pessoal: o alvo se afasta do companheiro que já ocupa aquele palmo de grama.
+ *
+ * É ANTECIPATÓRIO e mora no ALVO; a colisão (`systems/collision-system`) é CORRETIVA e mora no
+ * CORPO. Uma diz para onde eu quero ir sabendo que há alguém ali; a outra impõe que dois corpos
+ * não ocupem o mesmo ponto. Nenhuma substitui a outra: a separação é mole por necessidade (senão
+ * não haveria dividida) e a colisão só age depois que os corpos já estão amontoados.
+ *
+ * Só entre companheiros: dois de nós no mesmo metro quadrado é um jogador desperdiçado; um
+ * adversário no meu metro quadrado é o jogo.
+ *
+ * Roda dentro de `resolvePlanDecision`, que a cognição resolve para os vinte e dois ANTES de
+ * qualquer corpo se mexer — todos leem o mesmo quadro, e a ordem da escalação não vira resultado.
+ */
+const personalSpaceShift = (player: PlayerRuntime, target: Vec2, state: MatchState): Vec2 => {
+  const room = player.radius * 2 * PHYSICS.personalSpaceFactor;
+  const roomSquared = room * room;
+  let shift = { x: 0, y: 0 };
+  for (const teammate of state.players) {
+    if (teammate.team !== player.team || teammate.profile.id === player.profile.id) continue;
+    const squared = distanceSquared(target, teammate.position);
+    if (squared >= roomSquared || squared < 0.0001) continue;
+    const gap = Math.sqrt(squared);
+    shift = add(shift, scale(subtract(target, teammate.position), (room - gap) / gap));
+  }
+  return limit(shift, room);
+};
+
 export const resolvePlanDecision = (player: PlayerRuntime, state: MatchState): AgentDecision => {
   const plan = player.plan;
   if (!plan) {
@@ -110,9 +154,12 @@ export const resolvePlanDecision = (player: PlayerRuntime, state: MatchState): A
   else if (plan.target.kind === "point") movementTarget = plan.target.position;
   else if (plan.target.kind === "ball") movementTarget = add(state.ball.position, plan.target.offset);
   else {
-    const targetPlayerId = plan.target.playerId;
-    const targetPlayer = state.players.find((candidate) => candidate.profile.id === targetPlayerId);
-    movementTarget = targetPlayer ? add(targetPlayer.position, plan.target.offset) : player.homeAnchor;
+    const { anchorOffset, bodyId, bodyOffset, bodyShare } = plan.target;
+    // A âncora é VIVA: a colocação do bloco se refaz a cada percepção, e é ela que mantém o alvo
+    // preso ao gramado enquanto o corpo de referência anda.
+    const anchored = add(assignedAnchor(state.tactics[player.team].collectivePlan, player), anchorOffset);
+    const body = bodyId ? state.players.find((candidate) => candidate.profile.id === bodyId) ?? null : null;
+    movementTarget = body ? blend(anchored, add(body.position, bodyOffset), bodyShare) : anchored;
   }
   const controlsBall = state.ball.controllerId === player.profile.id;
   const ballAction = controlsBall ? plan.ballAction : { kind: "none" } as const;
@@ -121,8 +168,14 @@ export const resolvePlanDecision = (player: PlayerRuntime, state: MatchState): A
   // esse alvo à margem interna deixava o cobrador parado a alguns passos do ponto — ele nunca
   // "chegava", e a cobrança só saía pela trava de tempo.
   const duringDeadBall = state.restart !== null && !state.restart.ballInPlay;
+  // Alvo ancorado na bola não tem espaço pessoal: a bola é um ponto só, e disputá-la é o jogo. Na
+  // bola parada o desenho do reinício é autoritativo — a mesma razão pela qual `engine.ts` já
+  // suspende a colisão ali.
+  const positional = !duringDeadBall && !chasing && !controlsBall
+    && plan.target.kind !== "ball" && plan.target.kind !== "goalkeeper";
+  const spaced = positional ? add(movementTarget, personalSpaceShift(player, movementTarget, state)) : movementTarget;
   return {
-    movementTarget: duringDeadBall ? movementTarget : clampToField(movementTarget, 3),
+    movementTarget: duringDeadBall ? spaced : clampToField(spaced, 3),
     burst: plan.burst,
     burstDuration: plan.burstDuration,
     posture: plan.posture,

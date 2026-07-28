@@ -1,13 +1,13 @@
 import { DEFENSE, FIELD, PHYSICS } from "../config";
-import { add, clamp, distance, normalize, scale, subtract } from "../../shared/math";
-import type { AgentDecision, DecisionReason, MatchState, PlayerRuntime, Vec2 } from "../model";
-import { attackDirection, goalCenter } from "../runtime/formation-geometry";
+import { add, blend, clamp, distance, normalize, scale, subtract } from "../../shared/math";
+import type { AgentDecision, DecisionReason, MatchState, PlayerRuntime, TargetFrame, Vec2 } from "../model";
+import { assignedAnchor, attackDirection, goalCenter } from "../runtime/formation-geometry";
 import type { MarkingAssignment } from "../runtime/marking";
 import { clampToField, fieldX, fieldY } from "../runtime/pitch";
 import { playerSkillSpeed } from "../runtime/player-metrics";
 import { predictBallPosition, predictPlayerPosition, predictionHorizon } from "../runtime/prediction";
-import { assignedAnchor } from "../systems/assignment-system";
-import { blend, perceptionDepth } from "./shared";
+
+import { perceptionDepth } from "./shared";
 
 /**
  * Onde ficar sem a bola: entre a zona que se sustenta e o homem por quem se responde. A firmeza
@@ -18,7 +18,14 @@ export const defensiveTarget = (
   player: PlayerRuntime,
   marking: MarkingAssignment | null,
   state: MatchState,
-): { target: Vec2; intent: AgentDecision["intent"]; burst: boolean; reason: DecisionReason; burstDuration?: number } => {
+): {
+  target: Vec2;
+  frame: TargetFrame;
+  intent: AgentDecision["intent"];
+  burst: boolean;
+  reason: DecisionReason;
+  burstDuration?: number;
+} => {
   const collective = state.tactics[player.team].collectivePlan;
   const anchor = assignedAnchor(collective, player);
   const direction = attackDirection(player.team);
@@ -73,12 +80,22 @@ export const defensiveTarget = (
     const recoverPoint = clampToField(guaranteed ? blend(anchor, ownGoal, 0.25) : anchor, 3);
     const raceSpeed = playerSkillSpeed(player) * PHYSICS.burstSpeedFactor;
     const burstDuration = clamp(distance(player.position, recoverPoint) / Math.max(1, raceSpeed), PHYSICS.burstDuration, DEFENSE.recoverBurstMax);
-    return { target: recoverPoint, intent: "covering", reason: "recoverShape", burst: true, burstDuration };
+    return {
+      target: recoverPoint,
+      frame: { anchor, bodyId: null, bodyShare: 0 },
+      intent: "covering",
+      reason: "recoverShape",
+      burst: true,
+      burstDuration,
+    };
   }
   const defensiveBurst = player.sprintEnergy > 0.5
     && player.sprintCooldown <= 0
     && player.profile.mental.intensity > 78
     && distance(player.position, target) > fieldX(12)
     && (phase === "counterPress" || phase === "recovery");
-  return { target, intent, reason, burst: defensiveBurst };
+  // A firmeza é exatamente a fatia: marcação frouxa é sustentar a zona (que se recoloca com o
+  // bloco), marcação firme é ir junto com o homem. Sem o quadro, o alvo virava um ponto congelado
+  // enquanto a bola e o bloco andavam — e estalava 9 m a cada replanejamento.
+  return { target, frame: { anchor, bodyId: mark?.profile.id ?? null, bodyShare: tightness }, intent, reason, burst: defensiveBurst };
 };

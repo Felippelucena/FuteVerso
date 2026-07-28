@@ -2,13 +2,48 @@ import { describe, expect, it } from "vitest";
 import { smallSidedMatchConfig, startOpenPlay } from "./__fixtures__/reference-match";
 import { decideAll } from "./decision";
 import { perceive } from "./runtime/ball-situation";
-import { FIELD, PHYSICS } from "./config";
+import { FIELD, FIXED_STEP, PHYSICS } from "./config";
 import { createMatchState, stepMatch } from "./index";
-import { playerSpeedLimit } from "./systems/movement-system";
+import { playerSpeedLimit, updatePlayers } from "./systems/movement-system";
+import { distance, dot, length, subtract } from "../shared/math";
+import type { AgentDecision } from "./model";
 
 const createTestMatch = (seed?: number) => createMatchState(smallSidedMatchConfig(seed));
 
 describe("movimento dos jogadores", () => {
+  it("chega ao alvo e para, em vez de orbitá-lo", () => {
+    const state = createTestMatch(4242);
+    startOpenPlay(state);
+    const runner = state.players.find((player) => player.profile.position === "centerMid")!;
+    runner.position = { x: FIELD.width / 2, y: FIELD.height / 2 };
+    runner.velocity = { x: 0, y: 0 };
+    const spot = { x: runner.position.x + 30, y: runner.position.y };
+    // Cada um com alvo na própria posição: mede-se o corredor, não a partida.
+    const decisions = new Map(state.players.map((player) => [player.profile.id, {
+      movementTarget: player === runner ? spot : { ...player.position },
+      burst: false,
+      posture: "outOfPossession",
+      intent: "covering",
+      reason: "holdZone",
+      ballAction: { kind: "none" },
+    } as AgentDecision]));
+
+    // Ultrapassar o alvo é o sinal do defeito: o vetor até ele inverte de sentido, e o quadro
+    // seguinte pede a volta. Mede-se O QUANTO ele passa, não se passa: a acomodação numérica no
+    // último milímetro é irrelevante, orbitar meio corpo de distância não é.
+    let overshoot = 0;
+    for (let tick = 0; tick < 480; tick += 1) {
+      const before = subtract(spot, runner.position);
+      updatePlayers(state, decisions, FIXED_STEP);
+      const after = subtract(spot, runner.position);
+      if (dot(before, after) < 0) overshoot = Math.max(overshoot, length(after));
+    }
+
+    expect(overshoot).toBeLessThan(runner.radius * 0.1);
+    expect(distance(runner.position, spot)).toBeLessThan(runner.radius * 0.5);
+    expect(length(runner.velocity)).toBeLessThan(0.5);
+  });
+
   it("mantém a bola colada sempre lenta e diferencia corrida e explosão sem a bola", () => {
     const player = createTestMatch().players[3];
     const walk = playerSpeedLimit(player, false);

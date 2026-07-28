@@ -84,4 +84,24 @@ describe("marcacao — zona com pega firme", () => {
     expect(far?.mark.profile.id).toBe(runner.profile.id);
     expect(far!.tightness).toBeLessThan(near!.tightness);
   });
+
+  it("nao gasta um marcador no portador, mesmo quando ele e a maior ameaca", () => {
+    const state = createTestMatch(53);
+    const { carrier, runner, defender } = buildAttack(state);
+    // Portador fundo e central, corredor aberto: pela conta de ameaça (que pesa a distância à
+    // bola), o portador passa à frente do corredor. É o caso em que a marcação dobrava a bola.
+    // O pressionador fica colado nele, senão é o próprio zagueiro quem sai para a bola.
+    carrier.position = { x: FIELD.width * 0.8, y: FIELD.height * 0.5 };
+    runner.position = { x: FIELD.width * 0.78, y: FIELD.height * 0.75 };
+    defender.position = { x: FIELD.width * 0.8, y: FIELD.height * 0.68 };
+    state.players.find((p) => p.team === "coral" && p.profile.position === "centerMid")!
+      .position = { x: FIELD.width * 0.78, y: FIELD.height * 0.5 };
+    state.ball.position = { ...carrier.position };
+    updateTacticalContext(state, 0);
+    const marking = resolveMarking(state, "coral", state.tactics.coral.collectivePlan!);
+
+    expect([...marking.values()].map((assignment) => assignment.mark.profile.id))
+      .not.toContain(carrier.profile.id);
+    expect(marking.get(defender.profile.id)?.mark.profile.id).toBe(runner.profile.id);
+  });
 });

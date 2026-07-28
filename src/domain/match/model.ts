@@ -295,6 +295,20 @@ export type BallAction =
     selectionReason?: DecisionReason;
   };
 
+/**
+ * De que referências VIVAS o alvo é feito. Quem calcula o alvo é quem sabe: deixar o plano
+ * adivinhar pela intenção fazia o bloco inteiro viajar colado no portador — inclusive a parte do
+ * alvo que veio da célula ancorada no gramado —, e estalar de volta a cada replanejamento.
+ */
+export interface TargetFrame {
+  /** Âncora da célula no instante da decisão: a parte do alvo presa ao gramado. */
+  anchor: Vec2;
+  /** Corpo que o alvo acompanha (o portador, o marcado). Nulo é alvo só do gramado. */
+  bodyId: string | null;
+  /** Fatia do alvo que pertence ao corpo. 0 = puro gramado, 1 = colado nele. */
+  bodyShare: number;
+}
+
 export interface AgentDecision {
   movementTarget: Vec2;
   burst: boolean;
@@ -303,12 +317,19 @@ export interface AgentDecision {
   intent: PlayerIntent;
   reason: DecisionReason;
   ballAction: BallAction;
+  /** Ausente é alvo sem referência viva: um ponto do gramado, e ponto. */
+  targetFrame?: TargetFrame;
 }
 
 export type PlanTarget =
   | { kind: "point"; position: Vec2 }
   | { kind: "ball"; offset: Vec2 }
-  | { kind: "player"; playerId: string; offset: Vec2 }
+  /**
+   * Alvo com as duas naturezas separadas: o que é do gramado acompanha a célula atribuída (que se
+   * recoloca a cada percepção), o que é do corpo acompanha o corpo. Guardar o resultado já somado
+   * congelava as duas por até 0,85 s.
+   */
+  | { kind: "anchored"; anchorOffset: Vec2; bodyId: string | null; bodyOffset: Vec2; bodyShare: number }
   | { kind: "goalkeeper" };
 
 export interface PlayerPlan {
