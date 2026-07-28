@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { CALIBRATION } from "./__fixtures__/calibration";
+import { BUDGET } from "./__fixtures__/calibration";
 import { referenceMatchConfig } from "./__fixtures__/reference-match";
 import { FIXED_STEP } from "./config";
 import { createMatchState, stepMatch } from "./index";
@@ -13,8 +13,8 @@ import { createMatchState, stepMatch } from "./index";
  * (ver "Relógio comprimido" em docs/architecture.md). O teto aqui existe para uma regressão de
  * desempenho aparecer como falha, e não como "o jogo ficou pesado".
  *
- * Fica atrás de CALIBRATE=1 porque a medida depende da máquina: é régua de calibragem, como as
- * outras medidas de partida inteira, e não contrato de comportamento.
+ * Fica atrás do gate BUDGET=1, e **roda sozinha**: a medida é da máquina, não do jogo, e a suíte
+ * inteira em paralelo a infla em 2,5× (338 µs contra 138). Ver `__fixtures__/calibration`.
  */
 const TICK_BUDGET_MICROSECONDS = 150;
 
@@ -37,7 +37,7 @@ const measureMatch = (): { microsecondsPerTick: number; wallSeconds: number; tic
 };
 
 describe("orcamento de custo do motor", () => {
-  it.runIf(CALIBRATION)("mantem o tick do 11x11 dentro do teto", () => {
+  it.runIf(BUDGET)("mantem o tick do 11x11 dentro do teto", () => {
     const { microsecondsPerTick, wallSeconds, ticks } = measureMatch();
     console.info("ENGINE_BUDGET", JSON.stringify({
       microsecondsPerTick: Number(microsecondsPerTick.toFixed(1)),

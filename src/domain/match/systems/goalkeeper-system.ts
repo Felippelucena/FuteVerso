@@ -7,6 +7,7 @@ import { emitMatchEvent } from "../runtime/events";
 import { insidePenaltyArea } from "../runtime/formation-geometry";
 import { goalkeeperGuardPost } from "../runtime/goalkeeper-geometry";
 import { signedMatchNoise } from "../runtime/random";
+import { resolveShot } from "../runtime/shot";
 import { predictShotPoint, timeToX } from "../runtime/shot-trajectory";
 
 const ownsPenaltyArea = (goalkeeper: PlayerRuntime, point: Vec2): boolean =>
@@ -396,8 +397,10 @@ const stillWithinReach = (state: MatchState, goalkeeper: PlayerRuntime, attempt:
 };
 
 export const updateGoalkeeperAnticipation = (state: MatchState, dt: number = FIXED_STEP): void => {
+  // A bola já devia ter chegado e ninguém a resolveu: passou por fora, por cima, ou morreu no
+  // gramado. Chute que termina assim não acertou o alvo.
   if (state.activeShot && state.elapsed > state.activeShot.expectedArrivalAt + 1.2) {
-    state.activeShot = null;
+    resolveShot(state, "off");
   }
   for (const goalkeeper of state.players.filter((player) => player.profile.position === "goalkeeper")) {
     const attempt = goalkeeper.goalkeeperAttempt;
@@ -530,7 +533,6 @@ const resolveCatch = (state: MatchState, goalkeeper: PlayerRuntime, attempt: Goa
   state.ball.lastTouch = goalkeeper.team;
   state.ball.lastTouchPlayerId = goalkeeper.profile.id;
   state.ball.lastAction = null;
-  state.ball.lastShotOnTarget = false;
   clearDribbleOwner(state);
   // O goleiro adversário recolheu: a vigilância de impedimento (se havia) se dissolve.
   if (state.offsideWatch && state.offsideWatch.team !== goalkeeper.team) state.offsideWatch = null;
@@ -541,7 +543,7 @@ const resolveCatch = (state: MatchState, goalkeeper: PlayerRuntime, attempt: Goa
     state.stats[goalkeeper.team].saves += 1;
     emitMatchEvent(state, { type: "save-made", team: goalkeeper.team, playerId: goalkeeper.profile.id, outcome: "catch", height, shotId: attempt.sourceId });
   }
-  state.activeShot = null;
+  resolveShot(state, attempt.source === "shot" ? "saved" : "dead");
   setAttemptResult(state, goalkeeper, attempt, "catch", quality);
   // Bola nas mãos: a janela da Regra 12 abre agora. Enquanto ela durar ele é intocável; quando
   // ele solta é decisão dele (ver `carrierDecision`), não um cronômetro.
@@ -571,9 +573,8 @@ const resolveLooseContact = (
       state.stats[goalkeeper.team].saves += 1;
       emitMatchEvent(state, { type: "save-made", team: goalkeeper.team, playerId: goalkeeper.profile.id, outcome: "parry", height, shotId: attempt.sourceId });
     }
-    state.activeShot = null;
+    resolveShot(state, attempt.source === "shot" ? "saved" : "dead");
     state.ball.lastAction = null;
-    state.ball.lastShotOnTarget = false;
   } else {
     state.ball.velocity = add(scale(state.ball.velocity, 0.82), scale(direction, incomingSpeed * 0.16));
     state.ball.verticalVelocity *= 0.82;

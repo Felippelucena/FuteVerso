@@ -12,6 +12,7 @@ import {
 } from "../runtime/control";
 import { signedMatchNoise } from "../runtime/random";
 import { restartForbidsTouch } from "../runtime/restart";
+import { resolveShot } from "../runtime/shot";
 import { emitCognitiveEvent, relevantPlayersNear } from "../runtime/cognitive-events";
 import { executeBallAction } from "./ball-system";
 
@@ -243,13 +244,10 @@ export const updatePossession = (state: MatchState, dt: number): void => {
     if (!dribbleOwner && !inFlightPassTeam) state.contestedSeconds += dt;
     return;
   }
-  const shotTeam = state.ball.lastAction === "shot" ? state.ball.lastTouch : null;
-  if (shotTeam && state.ball.lastShotOnTarget) {
-    state.stats[shotTeam].shotsOnTarget = Math.max(0, state.stats[shotTeam].shotsOnTarget - 1);
-  }
   if (state.ball.lastTouch && state.ball.lastTouch !== controller.team) controller.memory.stats.interceptions += 1;
   state.ball.controllerId = controller.profile.id;
-  state.activeShot = null;
+  // Alguém que não o goleiro alcançou a bola antes da meta: o chute foi bloqueado.
+  resolveShot(state, "blocked");
   // Bola nova no pé chega à frente do corpo; a proteção se constrói a partir daí. Sem zerar,
   // uma âncora velha faria a bola nascer atrás das costas de quem acabou de dominar.
   if (!continuesOwnDribble) {
@@ -274,7 +272,6 @@ export const updatePossession = (state: MatchState, dt: number): void => {
   state.stats[controller.team].possessionSeconds += dt;
   registerPassOutcome(state, controller);
   state.ball.lastAction = null;
-  state.ball.lastShotOnTarget = false;
 };
 
 /**
@@ -311,7 +308,7 @@ const resolveOffsideOnTouch = (state: MatchState, toucher: PlayerRuntime): boole
   clearDribbleOwner(state);
   if (state.pendingPass) emitCognitiveEvent(state, "passResolved", null, { passId: state.pendingPass.id, outcome: "out" });
   state.pendingPass = null;
-  state.activeShot = null;
+  resolveShot(state, "dead");
   emitMatchEvent(state, { type: "offside-called", team: watch.team, playerId: toucher.profile.id });
   return true;
 };

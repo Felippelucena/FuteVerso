@@ -82,7 +82,6 @@ const fireShotAtGoal = (state: MatchState, aimY: number, speed: number, height: 
   state.ball.verticalVelocity = 0;
   state.ball.controllerId = null;
   state.ball.lastAction = "shot";
-  state.ball.lastShotOnTarget = true;
   state.ball.lastTouch = "coral";
   state.ball.lastTouchPlayerId = "maya-fw";
   const flight = (range - 2) / speed;

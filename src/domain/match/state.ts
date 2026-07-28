@@ -103,7 +103,7 @@ export function createMatchState(config: MatchConfig): MatchState {
     ball: {
       position: { ...kickoffBall }, velocity: { x: 0, y: 0 },
       height: 0, verticalVelocity: 0, radius: FIELD.ballRadius, lastTouch: null,
-      lastTouchPlayerId: null, controllerId: null, lastAction: null, lastShotOnTarget: false,
+      lastTouchPlayerId: null, controllerId: null, lastAction: null,
       dribbleOwnerId: null, dribbleTarget: null, dribbleStyle: null, dribbleTouchRange: null,
       dribbleStartedAt: 0, controlStartedAt: 0,
     },

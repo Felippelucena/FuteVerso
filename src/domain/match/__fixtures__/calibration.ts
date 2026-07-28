@@ -11,3 +11,13 @@
 const env = (globalThis as { process?: { env?: Record<string, string | undefined> } }).process?.env;
 
 export const CALIBRATION = env?.CALIBRATE === "1";
+
+/**
+ * Gate próprio para a medida de CUSTO (engine-budget). Separado de `CALIBRATE` porque é outra
+ * natureza de medida: as de calibragem medem o jogo e sobrevivem a qualquer máquina; esta mede a
+ * máquina, e a suíte inteira rodando em paralelo a infla em 2,5×. Roda sozinha:
+ *
+ *   PowerShell:  $env:BUDGET=1; npx vitest run src/domain/match/engine-budget.test.ts
+ *   bash:        BUDGET=1 npx vitest run src/domain/match/engine-budget.test.ts
+ */
+export const BUDGET = env?.BUDGET === "1";

@@ -201,7 +201,6 @@ export interface Ball {
   lastTouchPlayerId: string | null;
   controllerId: string | null;
   lastAction: "shot" | "pass" | "dribble" | null;
-  lastShotOnTarget: boolean;
   dribbleOwnerId: string | null;
   dribbleTarget: Vec2 | null;
   dribbleStyle: DribbleStyle | null;

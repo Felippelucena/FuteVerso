@@ -19,6 +19,7 @@ import { offsideOffendersAtPass } from "../runtime/offside";
 import { playerSkillSpeed } from "../runtime/player-metrics";
 import { signedMatchNoise } from "../runtime/random";
 import { solvePassTrajectory, targetAlongDirection } from "../runtime/pass-trajectory";
+import { beginShot, resolveShot } from "../runtime/shot";
 import { predictShotPoint, solveShotTrajectory } from "../runtime/shot-trajectory";
 import { resolveGoalkeeperContact } from "./goalkeeper-system";
 
@@ -93,7 +94,6 @@ export const executeBallAction = (state: MatchState, player: PlayerRuntime, acti
       // Close control: a bola fica colada no pé, em velocidade baixa. Avançar em pique
       // exige soltar a bola à frente (knockOn), nunca a condução colada.
       state.ball.lastAction = "dribble";
-      state.ball.lastShotOnTarget = false;
       state.ball.lastTouch = player.team;
       state.ball.lastTouchPlayerId = player.profile.id;
       state.ball.controlStartedAt = controlStartedAt;
@@ -183,7 +183,6 @@ export const executeBallAction = (state: MatchState, player: PlayerRuntime, acti
     // largava a bola solta sem dono → perda de posse gratuita.)
     if (action.style === "feint" && !success) {
       state.ball.lastAction = "dribble";
-      state.ball.lastShotOnTarget = false;
       state.ball.lastTouch = player.team;
       state.ball.lastTouchPlayerId = player.profile.id;
       state.ball.controlStartedAt = controlStartedAt;
@@ -208,7 +207,6 @@ export const executeBallAction = (state: MatchState, player: PlayerRuntime, acti
     const direction = rotate(chosenDirection, signedMatchNoise(state) * (1 - quality) * errorFactor);
     releaseBall(state, player, direction, speed, lift);
     state.ball.lastAction = "dribble";
-    state.ball.lastShotOnTarget = false;
     if (action.style === "feint" && defender) {
       defender.evadedUntil = state.elapsed + PHYSICS.feintEvasionDuration;
       defender.evadedByAttackerId = player.profile.id;
@@ -250,11 +248,9 @@ export const executeBallAction = (state: MatchState, player: PlayerRuntime, acti
     if (distance(player.position, action.target) > FIELD.width * 0.29) state.stats[player.team].longShots += 1;
     const goalLineX = player.team === "blue" ? FIELD.width : 0;
     const goalPoint = predictShotPoint(state.ball.position, state.ball.velocity, state.ball.height, state.ball.verticalVelocity, solution.duration);
-    state.ball.lastShotOnTarget = solution.duration > 0 && insideGoalMouth(goalPoint.position.y, goalPoint.height);
-    if (state.ball.lastShotOnTarget) state.stats[player.team].shotsOnTarget += 1;
-    const shotId = ++state.shotCounter;
-    state.activeShot = {
-      id: shotId,
+    // Previsão da rota, e só isso: é o que faz o goleiro reagir. A estatística de chute no alvo
+    // sai do DESFECHO (ver runtime/shot), e não daqui.
+    const { id: shotId } = beginShot(state, {
       shooterId: player.profile.id,
       team: player.team,
       startedAt: state.elapsed,
@@ -264,9 +260,9 @@ export const executeBallAction = (state: MatchState, player: PlayerRuntime, acti
       expectedArrivalAt: state.elapsed + solution.duration,
       expectedSpeed: solution.arrivalSpeed,
       goalPoint: { position: { x: goalLineX, y: goalPoint.position.y }, height: goalPoint.height },
-      onTarget: state.ball.lastShotOnTarget,
+      onTarget: solution.duration > 0 && insideGoalMouth(goalPoint.position.y, goalPoint.height),
       goalkeeperTouched: false,
-    };
+    });
     const goalkeeper = state.players.find((candidate) => candidate.team !== player.team && candidate.profile.position === "goalkeeper");
     emitCognitiveEvent(state, "shotCommitted", goalkeeper ? [goalkeeper.profile.id] : null, { shotId });
     emitMatchEvent(state, { type: "shot-taken", team: player.team, playerId: player.profile.id });
@@ -286,8 +282,8 @@ export const executeBallAction = (state: MatchState, player: PlayerRuntime, acti
   const solution = solvePassTrajectory(state.ball.position, executedTarget, action.trajectory, action.range, action.targeting, chosenPower);
   releaseBall(state, player, normalize(solution.velocity), length(solution.velocity), solution.verticalVelocity);
   state.ball.lastAction = "pass";
-  state.activeShot = null;
-  state.ball.lastShotOnTarget = false;
+  // O ataque seguiu com outra bola: um chute que ainda estivesse em curso morreu aqui.
+  resolveShot(state, "dead");
   player.kickCooldown = 0.4;
   state.stats[player.team].passes += 1;
   if (action.range === "long") state.stats[player.team].longPasses += 1;
@@ -430,6 +426,9 @@ const registerGoal = (state: MatchState, scorerTeam: Team): void => {
   const activeShooter = state.activeShot?.team === scorerTeam ? state.activeShot.shooterId : null;
   const scorer = state.players.find((player) => player.profile.id === (activeShooter ?? state.ball.lastTouchPlayerId) && player.team === scorerTeam);
   const origin = state.activeShot?.team === scorerTeam ? "shot" : state.ball.lastAction ?? "dribble";
+  // Antes do reinício, que fecharia o chute como jogada desfeita: quem terminou no fundo da rede
+  // acertou o alvo, e é este o único lugar que sabe disso.
+  resolveShot(state, origin === "shot" ? "goal" : "dead");
   state.stats[scorerTeam].goals += 1;
   if (origin === "shot") state.stats[scorerTeam].goalsFromShots += 1;
   else if (origin === "pass") state.stats[scorerTeam].goalsFromPasses += 1;
@@ -460,10 +459,9 @@ const registerGoal = (state: MatchState, scorerTeam: Team): void => {
 const registerFrameRebound = (state: MatchState): void => {
   const shotId = state.activeShot?.id;
   const pass = state.pendingPass;
-  state.activeShot = null;
+  resolveShot(state, "woodwork");
   state.pendingPass = null;
   state.ball.lastAction = null;
-  state.ball.lastShotOnTarget = false;
   clearDribbleOwner(state);
   registerLooseBall(state);
   const nearby = relevantPlayersNear(state, state.ball.position);

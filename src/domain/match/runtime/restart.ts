@@ -7,6 +7,7 @@ import { emitMatchEvent } from "./events";
 import { attackDirection, baseCell, cellAnchor, formationAnchor, insidePenaltyArea, kickoffBallPosition, kickoffPosition, kickoffTaker, NEUTRAL_LINE_HEIGHT } from "./formation-geometry";
 import { goalkeeperGuardPost } from "./goalkeeper-geometry";
 import { attackingProgress } from "./pitch";
+import { resolveShot } from "./shot";
 
 /**
  * Bola parada com CAMINHADA, não teleporte. A jogada morre, a bola é posta no ponto, o cobrador
@@ -191,14 +192,13 @@ export const beginRestart = (state: MatchState, kind: RestartKind, team: Team, e
   ball.lastTouch = null;
   ball.lastTouchPlayerId = null;
   ball.lastAction = null;
-  ball.lastShotOnTarget = false;
   state.ballControlTeam = null;
   state.possessionTeam = null;
   state.possessionCandidateTeam = null;
   state.possessionCandidateSince = state.elapsed;
   if (state.pendingPass) emitCognitiveEvent(state, "passResolved", null, { passId: state.pendingPass.id, outcome: "out" });
   state.pendingPass = null;
-  state.activeShot = null;
+  resolveShot(state, "dead");
   clearGoalkeeperAttempts(state);
   for (const player of state.players) {
     player.evadedUntil = 0;
@@ -254,7 +254,6 @@ const promoteRestartToLive = (state: MatchState): void => {
   ball.lastTouch = restart.team;
   ball.lastTouchPlayerId = taker.profile.id;
   ball.lastAction = null;
-  ball.lastShotOnTarget = false;
   registerControlledTeam(state, restart.team, true);
 };
 

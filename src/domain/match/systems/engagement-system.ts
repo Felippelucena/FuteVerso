@@ -6,6 +6,7 @@ import { emitCognitiveEvent } from "../runtime/cognitive-events";
 import { duelEdge } from "../runtime/duel";
 import { activeChallengers, recklessChallenger } from "../runtime/engagement";
 import { emitMatchEvent } from "../runtime/events";
+import { resolveShot } from "../runtime/shot";
 
 const holderOf = (state: MatchState): PlayerRuntime | null =>
   state.players.find((player) => player.profile.id === state.ball.controllerId) ?? null;
@@ -119,7 +120,7 @@ const whistleFoul = (state: MatchState, engagement: Engagement): void => {
   clearDribbleOwner(state);
   if (state.pendingPass) emitCognitiveEvent(state, "passResolved", null, { passId: state.pendingPass.id, outcome: "out" });
   state.pendingPass = null;
-  state.activeShot = null;
+  resolveShot(state, "dead");
   emitMatchEvent(state, { type: "foul-called", team: guilty.team, playerId: guilty.profile.id });
 };
 
