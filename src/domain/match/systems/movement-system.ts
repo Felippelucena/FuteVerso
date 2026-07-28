@@ -1,6 +1,7 @@
 import { FIELD, GOALKEEPING, PHYSICS, STAMINA } from "../config";
 import { add, clamp, distance, length, limit, normalize, scale, subtract } from "../../shared/math";
-import type { AgentDecision, MatchState, MovementPace, PlayerRuntime } from "../model";
+import type { AgentDecision, MatchRules, MatchState, MovementPace, PlayerRuntime } from "../model";
+import { DEFAULT_MATCH_RULES, REFERENCE_COMPRESSION } from "../rules";
 import { playerSkillAcceleration, playerSkillSpeed } from "../runtime/player-metrics";
 import { goalkeeperAirborne } from "./goalkeeper-system";
 
@@ -17,7 +18,16 @@ export const playerSpeedLimit = (player: PlayerRuntime, controlsBall: boolean, r
   return playerSkillSpeed(player) * factor * fatigueSpeedFactor(player);
 };
 
-export const applyStamina = (player: PlayerRuntime, pace: MovementPace, dt: number): void => {
+/**
+ * O desgaste longo é medido em FRAÇÃO DE PARTIDA, não em segundos: tanto o tempo em campo quanto
+ * a distância percorrida crescem com a duração, então um multiplicador único devolve o mesmo fim
+ * de jogo em qualquer relógio. Sem isso, a calibragem (time de linha termina entre 50% e 60%)
+ * valia só para a partida de dez minutos em que foi medida.
+ */
+export const longDrainScale = (rules: MatchRules): number =>
+  STAMINA.longDrainAtReference * REFERENCE_COMPRESSION / rules.compression;
+
+export const applyStamina = (player: PlayerRuntime, pace: MovementPace, dt: number, rules: MatchRules = DEFAULT_MATCH_RULES): void => {
   const travelled = length(player.velocity) * dt;
   const staminaSkill = player.profile.skills.stamina / 100;
   const fatigue = 1 - player.stamina;
@@ -30,7 +40,7 @@ export const applyStamina = (player: PlayerRuntime, pace: MovementPace, dt: numb
   const longSkillScale = 1.3 - staminaSkill * 0.6;                 // skill 100 → 0,7×; skill 0 → 1,3×
   const intensityScale = 0.9 + player.profile.mental.intensity / 500;
   const longDrain = (longUnitCost * travelled + STAMINA.longIdleCostPerSecond * dt)
-    * longSkillScale * intensityScale * STAMINA.longDrainScale;
+    * longSkillScale * intensityScale * longDrainScale(rules);
   player.stamina = clamp(player.stamina - longDrain, STAMINA.longFloor, 1);
 
   // --- Estamina volátil: só o pique drena; fora dele recupera rápido. ---
@@ -68,7 +78,7 @@ const updatePlayer = (state: MatchState, player: PlayerRuntime, decision: AgentD
     player.velocity = scale(player.velocity, Math.exp(-GOALKEEPING.diveDrag * dt));
     player.position = add(player.position, scale(player.velocity, dt));
     if (length(player.velocity) > 0.3) player.facing = normalize(player.velocity);
-    applyStamina(player, "burst", dt);
+    applyStamina(player, "burst", dt, state.rules);
     player.position.x = clamp(player.position.x, player.radius, FIELD.width - player.radius);
     player.position.y = clamp(player.position.y, player.radius, FIELD.height - player.radius);
     return;
@@ -111,7 +121,7 @@ const updatePlayer = (state: MatchState, player: PlayerRuntime, decision: AgentD
   player.position = add(player.position, scale(player.velocity, dt));
   const speed = length(player.velocity);
   if (speed > 0.3 && (!controlsBall || decision.ballAction.kind === "dribble")) player.facing = normalize(player.velocity);
-  applyStamina(player, player.pace, dt);
+  applyStamina(player, player.pace, dt, state.rules);
   // A faixa de segurança (runOff) fora das linhas é jogável: o cobrador do lateral e do escanteio
   // caminha até um ponto fora do campo. Prender aqui em `player.radius` (só dentro do campo) o
   // impedia de chegar ao `takerStand`, e a cobrança só saía no timeout. Mesmas bordas do

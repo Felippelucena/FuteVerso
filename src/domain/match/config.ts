@@ -131,11 +131,14 @@ export const STAMINA = {
   longWalkCostPerUnit: 0.00010,
   longIdleCostPerSecond: 0.00092,
   longFloor: 0.2,
-  // Escala global do desgaste longo, ajustada pela calibração (médio termina ~55%).
-  // ATENÇÃO: ao contrário da volátil, a longa ainda é custo fixo por unidade percorrida —
-  // este número é o knob manual que absorve mudanças de tamanho do campo. Redimensionar o
-  // gramado exige reajustá-lo até a média de fim de jogo voltar à faixa de 50% a 60%.
-  longDrainScale: 0.193,
+  // Escala do desgaste longo, DERIVADA da duração da partida (ver `longDrainScale` em
+  // movement-system). Era um knob manual que precisava ser reajustado à mão a cada mudança de
+  // regime — e que amarrava a calibragem à partida de dez minutos: os custos abaixo são por
+  // segundo em campo e por unidade percorrida, e ambos crescem com a duração, então uma partida
+  // de noventa minutos punha todo mundo no piso só de estar em pé. Um multiplicador único
+  // devolve o mesmo fim de partida em qualquer duração, como GOAL_TO_GOAL_SPRINT já fez com o
+  // tamanho do campo. O número é o que a calibragem mediu em REFERENCE_COMPRESSION (ver rules).
+  longDrainAtReference: 0.193,
   // --- Interação longa → volátil (penalidade modesta) ---
   // Custo da volátil ×(1 + (1-longa)·slope); recarga ×(1 - (1-longa)·slope).
   fatigueVolatileCostSlope: 0.5,
@@ -152,7 +155,12 @@ export const FIXED_STEP = 1 / 120;
 // círculo central, e a saída do segundo tempo é do time que NÃO cobrou a do primeiro.
 // O relógio não zera no intervalo: ele corre de 0 a MATCH_DURATION, como no futebol de verdade.
 export const MATCH_HALVES = 2;
-export const HALF_DURATION = 5 * 60;
+// Vinte minutos de relógio, por medição em duas frentes. De um lado o custo: a 82 us por tick uma
+// temporada de 380 partidas de vinte minutos custa pouco mais de uma hora de CPU, contra nove
+// horas se fossem de noventa — o teto está registrado em rules.ts e em docs/architecture.md. Do
+// outro o placar: em dez minutos o motor produzia 0,8 gol e 11 finalizações por partida, que não é
+// futebol e não faz tabela de liga; em vinte ele produz 3,4 gols e 24 finalizações, que é.
+export const HALF_DURATION = 10 * 60;
 export const MATCH_DURATION = HALF_DURATION * MATCH_HALVES;
 export const DEFAULT_MATCH_SEED = 0x4a39b70d;
 
@@ -221,6 +229,11 @@ export const TACTICS = {
   // Tempo que o portador leva acomodando a bola antes de considerar entregá-la. É o relógio da
   // circulação: abaixo dele o jogador conduz mesmo que exista um passe melhor.
   carrierSettleSeconds: 0.72,
+  // Fim de jogo: a partir de que FRAÇÃO da partida o placar manda no bloco defensivo. Eram 120 s e
+  // 150 s cravados, calibrados na partida de dez minutos — as duas frações reproduzem exatamente
+  // esses números lá e acompanham a duração em qualquer outra.
+  protectLeadShare: 0.2,
+  chaseGameShare: 0.25,
 } as const;
 
 /**

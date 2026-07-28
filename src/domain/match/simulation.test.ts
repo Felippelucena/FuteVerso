@@ -25,9 +25,11 @@ describe("qualidade coletiva da simulacao", () => {
     let freeDribbleTicks = 0;
     const observedPaces = new Set<string>();
 
-    // Passa do fim nominal para cumprir os acréscimos: a partida encerra entre 600s e o teto
-    // absoluto (600 + graceCeiling). Para no apito.
-    for (let tick = 0; tick < 78_000 && !state.finished; tick += 1) {
+    // Passa do fim nominal para cumprir os acréscimos: a partida encerra entre o tempo nominal e
+    // o teto absoluto (nominal + graceCeiling). Para no apito. O limite sai da duração da partida
+    // e não de um número cravado, senão o laço acaba antes do jogo quando o regulamento muda.
+    const limit = (state.rules.matchDuration + state.rules.stoppage.graceCeiling + 1) * 120;
+    for (let tick = 0; tick < limit && !state.finished; tick += 1) {
       stepMatch(state, 1 / 120);
       const controller = state.players.find((player) => player.profile.id === state.ball.controllerId);
       if (controller) {
@@ -62,6 +64,20 @@ describe("qualidade coletiva da simulacao", () => {
 
     const totalPasses = state.stats.blue.passes + state.stats.coral.passes;
     const totalShots = state.stats.blue.shots + state.stats.coral.shots;
+    // Contagem de partida não é invariante à duração — só a taxa é. Os tetos abaixo são por
+    // minuto de jogo, senão dobrar o relógio quebra o teste sem que nada tenha piorado.
+    const minutes = state.rules.matchDuration / 60;
+    const perMinute = (value: number): number => value / minutes;
+    // eslint-disable-next-line no-console
+    console.info("MATCH_RATES", JSON.stringify({
+      minutes,
+      goals: state.stats.blue.goals + state.stats.coral.goals,
+      shots: totalShots,
+      passes: totalPasses,
+      turnoversPerMinute: Number(perMinute(state.stats.blue.turnoversWon + state.stats.coral.turnoversWon).toFixed(2)),
+      finalThirdPerMinute: Number(perMinute(Math.max(state.stats.blue.finalThirdEntries, state.stats.coral.finalThirdEntries)).toFixed(2)),
+      worstTouchlineCrowd,
+    }));
     expect(totalPasses).toBeGreaterThan(8);
     expect(totalShots).toBeGreaterThan(0);
     expect(narrowSnapshots / sampledSnapshots).toBeLessThan(0.25);
@@ -72,7 +88,7 @@ describe("qualidade coletiva da simulacao", () => {
     expect(observedPaces).toEqual(new Set(["walk", "run", "burst", "closeControl"]));
     expect(state.finished).toBe(true);
     expect(state.events.some((event) => event.type === "match-finished")).toBe(true);
-    expect(state.stats.blue.spatialSeconds).toBeGreaterThan(590);
+    expect(state.stats.blue.spatialSeconds).toBeGreaterThan(state.rules.matchDuration * 0.98);
     expect(state.heatmaps.blue.some((value) => value > 0)).toBe(true);
     expect(Object.keys(state.passNetwork.blue).length + Object.keys(state.passNetwork.coral).length).toBeGreaterThan(0);
     const totals = (key: keyof typeof state.stats.blue): number =>
@@ -88,11 +104,11 @@ describe("qualidade coletiva da simulacao", () => {
     // investir na bola adiantada em vez de assistir — mais disputa é mais posse trocando de mão,
     // e é o comportamento pedido. O que continua proibido é o colapso, que os limites de forma,
     // de condução livre e de sequência de posse acima seguem medindo.
-    expect(state.stats.blue.turnoversWon + state.stats.coral.turnoversWon).toBeLessThan(150);
+    expect(perMinute(state.stats.blue.turnoversWon + state.stats.coral.turnoversWon)).toBeLessThan(15);
     // Knock-ons empurram a bola à frente com mais frequência que a antiga condução colada,
     // então há um pouco mais de entradas no terço final — comportamento desejado, sem colapso.
-    expect(state.stats.blue.finalThirdEntries).toBeLessThan(42);
-    expect(state.stats.coral.finalThirdEntries).toBeLessThan(42);
+    expect(perMinute(state.stats.blue.finalThirdEntries)).toBeLessThan(4.2);
+    expect(perMinute(state.stats.coral.finalThirdEntries)).toBeLessThan(4.2);
     for (const team of ["blue", "coral"] as const) {
       expect(state.stats[team].shotsOnTarget).toBeLessThanOrEqual(state.stats[team].shots);
       expect(state.stats[team].goalsFromShots + state.stats[team].goalsFromPasses + state.stats[team].goalsFromDribbles)

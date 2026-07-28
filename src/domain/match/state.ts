@@ -8,6 +8,7 @@ import {
 import { kickoffTeamOfHalf } from "./runtime/kickoff";
 import { unclaimedBall } from "./runtime/ball-situation";
 import { ANALYTICS_GRID, DEFAULT_MATCH_SEED, FIELD, RESTART } from "./config";
+import { DEFAULT_MATCH_RULES } from "./rules";
 import { DEFAULT_INSTRUCTION } from "../tactics/model";
 import { positionFit } from "../tactics/position-fit";
 import { findSlot } from "../tactics/slots";
@@ -99,6 +100,7 @@ export function createMatchState(config: MatchConfig): MatchState {
   const taker = kickoffTaker(players, openingTeam);
   if (taker) taker.position = kickoffTakerPosition(taker, kickoffBall);
   return {
+    rules: config.rules ?? DEFAULT_MATCH_RULES,
     players,
     ball: {
       position: { ...kickoffBall }, velocity: { x: 0, y: 0 },

@@ -1,4 +1,3 @@
-import { MATCH_HALVES } from "../config";
 import type { Team } from "../model";
 
 /**
@@ -17,4 +16,4 @@ export const kickoffTeamOfHalf = (half: number): Team =>
   half % 2 === 1 ? OPENING_KICKOFF_TEAM : opposingTeam(OPENING_KICKOFF_TEAM);
 
 /** Último tempo da partida: depois dele o apito é final, não intervalo. */
-export const isFinalHalf = (half: number): boolean => half >= MATCH_HALVES;
+export const isFinalHalf = (half: number, halves: number): boolean => half >= halves;

@@ -327,6 +327,7 @@ export const executeBallAction = (state: MatchState, player: PlayerRuntime, acti
  * arma normalmente a partir do toque seguinte.
  */
 const armOffsideWatch = (state: MatchState, passer: PlayerRuntime, passId: number): void => {
+  if (!state.rules.offsideEnabled) return;
   if (state.offsideExemptRestart) {
     state.offsideExemptRestart = false;
     state.offsideWatch = null;

@@ -2,8 +2,10 @@ import type { PlayerMemory, PlayerProfile } from "../roster/model";
 import type { PlayerInstruction, TeamDirectives } from "../tactics/model";
 import type { TacticalSlotId } from "../tactics/slots";
 import type { AttackChannel, BuildUpStyle, DefensiveBlock, PressTrigger } from "../tactics/vocabulary";
+import type { MatchRules } from "./rules";
 import type { Team, Vec2 } from "../shared/model";
 
+export type { MatchRules, MatchRulesOptions, StoppageRules } from "./rules";
 export type { Team, Vec2 } from "../shared/model";
 export type {
   PlayerCareerStats,
@@ -54,6 +56,8 @@ export interface MatchConfig {
   participants: MatchParticipant[];
   /** As diretrizes com que cada lado entra em campo. Ver `TeamDirectives`. */
   teams: Record<Team, TeamDirectives>;
+  /** O regulamento desta partida. Ausente vale `DEFAULT_MATCH_RULES`. Ver `rules.ts`. */
+  rules?: MatchRules;
 }
 
 /**
@@ -806,6 +810,8 @@ export interface FoulCall {
 }
 
 export interface MatchState {
+  /** O regulamento desta partida: duração, acréscimos e o que vale. Constante durante o jogo. */
+  rules: MatchRules;
   players: PlayerRuntime[];
   ball: Ball;
   stats: Record<Team, TeamStats>;

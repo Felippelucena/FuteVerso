@@ -1,4 +1,4 @@
-import { FIELD, MATCH_DURATION, MENTALITY, POSSESSION, TACTICS } from "../config";
+import { FIELD, MENTALITY, POSSESSION, TACTICS } from "../config";
 import { clamp, distance } from "../../shared/math";
 import { mentalityBias, type TeamDirectives } from "../../tactics/model";
 import type {
@@ -121,9 +121,9 @@ const chooseBuildUpStyle = (players: PlayerRuntime[]): BuildUpStyle => {
 
 const chooseDefensiveBlock = (state: MatchState, team: Team, players: PlayerRuntime[]): DefensiveBlock => {
   const scoreDifference = state.stats[team].goals - state.stats[team === "blue" ? "coral" : "blue"].goals;
-  const remaining = MATCH_DURATION - state.elapsed;
-  if (scoreDifference > 0 && remaining < 120) return "low";
-  if (scoreDifference < 0 && remaining < 150) return "high";
+  const remaining = (state.rules.matchDuration - state.elapsed) / state.rules.matchDuration;
+  if (scoreDifference > 0 && remaining < TACTICS.protectLeadShare) return "low";
+  if (scoreDifference < 0 && remaining < TACTICS.chaseGameShare) return "high";
   const intensity = average(players, (player) => player.profile.mental.intensity * 0.55 + player.profile.mental.aggression * 0.45);
   return intensity > 77 ? "high" : intensity < 58 ? "low" : "mid";
 };
@@ -168,7 +168,7 @@ const createCollectivePlan = (state: MatchState, team: Team): TeamCollectivePlan
     : directives.defensiveBlock;
   const pressTrigger = choosePressTrigger(state, team, directives.pressTriggers);
   const scoreDifference = state.stats[team].goals - state.stats[team === "blue" ? "coral" : "blue"].goals;
-  const urgency = clamp((state.elapsed - MATCH_DURATION * 0.65) / (MATCH_DURATION * 0.35), 0, 1);
+  const urgency = clamp((state.elapsed - state.rules.matchDuration * 0.65) / (state.rules.matchDuration * 0.35), 0, 1);
   const personalityRisk = average(players, (player) => player.profile.mental.creativity * 0.45 + player.profile.mental.aggression * 0.35 + player.profile.mental.composure * 0.2) / 100;
   // Eixo `risk`: entra aqui, e só aqui. Rest defense, sobreposição do lateral e apetite de passe
   // já leem este número — enviesá-lo na origem move os três de uma vez e sem contradição.

@@ -1,4 +1,3 @@
-import { HALF_DURATION, MATCH_DURATION, STOPPAGE } from "../config";
 import type { MatchState, Team } from "../model";
 import { isBallDead } from "../runtime/dead-ball";
 import { emitMatchEvent } from "../runtime/events";
@@ -8,7 +7,7 @@ import { beginRestart, restartFreeKick } from "../runtime/restart";
 export const advanceMatchClock = (state: MatchState, dt: number): void => {
   // O relógio precisa passar do fim nominal para cumprir os acréscimos. Trava só no teto absoluto
   // (nominal + graceCeiling), que é o que garante o término mesmo se o lance nunca concluir.
-  const ceiling = MATCH_DURATION + STOPPAGE.graceCeiling;
+  const ceiling = state.rules.matchDuration + state.rules.stoppage.graceCeiling;
   const nextElapsed = state.elapsed + dt;
   state.elapsed = nextElapsed >= ceiling ? ceiling : nextElapsed;
 };
@@ -24,7 +23,7 @@ export const expireTemporalEffects = (state: MatchState): void => {
  * quarto árbitro somando o tempo perdido. Acumula o tempo todo, não só perto do fim.
  */
 export const accrueAddedTime = (state: MatchState, dt: number): void => {
-  if (isBallDead(state)) state.stoppage.accrued += dt * STOPPAGE.accrualFactor;
+  if (isBallDead(state)) state.stoppage.accrued += dt * state.rules.stoppage.accrualFactor;
 };
 
 /**
@@ -60,18 +59,18 @@ export const advanceFoul = (state: MatchState, dt: number): boolean => {
 };
 
 /** Instante em que o tempo em curso termina. O relógio segue correndo através dele. */
-const halfEndsAt = (half: number): number => HALF_DURATION * half;
+const halfEndsAt = (state: MatchState, half: number): number => state.rules.halfDuration * half;
 
 /** Fim nominal + acréscimo anunciado (limitado). É quando a janela de encerramento abre. */
 const targetEnd = (state: MatchState, nominal: number): number =>
-  nominal + Math.min(state.stoppage.accrued, STOPPAGE.maxAddedTime);
+  nominal + Math.min(state.stoppage.accrued, state.rules.stoppage.maxAddedTime);
 
 /** Levanta a placa de acréscimos: registra quanto foi anunciado e quem atacava naquele instante. */
 const openStoppageWindow = (state: MatchState, final: boolean): void => {
   const stoppage = state.stoppage;
   stoppage.awaitingEnd = true;
   stoppage.pendingSince = state.elapsed;
-  stoppage.announced = Math.min(stoppage.accrued, STOPPAGE.maxAddedTime);
+  stoppage.announced = Math.min(stoppage.accrued, state.rules.stoppage.maxAddedTime);
   stoppage.attackerAtOpen = state.possessionTeam ?? state.ballControlTeam ?? state.lastControlledTeam ?? null;
   if (stoppage.announced >= 0.5) {
     emitMatchEvent(state, { type: "added-time-signalled", half: state.half, seconds: stoppage.announced, final });
@@ -109,11 +108,11 @@ const canEndPeriod = (state: MatchState): boolean => {
  * acréscimos abre antes, uma vez). Passado o teto absoluto, apita seja como for.
  */
 export const startNextHalfIfNeeded = (state: MatchState): void => {
-  if (state.finished || isFinalHalf(state.half)) return;
-  const nominal = halfEndsAt(state.half);
+  if (state.finished || isFinalHalf(state.half, state.rules.halves)) return;
+  const nominal = halfEndsAt(state, state.half);
   if (state.elapsed < targetEnd(state, nominal)) return;
   if (!state.stoppage.awaitingEnd) openStoppageWindow(state, false);
-  if (state.elapsed < nominal + STOPPAGE.graceCeiling && !canEndPeriod(state)) return;
+  if (state.elapsed < nominal + state.rules.stoppage.graceCeiling && !canEndPeriod(state)) return;
   emitMatchEvent(state, { type: "half-ended", half: state.half, addedTime: state.elapsed - nominal });
   state.half += 1;
   resetStoppage(state);
@@ -124,10 +123,10 @@ export const startNextHalfIfNeeded = (state: MatchState): void => {
 };
 
 export const finishMatchIfNeeded = (state: MatchState): void => {
-  if (state.finished || !isFinalHalf(state.half)) return;
-  if (state.elapsed < targetEnd(state, MATCH_DURATION)) return;
+  if (state.finished || !isFinalHalf(state.half, state.rules.halves)) return;
+  if (state.elapsed < targetEnd(state, state.rules.matchDuration)) return;
   if (!state.stoppage.awaitingEnd) openStoppageWindow(state, true);
-  if (state.elapsed < MATCH_DURATION + STOPPAGE.graceCeiling && !canEndPeriod(state)) return;
+  if (state.elapsed < state.rules.matchDuration + state.rules.stoppage.graceCeiling && !canEndPeriod(state)) return;
   state.finished = true;
-  emitMatchEvent(state, { type: "match-finished", addedTime: state.elapsed - MATCH_DURATION });
+  emitMatchEvent(state, { type: "match-finished", addedTime: state.elapsed - state.rules.matchDuration });
 };

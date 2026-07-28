@@ -6,6 +6,8 @@ import { length } from "../shared/math";
 import type { MovementPace } from "./model";
 import { applyStamina } from "./systems/movement-system";
 import { CALIBRATION } from "./__fixtures__/calibration";
+import { createMatchRules } from "./rules";
+import type { MatchRules } from "./model";
 
 const DT = 1 / 120;
 // Mesma corrida de referência que calibra o custo do pique: se as duas divergissem, o
@@ -22,7 +24,11 @@ describe("estamina volátil (piques)", () => {
   // O custo do pique é derivado da travessia gol a gol, então o alcance de uma barra cheia é
   // uma fração fixa do campo, qualquer que seja o tamanho do gramado. Sair da faixa significa
   // que alguém desamarrou volatileBurstCostPerUnit de GOAL_TO_GOAL_SPRINT.
-  it("a barra cheia banca pouco mais de um terço do campo em disparada contínua", () => {
+  //
+  // O teto é MEIA travessia, e é aritmética, não calibragem: a barra cheia paga
+  // 1/VOLATILE_BURST_PER_CROSSING do campo. Quem chega lá é o atleta inteiro; durante a partida a
+  // fadiga longa encarece o pique e encurta o alcance, e é daí que vem o piso da faixa.
+  it("a barra cheia banca de um terço a metade do campo em disparada contínua", () => {
     const player = outfield();
     player.stamina = 1;
     player.sprintEnergy = 1;
@@ -34,7 +40,7 @@ describe("estamina volátil (piques)", () => {
     }
     const share = travelled / GOAL_TO_GOAL;
     expect(share).toBeGreaterThan(0.33);
-    expect(share).toBeLessThan(0.5);
+    expect(share).toBeLessThanOrEqual(0.5 + 1e-9);
   });
 
   // O mínimo da partida sozinho não diz nada: tocar o fundo uma vez em dez minutos é
@@ -150,6 +156,31 @@ describe("estamina longa (fôlego de partida)", () => {
     expect(Math.min(...finals)).toBeGreaterThan(0.35);
     expect(Math.max(...finals)).toBeLessThan(0.78);
   }, 120_000);
+
+  /**
+   * O item que a régua derivada resolve: a calibragem valia só para a partida em que foi medida.
+   * Os custos são por segundo em campo e por unidade percorrida, e os dois crescem com a duração —
+   * numa partida longa todo mundo ia ao piso só de estar em pé. Agora o desgaste é medido em
+   * fração de partida, e o fim de jogo é o mesmo em qualquer relógio.
+   */
+  it.runIf(CALIBRATION)("termina na mesma faixa numa partida de dez e numa de vinte minutos", () => {
+    const meanFinal = (rules: MatchRules): number => {
+      const state = createMatchState({ ...referenceMatchConfig(11), rules });
+      while (!state.finished) stepMatch(state, DT);
+      const outfielders = state.players.filter((player) => player.profile.position !== "goalkeeper");
+      return outfielders.reduce((sum, player) => sum + player.stamina, 0) / outfielders.length;
+    };
+
+    const short = meanFinal(createMatchRules({ halves: 2, halfDuration: 5 * 60 }));
+    const long = meanFinal(createMatchRules({ halves: 2, halfDuration: 10 * 60 }));
+
+    // eslint-disable-next-line no-console
+    console.info("STAMINA_BY_DURATION", JSON.stringify({ short: Number(short.toFixed(3)), long: Number(long.toFixed(3)) }));
+    for (const mean of [short, long]) {
+      expect(mean).toBeGreaterThanOrEqual(0.5);
+      expect(mean).toBeLessThanOrEqual(0.6);
+    }
+  }, 180_000);
 
   it("começa cheia por padrão (jogo rápido) e respeita o startingStamina do participante", () => {
     const config = referenceMatchConfig();
