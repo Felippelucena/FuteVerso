@@ -117,7 +117,7 @@ export function createMatchState(config: MatchConfig): MatchState {
     half: 1,
     restart: taker
       ? {
-        kind: "kickoff", team: openingTeam, takerId: taker.profile.id,
+        kind: "kickoff", reason: null, team: openingTeam, takerId: taker.profile.id,
         spot: { ...kickoffBall },
         takerStand: { x: kickoffBall.x - (openingTeam === "blue" ? 1 : -1) * RESTART.takerStandOffset, y: kickoffBall.y },
         facing: { x: openingTeam === "blue" ? 1 : -1, y: 0 },

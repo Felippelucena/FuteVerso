@@ -1,6 +1,6 @@
 import { FIELD, RESTART, STAMINA } from "../config";
 import { add, clamp, distance, normalize, scale, subtract } from "../../shared/math";
-import type { MatchState, PlayerRuntime, RestartKind, RestartState, Team, TeamShapePlacement, Vec2 } from "../model";
+import type { MatchState, PlayerRuntime, RestartKind, RestartReason, RestartState, Team, TeamShapePlacement, Vec2 } from "../model";
 import { clearDribbleOwner, clearGoalkeeperAttempts, registerControlledTeam } from "./control";
 import { emitCognitiveEvent } from "./cognitive-events";
 import { emitMatchEvent } from "./events";
@@ -178,7 +178,13 @@ const restartGeometry = (kind: RestartKind, exitPosition: Vec2, team: Team): { s
  * mexe na posição dos jogadores — eles caminham até o desenho por conta própria. Chamado pela
  * detecção de saída de bola (ball-system) e pelos reinícios do lifecycle (intervalo, impedimento).
  */
-export const beginRestart = (state: MatchState, kind: RestartKind, team: Team, exitPosition: Vec2): void => {
+export const beginRestart = (
+  state: MatchState,
+  kind: RestartKind,
+  team: Team,
+  exitPosition: Vec2,
+  reason: RestartReason | null = null,
+): void => {
   const taker = chooseTaker(state, team, kind, exitPosition);
   const { spot, facing, takerStand } = restartGeometry(kind, exitPosition, team);
   const ball = state.ball;
@@ -212,7 +218,7 @@ export const beginRestart = (state: MatchState, kind: RestartKind, team: Team, e
     }
   }
   state.restart = taker
-    ? { kind, team, takerId: taker.profile.id, spot, takerStand, facing, startedAt: state.elapsed, ballInPlay: false }
+    ? { kind, reason, team, takerId: taker.profile.id, spot, takerStand, facing, startedAt: state.elapsed, ballInPlay: false }
     : null;
   state.offsideWatch = null;
   // Lateral, escanteio e tiro de meta não têm impedimento na cobrança; o tiro livre e a saída, sim.
@@ -223,8 +229,8 @@ export const beginRestart = (state: MatchState, kind: RestartKind, team: Team, e
 };
 
 /** Tiro livre no ponto da infração, para o time que a sofreu — impedimento (Lei 11) ou falta (12). */
-export const restartFreeKick = (state: MatchState, awardedTeam: Team, spot: Vec2): void => {
-  beginRestart(state, "freeKick", awardedTeam, spot);
+export const restartFreeKick = (state: MatchState, awardedTeam: Team, spot: Vec2, reason: RestartReason): void => {
+  beginRestart(state, "freeKick", awardedTeam, spot, reason);
 };
 
 /**

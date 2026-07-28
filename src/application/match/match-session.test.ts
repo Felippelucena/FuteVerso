@@ -16,6 +16,24 @@ const advanceToStep = (session: MatchSession, target: number): void => {
   while (session.liveStep < target && !session.state.finished) session.advance(0.1);
 };
 
+/**
+ * Apita um impedimento na fronteira, com o passe 120 passos atrás, e deixa a sessão lê-lo. Que o
+ * motor apite com a geometria certa é assunto de `offside.test.ts`; aqui só interessa o que a
+ * sessão faz com o apito.
+ */
+const whistleOffside = (session: MatchSession): { passStep: number; callStep: number } => {
+  const passStep = session.liveStep - 120;
+  emitMatchEvent(session.liveState, {
+    type: "offside-called",
+    team: "blue",
+    playerId: session.liveState.players[0].profile.id,
+    lineProgress: 0.7,
+    passAt: passStep * FIXED_STEP,
+  });
+  session.advance(0.1);
+  return { passStep, callStep: session.liveStep };
+};
+
 describe("MatchSession", () => {
   it("nao avanca quando pausada ou quando a partida terminou", () => {
     const session = createSession();
@@ -189,17 +207,8 @@ describe("MatchSession linha do tempo", () => {
   it("o impedimento apitado rebobina a revisão até o instante do passe", () => {
     const session = createSession(7);
     advanceToStep(session, 480);
-    const passStep = session.liveStep - 120;
-    emitMatchEvent(session.liveState, {
-      type: "offside-called",
-      team: "blue",
-      playerId: session.liveState.players[0].profile.id,
-      lineProgress: 0.7,
-      passAt: passStep * FIXED_STEP,
-    });
-
     session.setSpeed(8); // a pausa da bandeira não é tempo de jogo: acelerar não a encurta
-    session.advance(0.1);
+    const { passStep, callStep } = whistleOffside(session);
 
     expect(session.viewStep).toBe(passStep);
     expect(session.offsideReplay).toMatchObject({ team: "blue", lineProgress: 0.7, reveal: 0 });
@@ -219,28 +228,38 @@ describe("MatchSession linha do tempo", () => {
     for (let frame = 0; frame < 200 && session.scrubbing; frame += 1) session.advance(0.1);
 
     expect(session.scrubbing).toBe(false);
-    expect(session.offsideReplay).toBeNull();
+    expect(session.viewStep).toBe(callStep); // o replay termina no apito, não depois dele
     expect(session.state).toBe(session.liveState);
+
+    session.advance(0.1); // passado o apito, o jogo segue sem bandeira nenhuma
+    expect(session.offsideReplay).toBeNull();
   });
 
-  it("o usuário assumindo a linha do tempo encerra a revisão", () => {
+  it("a bandeira volta sempre que o lance é revisto", () => {
     const session = createSession(7);
     advanceToStep(session, 480);
-    emitMatchEvent(session.liveState, {
-      type: "offside-called",
-      team: "blue",
-      playerId: session.liveState.players[0].profile.id,
-      lineProgress: 0.7,
-      passAt: (session.liveStep - 120) * FIXED_STEP,
-    });
-    session.advance(0.1);
-    expect(session.offsideReplay).not.toBeNull();
+    const { passStep, callStep } = whistleOffside(session);
+    session.resumeLive(); // dispensa a revisão automática e segue o jogo bem além do apito
+    advanceToStep(session, callStep + 240);
+    expect(session.offsideReplay).toBeNull();
+
+    session.seek(Math.round((passStep + callStep) / 2));
+
+    expect(session.offsideReplay).toMatchObject({ team: "blue", lineProgress: 0.7, reveal: 1 });
+    session.seek(passStep - 1); // antes do passe não há o que julgar
+    expect(session.offsideReplay).toBeNull();
+  });
+
+  it("o usuário assumindo a linha do tempo solta a pausa sem apagar a bandeira", () => {
+    const session = createSession(7);
+    advanceToStep(session, 480);
+    whistleOffside(session);
 
     session.beginSeek();
-
-    expect(session.offsideReplay).toBeNull();
     session.endSeek();
-    expect(session.advance(0.1)).toBeGreaterThan(0); // e o replay manual segue normal
+
+    expect(session.advance(0.1)).toBeGreaterThan(0); // a pausa não segura mais o jogo
+    expect(session.offsideReplay).not.toBeNull(); // e a linha segue no lance
   });
 
   it("descarta a linha do tempo ao reiniciar", () => {

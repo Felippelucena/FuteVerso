@@ -9,7 +9,7 @@ const createState = (seed = 3) => createMatchState(smallSidedMatchConfig(seed));
 
 /** Uma bola parada (lateral) ainda a cobrar: bola morta para o `isBallDead`. */
 const parkedRestart = (): RestartState => ({
-  kind: "throwIn", team: "blue", takerId: "any",
+  kind: "throwIn", reason: null, team: "blue", takerId: "any",
   spot: { x: 10, y: 0 }, takerStand: { x: 10, y: -3 }, facing: { x: 1, y: 1 }, startedAt: 0, ballInPlay: false,
 });
 

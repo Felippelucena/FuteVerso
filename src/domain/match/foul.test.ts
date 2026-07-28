@@ -119,7 +119,7 @@ describe("Lei 12 — falta e tiro livre", () => {
     }
 
     expect(setup.state.foulCall).toBeNull();
-    expect(setup.state.restart?.kind).toBe("freeKick");
+    expect(setup.state.restart).toMatchObject({ kind: "freeKick", reason: "foul" });
     expect(setup.state.restart?.team).toBe("blue"); // o time que sofreu
     expect(setup.state.restart?.spot.x).toBeCloseTo(spot.x, 3);
   });

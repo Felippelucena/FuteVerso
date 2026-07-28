@@ -751,6 +751,9 @@ export type MatchEventData = WithoutEventMetadata<MatchEvent>;
  */
 export type RestartKind = "kickoff" | "throwIn" | "corner" | "goalKick" | "freeKick";
 
+/** A infração que originou o tiro livre. Ver `RestartState.reason`. */
+export type RestartReason = "foul" | "offside";
+
 /**
  * Bola parada em andamento — a cobrança caminhada, não um teleporte. Enquanto existe, valem as
  * restrições da Regra 8:
@@ -762,6 +765,11 @@ export type RestartKind = "kickoff" | "throwIn" | "corner" | "goalKick" | "freeK
  */
 export interface RestartState {
   kind: RestartKind;
+  /**
+   * Por que o árbitro parou o jogo, quando o `kind` não basta: o tiro livre sai tanto de falta
+   * quanto de impedimento. Nos demais reinícios o próprio `kind` já é o motivo.
+   */
+  reason: RestartReason | null;
   /** Time que cobra o reinício. */
   team: Team;
   /** Quem cobra: goleiro no tiro de meta, cobrador mais avançado na saída, mais próximo nos demais. */

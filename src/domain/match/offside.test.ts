@@ -142,6 +142,8 @@ describe("Lei 11 — infração e reinício", () => {
     expect(state.offsideCall).toBeNull();
     expect(state.events.some((event) => event.type === "restart-awarded"
       && event.team === "coral" && event.restartKind === "freeKick")).toBe(true);
+    // O tiro livre sabe de onde veio: é o que faz o cartão do reinício dizer IMPEDIMENTO.
+    expect(state.restart).toMatchObject({ kind: "freeKick", reason: "offside" });
   });
 
   it("não apita quando um companheiro em posição legal recebe o passe", () => {

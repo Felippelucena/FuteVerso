@@ -37,7 +37,7 @@ export const advanceOffside = (state: MatchState, dt: number): boolean => {
   state.contestedSeconds += dt;
   if (state.elapsed < call.resolveAt) return true;
   const defending: Team = call.team === "blue" ? "coral" : "blue";
-  restartFreeKick(state, defending, call.spot);
+  restartFreeKick(state, defending, call.spot, "offside");
   state.offsideCall = null;
   return true;
 };
@@ -53,7 +53,7 @@ export const advanceFoul = (state: MatchState, dt: number): boolean => {
   state.contestedSeconds += dt;
   if (state.elapsed < call.resolveAt) return true;
   const fouled: Team = call.team === "blue" ? "coral" : "blue";
-  restartFreeKick(state, fouled, call.spot);
+  restartFreeKick(state, fouled, call.spot, "foul");
   state.foulCall = null;
   return true;
 };

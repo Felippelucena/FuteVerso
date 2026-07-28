@@ -415,10 +415,11 @@ export class GameRenderer {
     // Some conforme o preparo avança: quanto mais perto da cobrança, mais leve o véu.
     const remaining = restart.startedAt + RESTART.maxSetupSeconds - state.elapsed;
     const alpha = clamp(remaining / RESTART.maxSetupSeconds, 0, 1);
+    // O tiro livre é o único reinício ambíguo: quem diz o que aconteceu é o motivo, não o tipo.
     const label = restart.kind === "throwIn" ? "LATERAL"
       : restart.kind === "corner" ? "ESCANTEIO"
         : restart.kind === "goalKick" ? "TIRO DE META"
-          : restart.kind === "freeKick" ? "FALTA"
+          : restart.kind === "freeKick" ? (restart.reason === "offside" ? "IMPEDIMENTO" : "FALTA")
             : "SAIDA";
     ctx.fillStyle = `rgba(9, 13, 11, ${alpha * 0.4})`;
     ctx.fillRect(this.x(0), this.y(0), FIELD.width * this.scale, FIELD.height * this.scale);

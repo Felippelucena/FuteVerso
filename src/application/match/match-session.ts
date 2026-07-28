@@ -26,6 +26,19 @@ export interface OffsideReplay {
   readonly reveal: number;
 }
 
+/**
+ * Um impedimento apitado e o trecho da linha do tempo em que ele se decidiu: do passe ao apito.
+ * A bandeira é DERIVADA daqui, não um efeito disparado uma vez — é o que a faz reaparecer toda vez
+ * que o lance é revisto, em vez de existir só na revisão automática.
+ */
+interface OffsideCallRecord {
+  readonly passStep: number;
+  readonly callStep: number;
+  readonly team: Team;
+  readonly offenderId: string;
+  readonly lineProgress: number;
+}
+
 // Guarda um snapshot a cada 2s de jogo. A simulação é determinística, então qualquer instante
 // entre dois keyframes é reconstruído restaurando o keyframe anterior e re-simulando os poucos
 // passos que faltam (< 2s ≈ 16ms). 2s @ 120Hz => 240 passos por keyframe; uma partida de vinte
@@ -50,7 +63,7 @@ export class MatchSession {
   private liveStepCount = 0;
   private viewStepCount = 0;
   private keyframes: Keyframe[] = [];
-  private offside: Omit<OffsideReplay, "reveal"> | null = null;
+  private offsideCalls: OffsideCallRecord[] = [];
   private holdRemaining = 0;
   private lastSeenEventId = 0;
 
@@ -100,10 +113,22 @@ export class MatchSession {
     return this.viewStepCount < this.liveStepCount;
   }
 
-  /** A bandeira do impedimento em revisão, ou nula em jogo normal. */
+  /**
+   * A bandeira, quando o quadro exibido cai dentro de um impedimento já apitado — seja na revisão
+   * automática, seja rebobinando o lance de novo mais tarde. Fora desses trechos, nula.
+   */
   get offsideReplay(): OffsideReplay | null {
-    if (!this.offside) return null;
-    return { ...this.offside, reveal: 1 - this.holdRemaining / OFFSIDE_REPLAY_HOLD_SECONDS };
+    const call = this.offsideCalls.find(
+      (record) => this.viewStepCount >= record.passStep && this.viewStepCount <= record.callStep,
+    );
+    if (!call) return null;
+    return {
+      team: call.team,
+      offenderId: call.offenderId,
+      lineProgress: call.lineProgress,
+      // A linha só cresce na pausa da revisão; revista depois, ela já está inteira.
+      reveal: this.holdRemaining > 0 ? 1 - this.holdRemaining / OFFSIDE_REPLAY_HOLD_SECONDS : 1,
+    };
   }
 
   advance(realDeltaSeconds: number): number {
@@ -164,11 +189,18 @@ export class MatchSession {
     }
     this.lastSeenEventId = this.frontier.eventCounter;
     if (!called) return false;
-    this.offside = { team: called.team, offenderId: called.playerId, lineProgress: called.lineProgress };
+    // Ao menos um passo atrás da fronteira: é o replay chegando nela que devolve o jogo ao vivo,
+    // e uma revisão que já nascesse ao vivo nunca sairia da frente.
+    const passStep = Math.min(Math.round(called.passAt / FIXED_STEP), this.liveStepCount - 1);
+    this.offsideCalls.push({
+      passStep,
+      callStep: this.liveStepCount,
+      team: called.team,
+      offenderId: called.playerId,
+      lineProgress: called.lineProgress,
+    });
     this.holdRemaining = OFFSIDE_REPLAY_HOLD_SECONDS;
-    // Ao menos um passo atrás da fronteira: é o replay chegando nela que encerra a revisão, então
-    // uma revisão que já nascesse ao vivo nunca teria fim.
-    this.seek(Math.min(Math.round(called.passAt / FIXED_STEP), this.liveStepCount - 1));
+    this.seek(passStep);
     return true;
   }
 
@@ -187,13 +219,11 @@ export class MatchSession {
       this.accumulator -= FIXED_STEP;
       steps += 1;
     }
-    // Alcançou a fronteira? Reancora ao vivo (mesma referência, custo zero) e, com isso, encerra
-    // a revisão do impedimento: a bandeira existe enquanto o lance está sendo revisto.
+    // Alcançou a fronteira? Reancora ao vivo (mesma referência, custo zero).
     if (this.viewStepCount >= this.liveStepCount) {
       this.accumulator = 0;
       this.viewStepCount = this.liveStepCount;
       this.viewState = this.frontier;
-      this.endOffsideReplay();
     }
     return steps;
   }
@@ -208,20 +238,16 @@ export class MatchSession {
 
   /** Reancora a visão na fronteira ao vivo (fim da linha do tempo). */
   resumeLive(): void {
-    this.endOffsideReplay();
+    this.holdRemaining = 0;
     this.seek(this.liveStepCount);
   }
 
   /** O usuário pegou o slider: suspende a reprodução automática enquanto arrasta. */
   beginSeek(): void {
-    // Quem pega a linha do tempo assume o lance: a revisão automática sai da frente na hora.
-    this.endOffsideReplay();
-    this.isSeeking = true;
-  }
-
-  private endOffsideReplay(): void {
-    this.offside = null;
+    // Quem pega a linha do tempo assume o lance: a pausa da revisão sai da frente na hora. A
+    // bandeira não — ela pertence ao trecho, e volta sempre que ele for revisto.
     this.holdRemaining = 0;
+    this.isSeeking = true;
   }
 
   /** O usuário soltou o slider: a reprodução automática volta a valer. */
@@ -288,7 +314,8 @@ export class MatchSession {
     this.viewStepCount = 0;
     this.keyframes = [];
     this.lastSeenEventId = 0;
-    this.endOffsideReplay();
+    this.offsideCalls = [];
+    this.holdRemaining = 0;
     this.recordKeyframe();
   }
 }
