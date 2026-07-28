@@ -135,7 +135,12 @@ export const carrierDecision = (
     + decisionNoise(player, state, 23) : -1;
   const controlAge = Math.max(0, state.elapsed - state.ball.controlStartedAt);
   const baseDribbleTarget = chooseDribbleTarget(player, opponents, state);
-  const forwardRunway = evaluateForwardRunway(state, player);
+  // O toque à frente segue o MESMO rumo que o portador escolheu para levar a bola, e não o eixo do
+  // gol: quem pesa espaço, marcador e risco de linha é `chooseDribbleTarget`, e o corredor só mede
+  // o que cabe naquele rumo. Eram duas respostas para "para onde eu levo a bola", e o toque à
+  // frente — 87% dos dribles — usava a que não olha para ninguém.
+  const dribbleHeading = normalize(subtract(baseDribbleTarget, player.position));
+  const forwardRunway = evaluateForwardRunway(state, player, dribbleHeading);
   const touchChoice = chooseDribbleTouch(state, player, forwardRunway);
   const etaAdvantage = touchChoice.opponentEta - touchChoice.carrierEta;
   const breakEligible = forwardRunway.distance >= fieldX(23)

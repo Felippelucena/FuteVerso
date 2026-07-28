@@ -1,6 +1,7 @@
 import { DUEL, FIELD, PHYSICS } from "../config";
 import type { DribbleRangeReason, DribbleTouchRange, MatchState, PlayerRuntime, Vec2 } from "../model";
-import { clamp } from "../../shared/math";
+import { add, clamp, cross, dot, normalize, scale, subtract } from "../../shared/math";
+import { clampToField } from "./pitch";
 import { predictedSpaceAt, predictPlayerAlongPlan } from "./prediction";
 import { etaToPoint, playerSkillSpeed } from "./player-metrics";
 
@@ -34,20 +35,48 @@ const opponentEtaAt = (state: MatchState, player: PlayerRuntime, target: Vec2): 
   ...state.players.filter((candidate) => candidate.team !== player.team).map((opponent) => etaToPoint(opponent, target)),
 );
 
-export const evaluateForwardRunway = (state: MatchState, player: PlayerRuntime): ForwardRunway => {
-  const direction = { x: player.team === "blue" ? 1 : -1, y: 0 };
-  const fieldDistance = direction.x > 0 ? FIELD.width - 5 - player.position.x : player.position.x - 5;
+/** Rumo padrão: o gol adversário. É o que sobra quando ninguém disse para onde levar a bola. */
+export const goalwardHeading = (player: PlayerRuntime): Vec2 => ({ x: player.team === "blue" ? 1 : -1, y: 0 });
+
+/** Até onde este rumo cabe dentro das linhas, com a mesma margem que o alvo do toque respeita. */
+const roomToTouchline = (from: Vec2, heading: Vec2): number => {
+  const along = (position: number, rate: number, low: number, high: number): number =>
+    rate > 0.0001 ? (high - position) / rate : rate < -0.0001 ? (low - position) / rate : Number.POSITIVE_INFINITY;
+  return Math.max(0, Math.min(
+    along(from.x, heading.x, 5, FIELD.width - 5),
+    along(from.y, heading.y, 5, FIELD.height - 5),
+  ));
+};
+
+/**
+ * Quanto corredor existe NESTE rumo, e quem o fecha.
+ *
+ * O rumo é parâmetro porque quem escolhe para onde levar a bola é o portador (`chooseDribbleTarget`,
+ * que pesa espaço, progresso, canal e risco de linha) — aqui só se mede o que cabe naquela direção.
+ * Estava cravado em `{±1, 0}`: o toque à frente saía reto, com o mesmo `y`, e a posição do marcador
+ * não entrava na conta. Como o toque à frente é 87% de todos os dribles do motor, na prática o
+ * drible dominante era cego, e a inteligência de `chooseDribbleTarget` só valia para os outros 13%.
+ */
+export const evaluateForwardRunway = (
+  state: MatchState,
+  player: PlayerRuntime,
+  heading: Vec2 = goalwardHeading(player),
+): ForwardRunway => {
+  const direction = normalize(heading);
+  const fieldDistance = roomToTouchline(player.position, direction);
   const maximumDistance = Math.max(0, Math.min(45, fieldDistance));
   let blockerId: string | null = null;
   let blockerDistance = maximumDistance;
   for (const opponent of state.players.filter((candidate) => candidate.team !== player.team)) {
-    const currentForward = (opponent.position.x - player.position.x) * direction.x;
+    const relative = subtract(opponent.position, player.position);
+    const currentForward = dot(relative, direction);
     if (currentForward <= 0 || currentForward >= blockerDistance + opponent.radius) continue;
     const carrierEta = currentForward / Math.max(1, playerSkillSpeed(player) * PHYSICS.burstSpeedFactor);
     const future = predictPlayerAlongPlan(state, opponent, clamp(carrierEta, 0.12, 1.8));
-    const futureForward = (future.x - player.position.x) * direction.x;
+    const ahead = subtract(future, player.position);
+    const futureForward = dot(ahead, direction);
     const corridorHalfWidth = player.radius + opponent.radius + FIELD.ballRadius + 1.25;
-    if (futureForward <= 0 || Math.abs(future.y - player.position.y) > corridorHalfWidth) continue;
+    if (futureForward <= 0 || Math.abs(cross(direction, ahead)) > corridorHalfWidth) continue;
     blockerDistance = Math.max(0, Math.min(currentForward, futureForward) - opponent.radius - FIELD.ballRadius);
     blockerId = opponent.profile.id;
   }
@@ -90,10 +119,7 @@ export const chooseDribbleTouch = (
       continue;
     }
     const touchDistance = clamp(runway.distance * rule.fraction, rule.minimum, Math.min(rule.maximum, runway.fieldDistance));
-    const target = {
-      x: clamp(player.position.x + runway.direction.x * touchDistance, 5, FIELD.width - 5),
-      y: player.position.y,
-    };
+    const target = clampToField(add(player.position, scale(runway.direction, touchDistance)), 5);
     const carrierEta = touchDistance / Math.max(1, playerSkillSpeed(player) * PHYSICS.burstSpeedFactor);
     const opponentEta = opponentEtaAt(state, player, target);
     if (opponentEta <= carrierEta + rule.raceMargin) {
@@ -111,10 +137,7 @@ export const chooseDribbleTouch = (
     };
   }
   const fallbackDistance = Math.min(9, runway.distance, runway.fieldDistance);
-  const fallbackTarget = {
-    x: clamp(player.position.x + runway.direction.x * Math.max(0, fallbackDistance), 5, FIELD.width - 5),
-    y: player.position.y,
-  };
+  const fallbackTarget = clampToField(add(player.position, scale(runway.direction, Math.max(0, fallbackDistance))), 5);
   const carrierEta = fallbackDistance / Math.max(1, playerSkillSpeed(player) * PHYSICS.runSpeedFactor);
   return {
     range: null,
