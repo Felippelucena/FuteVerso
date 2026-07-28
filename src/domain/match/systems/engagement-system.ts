@@ -1,6 +1,6 @@
 import { DUEL, FIELD, PHYSICS, REFEREE } from "../config";
 import { clamp, distance } from "../../shared/math";
-import type { Engagement, MatchState, PlayerRuntime } from "../model";
+import type { Engagement, MatchState, PlayerRuntime, Team } from "../model";
 import { clearDribbleOwner, keeperHoldingBall } from "../runtime/control";
 import { emitCognitiveEvent } from "../runtime/cognitive-events";
 import { duelEdge } from "../runtime/duel";
@@ -127,10 +127,16 @@ const whistleFoul = (state: MatchState, engagement: Engagement): void => {
 /**
  * A bola saiu do pé com gente em cima: o desarme foi tentado e a posse virou. Não distingue
  * "roubo" de "cutucada" — quem estiver melhor colocado pega a sobra, como no jogo.
+ *
+ * E cobra de quem entrou: o lance acabou para ele também. Sem isto, o mesmo defensor voltava a
+ * disputar no quadro seguinte e a partida virava uma corrente de desarmes.
  */
 const creditTackle = (state: MatchState, challengerIds: string[]): void => {
-  const teams = new Set(state.players
-    .filter((player) => challengerIds.includes(player.profile.id))
-    .map((player) => player.team));
+  const teams = new Set<Team>();
+  for (const player of state.players) {
+    if (!challengerIds.includes(player.profile.id)) continue;
+    teams.add(player.team);
+    player.duelCooldown = Math.max(player.duelCooldown, DUEL.tackleRecovery);
+  }
   for (const team of teams) state.stats[team].tacklesWon += 1;
 };

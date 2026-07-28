@@ -585,10 +585,12 @@ export const DUEL = {
   // portador de reclamar a própria bola perdida no quadro seguinte — sem isso o desarme nunca sai.
   beatenKickCooldown: 0.38,
   beatenReaction: 0.24,
-  // Trombada: entrar no corpo não empurra a bola em direção nenhuma, mas arrebenta o domínio —
-  // é assim que se perde a bola sem que ninguém a tenha tocado. Vale menos que o pé na bola,
-  // porque desarmar de verdade é chegar nela.
-  chargeBite: 0.75,
+  // A bola arrancada também custa a quem a arrancou: o desarme é um lance, e depois dele o
+  // defensor está esticado, não pronto para o próximo. É o que impede a corrente de desarmes
+  // encadeados — medidos em 37% das trocas de posse a menos de 1,5 s da anterior. Espelha o par
+  // `feintCooldownWon`/`feintCooldownLost`: mesma ideia, o outro lado do mesmo duelo. Não bloqueia
+  // dominar a bola que ele acabou de ganhar (`duelCooldown` só barra nova disputa), que é o ponto.
+  tackleRecovery: 0.7,
   // Aceleração (u/s²) com que quem atropela empurra o portador para longe. Força que DURA, não um
   // tapa: quem entra por cima segue empurrando enquanto o corpo está lá.
   chargeShove: 34,
