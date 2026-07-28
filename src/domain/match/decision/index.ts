@@ -6,6 +6,6 @@
  * Esta é a superfície: `decideAll` para quem quer a decisão crua, `planAll`/`resolvePlanDecision`
  * para quem vive no ciclo de cognição.
  */
-export { decideAll } from "./decide";
-export { planAll, resolvePlanDecision, thinkingInterval } from "./plan";
+export { decideAll, decideFor, readFrame, readTeam, type FrameContext, type TeamContext } from "./decide";
+export { planAll, planFor, resolvePlanDecision, thinkingInterval } from "./plan";
 export { choosePass, PASS_VARIANTS, type PassOption } from "./pass";

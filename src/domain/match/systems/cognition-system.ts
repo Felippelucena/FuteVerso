@@ -1,4 +1,4 @@
-import { planAll, resolvePlanDecision, thinkingInterval } from "../decision";
+import { planFor, readFrame, readTeam, resolvePlanDecision, thinkingInterval } from "../decision";
 import { COGNITION, CONTEST } from "../config";
 import { distance } from "../../shared/math";
 import type { AgentDecision, MatchState, PlayerRuntime } from "../model";
@@ -41,13 +41,26 @@ export const updateCognition = (state: MatchState): Map<string, AgentDecision> =
       || plan.collectivePlanStartedAt !== (state.tactics[player.team].collectivePlan?.startedAt ?? 0);
   });
   if (state.elapsed + 0.000_001 >= state.nextCognitionAt || immediateRefresh) {
-    const candidates = planAll(state);
-    for (const player of state.players) {
-      const candidate = candidates.get(player.profile.id)!;
+    // O quadro e o contexto de cada time se resolvem uma vez; a DECISÃO, que é a parte cara, só
+    // para quem vai de fato repensar — antes o ciclo pedia as vinte e duas e jogava fora as que
+    // ninguém ia usar.
+    //
+    // Em duas passagens, e não numa: decidir lê o plano dos companheiros (é assim que se prevê
+    // para onde o outro vai). Decidir dentro do laço de adoção faria os primeiros lerem os planos
+    // velhos e os últimos os novos — a ordem da escalação virando resultado. Todos decidem do
+    // mesmo quadro, e só então o quadro muda.
+    const frame = readFrame(state);
+    const contexts = { blue: readTeam(state, frame, "blue"), coral: readTeam(state, frame, "coral") };
+    const thinkers = state.players.flatMap((player) => {
       const stimulated = queuedEvents.some((event) => event.id > player.lastCognitiveEventId && cognitiveEventAffects(event, player.profile.id));
       const invalid = stimulated || planNeedsRefresh(player, state);
+      if (!invalid && state.elapsed < player.nextThinkAt) return [];
+      return [{ player, invalid }];
+    });
+    const candidates = thinkers.map(({ player }) => planFor(state, frame, contexts[player.team], player));
+    for (const [index, { player, invalid }] of thinkers.entries()) {
+      const candidate = candidates[index];
       if (!invalid) {
-        if (state.elapsed < player.nextThinkAt) continue;
         player.nextThinkAt = state.elapsed + thinkingInterval(player);
         const current = player.plan!;
         const sameTargetReference = current.target.kind === candidate.target.kind

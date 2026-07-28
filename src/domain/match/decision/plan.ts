@@ -5,7 +5,7 @@ import { activeBallPlayerId } from "../runtime/control";
 import { clampToField } from "../runtime/pitch";
 import { prepareReceptionAction } from "../runtime/reception-planning";
 import { goalkeeperMovementTarget } from "../systems/goalkeeper-system";
-import { decideAll } from "./decide";
+import { decideAll, decideFor, type FrameContext, type TeamContext } from "./decide";
 import { nearestPlayer, outOfPositionCost } from "./shared";
 
 /**
@@ -48,32 +48,42 @@ export const thinkingInterval = (player: PlayerRuntime): number => {
   return COGNITION.slowestThinkSeconds + (COGNITION.fastestThinkSeconds - COGNITION.slowestThinkSeconds) * quality;
 };
 
+/** O plano de um jogador a partir da decisão dele. Ver `planFor` para o caminho da cognição. */
+const planFromDecision = (state: MatchState, player: PlayerRuntime, decision: AgentDecision): PlayerPlan => ({
+  target: planTarget(player, decision, state),
+  burst: decision.burst,
+  burstDuration: decision.burstDuration,
+  posture: decision.posture,
+  intent: decision.intent,
+  reason: decision.reason,
+  ballAction: decision.ballAction,
+  objective: decision.reason === "aggressiveBreak" ? "aggressiveBreak" : null,
+  preparedReceptionAction: prepareReceptionAction(state, player),
+  startedAt: state.elapsed,
+  expiresAt: state.elapsed + COGNITION.planDuration[decision.intent] * (0.88 + player.profile.mental.composure / 520),
+  possessionTeam: state.possessionTeam,
+  controllerId: state.ball.controllerId,
+  ballActorId: activeBallPlayerId(state),
+  collectivePlanStartedAt: state.tactics[player.team].collectivePlan?.startedAt ?? 0,
+  duringRestart: state.restart !== null,
+});
+
+/**
+ * O plano de UM jogador, a partir do quadro e do time já lidos. É por aqui que a cognição pede
+ * só o que vai usar — decidir é a parte cara, e quem não vai repensar não precisa de decisão.
+ */
+export const planFor = (
+  state: MatchState,
+  frame: FrameContext,
+  context: TeamContext,
+  player: PlayerRuntime,
+): PlayerPlan => planFromDecision(state, player, decideFor(state, frame, context, player));
+
+/** Os planos dos vinte e dois. Cenário montado à mão e diagnóstico; o tick usa `planFor`. */
 export const planAll = (state: MatchState): Map<string, PlayerPlan> => {
   const decisions = decideAll(state);
-  return new Map(state.players.map((player) => {
-    const decision = decisions.get(player.profile.id)!;
-    const duration = COGNITION.planDuration[decision.intent] * (0.88 + player.profile.mental.composure / 520);
-    const objective = decision.reason === "aggressiveBreak" ? "aggressiveBreak" : null;
-    const preparedReceptionAction = prepareReceptionAction(state, player);
-    return [player.profile.id, {
-      target: planTarget(player, decision, state),
-      burst: decision.burst,
-      burstDuration: decision.burstDuration,
-      posture: decision.posture,
-      intent: decision.intent,
-      reason: decision.reason,
-      ballAction: decision.ballAction,
-      objective,
-      preparedReceptionAction,
-      startedAt: state.elapsed,
-      expiresAt: state.elapsed + duration,
-      possessionTeam: state.possessionTeam,
-      controllerId: state.ball.controllerId,
-      ballActorId: activeBallPlayerId(state),
-      collectivePlanStartedAt: state.tactics[player.team].collectivePlan?.startedAt ?? 0,
-      duringRestart: state.restart !== null,
-    } satisfies PlayerPlan];
-  }));
+  return new Map(state.players.map((player) =>
+    [player.profile.id, planFromDecision(state, player, decisions.get(player.profile.id)!)]));
 };
 
 export const resolvePlanDecision = (player: PlayerRuntime, state: MatchState): AgentDecision => {
