@@ -328,6 +328,7 @@ export const executeBallAction = (state: MatchState, player: PlayerRuntime, acti
     expectedArrivalAt: state.elapsed + solution.duration,
     receiverEta: action.receiverEta ?? solution.duration,
     opponentEta: action.opponentEta ?? solution.duration,
+    completion: action.completion,
     expectedHeight: action.trajectory === "air" ? PHYSICS.reachableBallHeight / 2 : 0,
     expectedSpeed: length(solution.velocity) * Math.exp(-(action.trajectory === "air" ? PHYSICS.airBallDrag : PHYSICS.ballDrag) * solution.duration),
     reachableSeconds: reachableFlightSeconds(solution),

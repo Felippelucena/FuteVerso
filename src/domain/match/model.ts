@@ -292,6 +292,8 @@ export type BallAction =
     power: number;
     receiverEta?: number;
     opponentEta?: number;
+    /** A chance que o passador deu a este passe (`completionChance`). É a nota auditável. */
+    completion?: number;
     selectionReason?: DecisionReason;
   };
 
@@ -381,6 +383,12 @@ export interface PendingPass {
   expectedArrivalAt: number;
   receiverEta: number;
   opponentEta: number;
+  /**
+   * A chance que o passador deu a este passe quando o escolheu. Fica guardada ao lado das duas
+   * ETAs, e pela mesma razão: sem ela não há como confrontar o que o motor ACREDITA com o que ele
+   * ENTREGA, e um modelo de passe que ninguém consegue conferir cala quando erra.
+   */
+  completion?: number;
   expectedHeight?: number;
   expectedSpeed?: number;
   /**

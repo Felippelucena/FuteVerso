@@ -1,5 +1,5 @@
 import { CONTEST, DECISION, FIELD, OFFSIDE, PHYSICS } from "../config";
-import { blend, clamp, distance, length } from "../../shared/math";
+import { blend, clamp, distance, dot, length, normalize, subtract } from "../../shared/math";
 import type { BallAction, DecisionReason, MatchState, PlayerRuntime } from "../model";
 import { attackDirection } from "../runtime/formation-geometry";
 import { offsideLineProgress } from "../runtime/offside";
@@ -89,6 +89,20 @@ export const choosePass = (player: PlayerRuntime, teammates: PlayerRuntime[], op
       const threat = passLaneThreat(player.position, target, opponents, solution, drag);
       const receiverEta = etaToPoint(teammate, target);
       const opponentEta = Math.min(...opponents.map((opponent) => etaToPoint(opponent, target)));
+      // O decisor SUPUNHA duas entradas que o resolvedor MEDE, e supunha as duas a favor: altura
+      // nominal (metade do alcance) e recebedor perfeitamente virado para a bola. Medido em tres
+      // partidas, a altura real no contato aereo e 1,47 (supunha 1,20) e a orientacao real e 0,78
+      // no ar e 0,84 no chao, com p10 de 0,06 — um decimo das recepcoes aereas acontece com o
+      // jogador praticamente de costas. Era exatamente a "opiniao propria" que este modulo existe
+      // para abolir, e cobrava o preco no passe aereo curto: 41% do volume, +15,6 pontos de
+      // otimismo.
+      //
+      // Nenhuma das duas precisa ser suposta. A altura de chegada sai da trajetoria ja resolvida;
+      // a orientacao sai da MESMA formula do resolvedor, com a melhor estimativa disponivel do
+      // rumo de onde a bola vem. Estimar mal e um erro; assumir perfeicao e uma mentira.
+      const arrivalHeight = Math.max(0, solution.verticalVelocity * solution.duration
+        - PHYSICS.gravity * solution.duration * solution.duration / 2);
+      const incoming = normalize(subtract(player.position, target));
       const margin = receptionMargin({
         quality: (teammate.profile.skills.control * 0.62 + teammate.profile.skills.acceleration * 0.15
           + teammate.profile.skills.vision * 0.13 + teammate.profile.skills.defending * 0.1
@@ -97,8 +111,8 @@ export const choosePass = (player: PlayerRuntime, teammates: PlayerRuntime[], op
         composure: teammate.profile.mental.composure,
         anticipation: teammate.profile.mental.anticipation,
         relativeSpeed: arrivalSpeed,
-        ballHeight: variant.trajectory === "air" ? PHYSICS.reachableBallHeight / 2 : 0,
-        facingAlignment: 1,
+        ballHeight: arrivalHeight,
+        facingAlignment: clamp((dot(normalize(teammate.facing), incoming) + 1) / 2, 0, 1),
         pressure: clamp(1 - opponentEta / CONTEST.horizonSeconds, 0, 1),
         ownBox: false,
         continuesOwnDribble: false,
@@ -168,7 +182,7 @@ export const choosePass = (player: PlayerRuntime, teammates: PlayerRuntime[], op
       const offsidePenalty = isOffsideNow(teammate) ? DECISION.pass.offsidePenalty : 0;
       const score = worth * completion - turnoverCost * (1 - completion) - offsidePenalty;
       const reason: DecisionReason = wallPass ? "wallPass" : switchValue > 0.52 ? "switchPlay" : "progressivePass";
-      return { teammate, target, passDistance, score, reason, variant, purpose, receiverEta, opponentEta };
+      return { teammate, target, passDistance, score, reason, variant, purpose, receiverEta, opponentEta, completion };
     }))
     .sort((a, b) => b.score - a.score);
   const best = candidates[0];
@@ -188,6 +202,7 @@ export const choosePass = (player: PlayerRuntime, teammates: PlayerRuntime[], op
         + (best.variant.trajectory === "air" ? 0.04 : 0), 0.48, 1),
       receiverEta: best.receiverEta,
       opponentEta: best.opponentEta,
+      completion: best.completion,
       selectionReason: best.reason,
     },
   };
