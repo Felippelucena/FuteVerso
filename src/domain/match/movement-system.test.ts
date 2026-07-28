@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { smallSidedMatchConfig, startOpenPlay } from "./__fixtures__/reference-match";
 import { decideAll } from "./decision";
+import { perceive } from "./runtime/ball-situation";
 import { FIELD, PHYSICS } from "./config";
 import { createMatchState, stepMatch } from "./index";
 import { playerSpeedLimit } from "./systems/movement-system";
@@ -44,6 +45,8 @@ describe("movimento dos jogadores", () => {
       if (player !== attacker && player !== defender) player.position = { x: FIELD.width - 8, y: 8 + index * 14 };
     });
 
+    perceive(state);
+
     const decision = decideAll(state).get(defender.profile.id)!;
 
     expect(decision.burst).toBe(true);
@@ -68,6 +71,7 @@ describe("movimento dos jogadores", () => {
         player.position = { x: FIELD.width * 0.2, y: player.position.y };
       }
     }
+    perceive(state);
     const decisions = decideAll(state);
     expect(decisions.get(goalkeeper.profile.id)?.intent).toBe("goalkeeping");
     expect(decisions.get(defender.profile.id)?.intent).toBe("pressing");
@@ -105,6 +109,8 @@ describe("movimento dos jogadores", () => {
       receiverEta: 0.6,
       opponentEta: 1.4,
     };
+
+    perceive(state);
 
     const decision = decideAll(state).get(receiver.profile.id)!;
     expect(decision).toMatchObject({ intent: "receiving", reason: "attackReception" });
@@ -149,6 +155,8 @@ describe("movimento dos jogadores", () => {
       opponentEta: 0.9,
     };
 
+    perceive(state);
+
     const decision = decideAll(state).get(receiver.profile.id)!;
     expect(state.ballSituation.phase).toBe("contested");
     expect(decision.burst).toBe(true);
@@ -189,6 +197,8 @@ describe("movimento dos jogadores", () => {
       receiverEta: 0.9,
       opponentEta: 1.2,
     };
+
+    perceive(state);
 
     const decision = decideAll(state).get(receiver.profile.id)!;
 

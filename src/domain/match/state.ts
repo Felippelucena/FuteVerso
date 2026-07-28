@@ -156,6 +156,7 @@ export function createMatchState(config: MatchConfig): MatchState {
     },
     passNetwork: { blue: {}, coral: {} },
     nextAnalyticsSample: 0,
+    perceivedAt: 0,
     nextCognitionAt: 0,
     finished: false,
     stoppage: { accrued: 0, awaitingEnd: false, pendingSince: null, announced: null, attackerAtOpen: null },

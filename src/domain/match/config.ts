@@ -311,6 +311,13 @@ export const POSSESSION = {
 } as const;
 
 export const COGNITION = {
+  /**
+   * De quanto em quanto tempo o quadro que os vinte e dois enxergam se refaz — a leitura da bola
+   * e o contexto tático. NÃO é a taxa da física: o corpo se integra a 120 Hz, a percepção corre a
+   * 30, como a amostragem espacial já corria na régua dela. Era a mesma pergunta respondida três
+   * vezes por tick, e só ela custava um quinto do quadro.
+   */
+  perceptionSeconds: 1 / 30,
   teamTickSeconds: 0.15,
   fastestThinkSeconds: 0.14,
   slowestThinkSeconds: 0.32,

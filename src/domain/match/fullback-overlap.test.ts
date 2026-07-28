@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { smallSidedMatchConfig, startOpenPlay } from "./__fixtures__/reference-match";
 import { decideAll } from "./decision";
+import { perceive } from "./runtime/ball-situation";
 import { FIELD } from "./config";
 import { createMatchState } from "./index";
 import { dutyLeader } from "./systems/assignment-system";
@@ -39,6 +40,8 @@ describe("zagueiro-ofensivo moderado + recomposição (Item 4)", () => {
     const plan = state.tactics.blue.collectivePlan!;
     expect(dutyLeader(plan, "overlap")).toBe(fb.profile.id);
 
+    perceive(state);
+
     const decisions = decideAll(state);
     expect(decisions.get(fb.profile.id)!.reason).toBe("overlapRun");
     expect(decisions.get(mid.profile.id)!.reason).not.toBe("overlapRun");
@@ -68,6 +71,8 @@ describe("zagueiro-ofensivo moderado + recomposição (Item 4)", () => {
     state.previousControlledTeam = "blue";
     state.lastControlledTeam = "coral";
     state.controlChangedAt = state.elapsed;
+
+    perceive(state);
 
     const decision = decideAll(state).get(fb.profile.id)!;
     expect(decision.reason).toBe("recoverShape");

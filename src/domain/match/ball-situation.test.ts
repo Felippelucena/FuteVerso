@@ -3,7 +3,7 @@ import { smallSidedMatchConfig, startOpenPlay } from "./__fixtures__/reference-m
 import { decideAll } from "./decision";
 import { FIELD } from "./config";
 import { createMatchState } from "./index";
-import { readBallSituation } from "./runtime/ball-situation";
+import { readBallSituation, perceive } from "./runtime/ball-situation";
 import type { MatchState, PlayerRuntime } from "./model";
 
 const createTestMatch = (seed = 31) => createMatchState(smallSidedMatchConfig(seed));
@@ -59,6 +59,8 @@ describe("estado real da bola", () => {
     // fazia a bola parecer colada no pé de quem a tinha empurrado.
     defender.position = { x: state.ball.position.x + 9, y: state.ball.position.y + 4 };
 
+    perceive(state);
+
     const decision = decideAll(state).get(defender.profile.id)!;
 
     expect(decision.intent).toBe("pressing");
@@ -96,6 +98,7 @@ describe("estado real da bola", () => {
 
     expect(afterDeflection.favourite?.playerId).toBe(rival.profile.id);
     // E o destinatário para de se comportar como quem vai receber um passe que já não existe.
+    perceive(state);
     expect(decideAll(state).get(receiver.profile.id)?.intent).not.toBe("supporting");
   });
 });

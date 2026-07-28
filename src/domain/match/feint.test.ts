@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { smallSidedMatchConfig, startOpenPlay } from "./__fixtures__/reference-match";
 import { decideAll } from "./decision";
+import { perceive } from "./runtime/ball-situation";
 import { FIELD } from "./config";
 import { createMatchState } from "./index";
 import { executeBallAction } from "./systems/ball-system";
@@ -50,6 +51,8 @@ describe("finta — raio de colisão e posse", () => {
     state.ball.position = { x: carrier.position.x + 2, y: carrier.position.y };
     state.ball.controllerId = carrier.profile.id;
     state.ball.controlStartedAt = state.elapsed - 1;
+
+    perceive(state);
 
     const decision = decideAll(state).get(carrier.profile.id)!;
     const style = decision.ballAction.kind === "dribble" ? decision.ballAction.style : null;

@@ -14,7 +14,7 @@ import type {
   TeamShape,
   TeamTacticalState,
 } from "../model";
-import { readBallSituation } from "../runtime/ball-situation";
+import { perceive } from "../runtime/ball-situation";
 import { activeBallPlayerId } from "../runtime/control";
 import { attackingProgress, channelY } from "../runtime/pitch";
 import { predictPlayerPosition, predictedSpaceAt, predictionHorizon } from "../runtime/prediction";
@@ -218,10 +218,14 @@ const collectivePlanNeedsRefresh = (state: MatchState, team: Team): boolean => {
   return plan.phase !== tactical.phase || plan.posture !== posture || plan.ballActorId !== activeBallPlayerId(state);
 };
 
+/**
+ * O passo de percepção do coletivo: refaz o quadro (`perceive`) e o contexto que sai dele —
+ * postura, fase, plano e colocação. Quem manda na cadência é o motor
+ * (`COGNITION.perceptionSeconds`), e o `dt` é o tempo desde a leitura anterior, para as integrais
+ * de forma não dependerem dela.
+ */
 export const updateTacticalContext = (state: MatchState, dt: number): void => {
-  // Postura, incumbência e gatilho de pressão são todos leitores da situação da bola: ela abre
-  // a atualização do contexto. Ver `planAll` para o outro ponto de leitura.
-  state.ballSituation = readBallSituation(state);
+  perceive(state);
   for (const team of ["blue", "coral"] as const) {
     const tactical = state.tactics[team];
     const shape = measureShape(state, team);

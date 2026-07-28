@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { smallSidedMatchConfig, startOpenPlay } from "./__fixtures__/reference-match";
 import { decideAll } from "./decision";
+import { perceive } from "./runtime/ball-situation";
 import { FIELD } from "./config";
 import { createMatchState } from "./index";
 import { dutyHolders } from "./systems/assignment-system";
@@ -43,6 +44,8 @@ describe("segundo engajador na zona de perigo (Item 1)", () => {
     updateTacticalContext(state, 0);
     const plan = state.tactics.blue.collectivePlan!;
     expect(dutyHolders(plan, "press")).toEqual([presser.profile.id, stepper.profile.id]);
+
+    perceive(state);
 
     const decision = decideAll(state).get(stepper.profile.id)!;
     expect(decision.intent).toBe("pressing");

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { referenceMatchConfig, startOpenPlay } from "./__fixtures__/reference-match";
 import { FIELD, POSSESSION } from "./config";
 import { decideAll, planAll, resolvePlanDecision } from "./decision";
+import { perceive } from "./runtime/ball-situation";
 import { createMatchState, stepMatch } from "./index";
 import { distance } from "../shared/math";
 import { updateTacticalContext } from "./systems/tactics-system";
@@ -144,6 +145,8 @@ describe("qualidade coletiva da simulacao", () => {
     expect(state.tactics.blue.phase).toBe("finalThird");
     expect(state.stats.blue.finalThirdEntries).toBe(1);
 
+    perceive(state);
+
     const decisions = decideAll(state);
     const forward = state.players.find((player) => player.team === "blue" && player.profile.role === "finisher")!;
     const defenders = state.players.filter((player) => player.team === "blue" && player.profile.role === "defender" && player.profile.position !== "goalkeeper");
@@ -173,6 +176,8 @@ describe("qualidade coletiva da simulacao", () => {
     state.previousControlledTeam = "coral";
     state.controlChangedAt = state.elapsed - 0.25;
     updateTacticalContext(state, 0);
+
+    perceive(state);
 
     const decision = decideAll(state).get(forward.profile.id)!;
 
@@ -262,7 +267,9 @@ describe("qualidade coletiva da simulacao", () => {
     state.ball.controllerId = coral.profile.id;
     state.ball.position = { ...coral.position };
     state.ball.controlStartedAt = state.elapsed;
-    stepMatch(state, 1 / 120);
+    // Um quadro de percepção (30 Hz), não um de física: é nele que a troca de portador chega aos
+    // vinte e dois. Ver COGNITION.perceptionSeconds.
+    for (let tick = 0; tick < 4; tick += 1) stepMatch(state, 1 / 120);
     expect(blue.plan?.controllerId).toBe(coral.profile.id);
     expect(blue.plan?.startedAt).toBeGreaterThan(startedAt ?? 0);
   });
@@ -277,6 +284,7 @@ describe("qualidade coletiva da simulacao", () => {
     state.ball.position = { ...controller.position };
     state.possessionTeam = "blue";
     state.ballControlTeam = "blue";
+    perceive(state);
     const plans = planAll(state);
     supporter.plan = plans.get(supporter.profile.id)!;
     const plan = supporter.plan;
@@ -311,6 +319,7 @@ describe("qualidade coletiva da simulacao", () => {
       player.profile.mental.aggression = 1;
       player.profile.mental.intensity = 1;
     }
+    perceive(state);
     const plans = planAll(state);
     for (const player of state.players) player.plan = plans.get(player.profile.id)!;
     const marker = state.players.find((player) => player.plan?.target.kind === "player")!;

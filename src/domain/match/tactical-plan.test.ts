@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { referenceMatchConfig, smallSidedMatchConfig, startOpenPlay } from "./__fixtures__/reference-match";
 import { decideAll } from "./decision";
+import { perceive } from "./runtime/ball-situation";
 import { FIELD } from "./config";
 import { applyTeamAdjustment, createMatchState } from "./index";
 import { dutyHolders } from "./systems/assignment-system";
@@ -113,6 +114,7 @@ describe("o plano tático chega ao motor", () => {
       const state = directed({ pressTriggers });
       coralCarryingAt(state, 0.24);
       updateTacticalContext(state, 0);
+      perceive(state);
       const decisions = decideAll(state);
       const blueIds = state.players.filter((player) => player.team === "blue").map((player) => player.profile.id);
       return {
@@ -151,6 +153,7 @@ describe("o plano tático chega ao motor", () => {
         state.ball.lastTouchPlayerId = carrier.profile.id;
         state.elapsed = 0.5;
         updateTacticalContext(state, 0);
+        perceive(state);
         if (decideAll(state).get(carrier.profile.id)?.intent === "passing") passing += 1;
       }
       return passing;
@@ -176,6 +179,7 @@ describe("o plano tático chega ao motor", () => {
         state.ball.lastTouch = "blue";
         state.ball.lastTouchPlayerId = striker.profile.id;
         updateTacticalContext(state, 0);
+        perceive(state);
         if (decideAll(state).get(striker.profile.id)?.intent === "shooting") shooting += 1;
       }
       return shooting;

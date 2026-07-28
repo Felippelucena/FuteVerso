@@ -857,6 +857,8 @@ export interface MatchState {
   heatmaps: Record<Team, number[]>;
   passNetwork: Record<Team, Record<string, number>>;
   nextAnalyticsSample: number;
+  /** `elapsed` do último quadro percebido. Ver `COGNITION.perceptionSeconds`. */
+  perceivedAt: number;
   nextCognitionAt: number;
   finished: boolean;
   stoppage: StoppageState;

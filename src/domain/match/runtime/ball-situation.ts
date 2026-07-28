@@ -99,6 +99,18 @@ export const readBallSituation = (state: MatchState): BallSituation => {
   return { phase, contactPoint: point, contactIn: at, contenders, favourite, rival, margin };
 };
 
+/**
+ * Refaz o quadro que os vinte e dois enxergam. **Único escritor de `state.ballSituation`**: todo o
+ * resto do motor é leitor, inclusive a decisão individual, que antes remedia tudo por conta
+ * própria — a mesma pergunta respondida três vezes por tick, de dentro de uma função de decisão.
+ *
+ * A cadência é do motor (`COGNITION.perceptionSeconds`), não da física. Quem monta um cenário na
+ * mão precisa chamar isto antes de decidir, como o tick faz.
+ */
+export const perceive = (state: MatchState): void => {
+  state.ballSituation = readBallSituation(state);
+};
+
 /** A bola de ninguém: o estado com que a partida nasce, antes do primeiro quadro medido. */
 export const unclaimedBall = (position: Vec2): BallSituation => ({
   phase: "contested",

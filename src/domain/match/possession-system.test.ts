@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { smallSidedMatchConfig, startOpenPlay } from "./__fixtures__/reference-match";
 import { decideAll } from "./decision";
+import { perceive } from "./runtime/ball-situation";
 import { DUEL, FIELD, PHYSICS } from "./config";
 import { createMatchState, stepMatch } from "./index";
 
@@ -151,6 +152,8 @@ describe("posse e domínio", () => {
     state.ball.position = { x: attacker.position.x + 3, y: attacker.position.y };
     state.ball.controllerId = attacker.profile.id;
     state.ball.controlStartedAt = state.elapsed - 1;
+
+    perceive(state);
 
     const decision = decideAll(state).get(attacker.profile.id)!;
 

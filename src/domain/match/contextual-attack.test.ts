@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { smallSidedMatchConfig, startOpenPlay } from "./__fixtures__/reference-match";
 import { decideAll } from "./decision";
+import { perceive } from "./runtime/ball-situation";
 import { FIELD } from "./config";
 import { createMatchState } from "./index";
 import { emitCognitiveEvent } from "./runtime/cognitive-events";
@@ -125,6 +126,7 @@ describe("ataque contextual e eventos cognitivos", () => {
       .forEach((player, index) => { player.position = { x: FIELD.width * (0.7 + index * 0.035), y: 20 + index * 22 }; });
     updateTacticalContext(state, 0);
     const safetyId = dutyLeader(state.tactics.blue.collectivePlan, "restDefense");
+    perceive(state);
     const safetyDecision = decideAll(state).get(safetyId!)!;
     expect(safetyDecision.reason).toBe("restDefense");
     expect(safetyDecision.movementTarget.x).toBeGreaterThan(FIELD.width / 2);
@@ -150,6 +152,7 @@ describe("ataque contextual e eventos cognitivos", () => {
     state.possessionTeam = "blue";
     state.ballControlTeam = "blue";
     updateTacticalContext(state, 0);
+    perceive(state);
     const decision = decideAll(state).get(carrier.profile.id)!;
     expect(decision.reason).toBe("aggressiveBreak");
     expect(decision.ballAction.kind).toBe("dribble");

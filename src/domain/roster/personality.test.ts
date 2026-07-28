@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { REFERENCE_PLAYERS, smallSidedMatchConfig, startOpenPlay } from "../match/__fixtures__/reference-match";
 import { decideAll, thinkingInterval } from "../match/decision";
+import { perceive } from "../match/runtime/ball-situation";
 import { FIELD } from "../match/config";
 import { createMatchState } from "../match";
 import { createInitialPolicy, createMentalAttributes, policyLearningBounds } from "./personality";
@@ -44,6 +45,8 @@ describe("personalidade dos jogadores", () => {
     state.ball.controllerId = controller.profile.id;
     state.possessionTeam = "coral";
     state.ballControlTeam = "coral";
+
+    perceive(state);
 
     const decisions = decideAll(state);
 

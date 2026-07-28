@@ -1,6 +1,6 @@
 import { CONTEST } from "../config";
 import type { AgentDecision, MatchState } from "../model";
-import { chasersFor, readBallSituation } from "../runtime/ball-situation";
+import { chasersFor } from "../runtime/ball-situation";
 import { ballHeldByKeeper } from "../runtime/control";
 import { resolveMarking } from "../runtime/marking";
 import { restartLayoutTarget } from "../runtime/restart";
@@ -19,10 +19,10 @@ import { supportTarget } from "./support";
 
 export const decideAll = (state: MatchState): Map<string, AgentDecision> => {
   const decisions = new Map<string, AgentDecision>();
-  // O motor tem dois começos de leitura-para-decidir: o coletivo (`updateTacticalContext`) e o
-  // individual, aqui. Os dois medem a situação da bola antes de olhar para ela — é uma função
-  // só, lida em dois momentos, e não duas fontes.
-  const situation = state.ballSituation = readBallSituation(state);
+  // Decidir é LER o quadro, não medi-lo de novo: a leitura da bola é uma só por quadro percebido,
+  // escrita pela atualização do contexto tático. Antes esta linha remedia tudo aqui — a mesma
+  // pergunta respondida uma terceira vez no mesmo tick, de dentro de uma função de decisão.
+  const situation = state.ballSituation;
   const actualController = state.players.find((player) => player.profile.id === state.ball.controllerId) ?? null;
   // Quem manda na bola solta é quem vence a corrida por ela — e só enquanto a corrida tiver um
   // vencedor claro. Em disputa aberta ninguém a tem, e é isso que solta os dois times para ir

@@ -17,9 +17,17 @@ const createState = (seed = 21): MatchState => {
   return state;
 };
 
-/** Põe a bola no pé do atacante coral, virado para a meta azul, e manda chutar. */
+/**
+ * Põe a bola no pé do atacante coral, virado para a meta azul, e manda chutar. Ninguém no caminho
+ * além do goleiro: o cenário mede o desfecho do chute, não o zagueiro que o corta antes.
+ */
 const shootAtBlueGoal = (state: MatchState, fromX: number): void => {
   const striker = state.players.find((player) => player.profile.id === "maya-fw")!;
+  for (const player of state.players) {
+    if (player === striker || player.profile.position === "goalkeeper") continue;
+    player.position = { x: FIELD.width - 6, y: 6 };
+    player.velocity = { x: 0, y: 0 };
+  }
   striker.position = { x: fromX, y: FIELD.height / 2 };
   striker.velocity = { x: 0, y: 0 };
   striker.facing = { x: -1, y: 0 };

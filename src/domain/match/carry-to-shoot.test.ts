@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { smallSidedMatchConfig, startOpenPlay } from "./__fixtures__/reference-match";
 import { decideAll } from "./decision";
+import { perceive } from "./runtime/ball-situation";
 import { FIELD } from "./config";
 import { createMatchState } from "./index";
 import { evaluateShotOpportunity } from "./runtime/shot-opportunity";
@@ -65,6 +66,8 @@ describe("lookahead condução→finalização (Item 3)", () => {
     state.ball.controlStartedAt = state.elapsed - 1;
     state.ball.lastTouch = carrier.team;
     state.ball.lastTouchPlayerId = carrier.profile.id;
+
+    perceive(state);
 
     const decision = decideAll(state).get(carrier.profile.id)!;
     expect(decision.ballAction.kind).toBe("dribble");
