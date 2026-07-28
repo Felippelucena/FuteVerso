@@ -242,6 +242,64 @@ export const MENTALITY = {
   tempo: 0.5,
 } as const;
 
+/**
+ * Apetite da decisão individual: quanto cada saída vale na comparação que o portador faz, e quanto
+ * o time valoriza servir cada dever e cada tipo de bola. É a superfície de **estilo** do motor —
+ * mexer aqui muda como o jogo joga, sem tocar em regra nem em física.
+ *
+ * O critério do que mora aqui: vem para cá o coeficiente que um ajuste de estilo mexeria ("o time
+ * chuta pouco de fora", "cruza demais", "devolve a bola cedo"); fica na fórmula o que é forma da
+ * conta — limite de clamp que só mantém o termo na faixa, denominador de decaimento por ordem e
+ * geometria. É a mesma divisão que DUEL e GOALKEEPING já fazem com os sistemas deles.
+ *
+ * As referências em "percentual de campo" são a distância em que o termo vale 1.
+ */
+export const DECISION = {
+  /** Instrução individual do treinador. `normal` vale zero: o padrão não mexe em nada. */
+  freedomAppetite: { rarely: -0.4, normal: 0, often: 0.4 },
+
+  /** A comparação de topo do portador: chutar, passar ou levar. */
+  carrier: {
+    // Chance clara de gol domina qualquer alternativa — só um passe claramente melhor a supera.
+    clearChanceBonus: 1.45,
+    clearChancePassEdge: 0.18,
+    // Quanto o passe precisa superar a condução para o portador entregá-la. Sob pressão a régua é
+    // baixa (segurar custa caro); em espaço livre ele leva a bola.
+    passAdvantageUnderPressure: 0.08,
+    passAdvantageInSpace: 0.38,
+    // Peso da política aprendida de cada saída (ver PlayerPolicy).
+    passPolicyWeight: 0.52,
+    dribblePolicyWeight: 0.62,
+    passUnderPressure: 0.58,
+    passFromEdge: 0.62,
+    dribbleSpaceReference: 15,
+    dribbleFromEdge: 0.55,
+    breakBonus: 0.54,
+    breakContinuation: 0.32,
+    finalThirdUrgency: 0.22,
+  },
+
+  /** A nota do passe: o que a bola vale além do que a geometria já paga. */
+  pass: {
+    progressReference: 24,
+    opennessReference: 14,
+    lengthPenaltyReference: 72,
+    centrality: 0.18,
+    wallPass: 0.64,
+    backwardsSafety: 0.22,
+    channelAffinity: 0.2,
+    /** Repertório: bola de cada tipo vale o que o futebol paga por ela. */
+    purpose: { cutback: 0.42, crossToFinisher: 0.32, cross: 0.14, throughBall: 0.28, layoff: 0.22 },
+    /**
+     * Servir o dever que o coletivo entregou. É por aqui que o time joga PARA quem foi encarregado
+     * de atacar as costas da linha, em vez de para um id nomeado no plano.
+     */
+    duty: { runInBehind: 0.34, runInBehindRisk: 0.18, overlap: 0.2, support: 0.18, restDefense: 0.3 },
+    /** Passar para quem já está impedido é jogar a posse fora: penalidade dura, não desconto. */
+    offsidePenalty: 5,
+  },
+} as const;
+
 export const POSSESSION = {
   confirmationSeconds: 0.32,
   looseBallGraceSeconds: 0.55,

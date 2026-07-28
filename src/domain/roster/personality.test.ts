@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { REFERENCE_PLAYERS, smallSidedMatchConfig, startOpenPlay } from "../match/__fixtures__/reference-match";
-import { decideAll, thinkingInterval } from "../match/ai";
+import { decideAll, thinkingInterval } from "../match/decision";
 import { FIELD } from "../match/config";
 import { createMatchState } from "../match";
 import { createInitialPolicy, createMentalAttributes, policyLearningBounds } from "./personality";

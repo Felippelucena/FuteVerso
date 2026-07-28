@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { referenceMatchConfig, referenceParticipants } from "./__fixtures__/reference-match";
-import { thinkingInterval } from "./ai";
+import { thinkingInterval } from "./decision";
 import { createMatchState } from "./index";
 import { positionFit } from "../tactics/position-fit";
 import { findSlot } from "../tactics/slots";

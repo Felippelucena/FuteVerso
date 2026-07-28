@@ -1,4 +1,4 @@
-import { planAll, resolvePlanDecision, thinkingInterval } from "../ai";
+import { planAll, resolvePlanDecision, thinkingInterval } from "../decision";
 import { COGNITION, CONTEST } from "../config";
 import { distance } from "../../shared/math";
 import type { AgentDecision, MatchState, PlayerRuntime } from "../model";

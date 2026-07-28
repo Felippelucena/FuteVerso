@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { referenceMatchConfig } from "./__fixtures__/reference-match";
-import { formationAnchor } from "./ai";
+import { formationAnchor } from "./runtime/formation-geometry";
 import { FIELD } from "./config";
 import { createMatchState } from "./index";
 import { TEAM_SIZE } from "../tactics/model";

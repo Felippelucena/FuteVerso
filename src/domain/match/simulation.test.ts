@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { referenceMatchConfig, startOpenPlay } from "./__fixtures__/reference-match";
 import { FIELD, POSSESSION } from "./config";
-import { decideAll, planAll, resolvePlanDecision } from "./ai";
+import { decideAll, planAll, resolvePlanDecision } from "./decision";
 import { createMatchState, stepMatch } from "./index";
 import { distance } from "../shared/math";
 import { updateTacticalContext } from "./systems/tactics-system";

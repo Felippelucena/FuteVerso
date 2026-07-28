@@ -1,4 +1,4 @@
-import { formationAnchor } from "./ai";
+import { formationAnchor } from "./runtime/formation-geometry";
 import {
   kickoffBallPosition,
   kickoffPosition,

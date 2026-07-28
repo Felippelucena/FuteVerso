@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { smallSidedMatchConfig, startOpenPlay } from "./__fixtures__/reference-match";
-import { decideAll } from "./ai";
+import { decideAll } from "./decision";
 import { FIELD, PHYSICS } from "./config";
 import { createMatchState, stepMatch } from "./index";
 import { playerSpeedLimit } from "./systems/movement-system";

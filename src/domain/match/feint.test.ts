@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { smallSidedMatchConfig, startOpenPlay } from "./__fixtures__/reference-match";
-import { decideAll } from "./ai";
+import { decideAll } from "./decision";
 import { FIELD } from "./config";
 import { createMatchState } from "./index";
 import { executeBallAction } from "./systems/ball-system";
