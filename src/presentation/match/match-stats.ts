@@ -1,8 +1,9 @@
 import { FIELD } from "../../domain/match/config";
-import type { MatchState, TacticalPhase, TeamStats } from "../../domain/match/model";
+import type { AssignmentDuty, MatchState, TacticalPhase, TeamStats } from "../../domain/match/model";
+import type { Team } from "../../domain/shared/model";
 import { find, render } from "../app/dom";
 import { html } from "../app/html";
-import { PASS_PURPOSE_LABELS, percentage, PHASE_LABELS, type TeamNames } from "../app/labels";
+import { DUTY_LABELS, PASS_PURPOSE_LABELS, percentage, PHASE_LABELS, type TeamNames } from "../app/labels";
 
 /**
  * Uma linha da tabela de análise: os dois números como o leitor os vê, mais a fatia que a barra
@@ -86,6 +87,21 @@ const kilometres = (stats: TeamStats): number => stats.distanceCovered / FIELD.u
 
 const PHASE_ORDER = Object.entries(PHASE_LABELS) as readonly [TacticalPhase, string][];
 
+const DUTY_ORDER = Object.entries(DUTY_LABELS) as readonly [AssignmentDuty, string][];
+
+/** Quantos jogadores o plano coletivo distribuiu. Bate com o time inteiro, ou alguém ficou de fora. */
+const assigned = (counts: Record<AssignmentDuty, number>): number =>
+  DUTY_ORDER.reduce((total, [duty]) => total + counts[duty], 0);
+
+/** Quantos jogadores estão em cada dever agora. Sem plano coletivo ainda, ninguém. */
+const dutyCounts = (state: MatchState, team: Team): Record<AssignmentDuty, number> => {
+  const counts = Object.fromEntries(DUTY_ORDER.map(([duty]) => [duty, 0])) as Record<AssignmentDuty, number>;
+  for (const assignment of Object.values(state.tactics[team].collectivePlan?.assignments ?? {})) {
+    counts[assignment.duty] += 1;
+  }
+  return counts;
+};
+
 const phaseTotal = (stats: TeamStats): number =>
   PHASE_ORDER.reduce((total, [phase]) => total + stats.phaseSeconds[phase], 0);
 
@@ -100,6 +116,8 @@ export const createStatGroups = (state: MatchState): readonly StatGroup[] => {
   const coralPossession = [coral.possessionSeconds, blue.possessionSeconds + coral.possessionSeconds] as const;
   const bluePhases = phaseTotal(blue);
   const coralPhases = phaseTotal(coral);
+  const blueDuties = dutyCounts(state, "blue");
+  const coralDuties = dutyCounts(state, "coral");
 
   return [
     {
@@ -217,6 +235,21 @@ export const createStatGroups = (state: MatchState): readonly StatGroup[] => {
         count("Compactação média", average(blue, "compactnessIntegral"), average(coral, "compactnessIntegral")),
         decimal("Distância (km)", kilometres(blue), kilometres(coral)),
       ],
+    },
+    {
+      /**
+       * Como cada time está dividido AGORA. Vive aqui, e não como uma linha de texto no cartão de
+       * fase, por duas razões: é uma comparação entre os dois lados, que é o que esta tabela faz,
+       * e a lista de deveres muda de tamanho a cada plano coletivo — como texto corrido ela ia de
+       * uma a cinco linhas e empurrava tudo abaixo dela a cada dois segundos.
+       *
+       * Todos os doze deveres aparecem sempre, mesmo zerados: é o que mantém a altura fixa e
+       * permite conferir que a soma bate com o time inteiro — se não bater, alguém ficou sem função.
+       */
+      title: "DIVISÃO DE FUNÇÕES",
+      summary: `${assigned(blueDuties)} · ${assigned(coralDuties)}`,
+      open: false,
+      rows: DUTY_ORDER.map(([duty, label]) => count(label, blueDuties[duty], coralDuties[duty])),
     },
     {
       title: "TEMPO POR FASE",

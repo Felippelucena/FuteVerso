@@ -47,8 +47,17 @@
 
 .phase-card span { margin-top: 4px; color: var(--text-muted); font-size: var(--type-3xs); }
 
-/* Distribuição de deveres: quebra em várias linhas, porque num 11x11 são cinco ou seis grupos. */
-.phase-duties { line-height: 1.5; opacity: 0.82; }
+/*
+ * Altura reservada, não medida pelo conteúdo. O texto vai de "saída curta · corredor centro ·
+ * risco 70%" a "jogo equilibrado · corredor esquerda · risco 100%" a cada plano coletivo, e a
+ * diferença de uma linha empurrava a aba inteira para baixo umas vinte vezes por minuto. Três
+ * linhas cobrem o texto mais longo que a combinação de rótulos consegue produzir.
+ */
+.phase-shape {
+  height: calc(var(--type-3xs) * 1.45 * 3);
+  overflow: hidden;
+  line-height: 1.45;
+}
 
 .phase-card canvas {
   width: 100%;

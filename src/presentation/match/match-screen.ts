@@ -1,6 +1,6 @@
 import type { CommandError, GameApplication } from "../../application/game-application";
 import { MatchSession, SIMULATION_SPEEDS, type SimulationSpeed } from "../../application/match/match-session";
-import type { AssignmentDuty, MatchState } from "../../domain/match/model";
+import type { MatchState } from "../../domain/match/model";
 import type { Team } from "../../domain/shared/model";
 import type { TeamTacticalPlan } from "../../domain/tactics/model";
 import { createEmptyPlan } from "../../domain/tactics/rules";
@@ -8,7 +8,7 @@ import { PlanEditor } from "../tactics/plan-editor";
 import { GameRenderer } from "../canvas/game-renderer";
 import { find, render } from "../app/dom";
 import { html, type Html } from "../app/html";
-import { DUTY_LABELS, formatClock, PHASE_LABELS, type TeamNames } from "../app/labels";
+import { formatClock, PHASE_LABELS, type TeamNames } from "../app/labels";
 import { icon } from "../app/icons";
 import type { Screen, ScreenDefinition } from "../app/screen";
 import { Section } from "../app/section";
@@ -66,8 +66,8 @@ const matchScreenTemplate = (): Html => html`
       <section id="inspector-analysis" class="inspector-panel analysis-section" role="tabpanel" data-inspector-panel="analysis" hidden aria-label="Análise tática da partida">
         <div class="analysis-heading"><div><span class="eyebrow">TÁTICA</span><strong id="analysis-title">Relatório ao vivo</strong></div><span id="contest-metric">Disputa 0%</span></div>
         <div class="phase-grid">
-          <div class="phase-card phase-card--blue"><small id="phase-name-blue">CASA</small><strong id="phase-blue">Bloco médio</strong><span id="shape-blue">Largura 0 · Prof. 0</span><span id="duties-blue" class="phase-duties">-</span><canvas id="tactical-map-blue" width="128" height="72" aria-label="Mapa de calor e rede de passes do time da casa"></canvas></div>
-          <div class="phase-card phase-card--coral"><small id="phase-name-coral">VISITANTE</small><strong id="phase-coral">Bloco médio</strong><span id="shape-coral">Largura 0 · Prof. 0</span><span id="duties-coral" class="phase-duties">-</span><canvas id="tactical-map-coral" width="128" height="72" aria-label="Mapa de calor e rede de passes do time visitante"></canvas></div>
+          <div class="phase-card phase-card--blue"><small id="phase-name-blue">CASA</small><strong id="phase-blue">Bloco médio</strong><span id="shape-blue" class="phase-shape">Largura 0 · Prof. 0</span><canvas id="tactical-map-blue" width="128" height="72" aria-label="Mapa de calor e rede de passes do time da casa"></canvas></div>
+          <div class="phase-card phase-card--coral"><small id="phase-name-coral">VISITANTE</small><strong id="phase-coral">Bloco médio</strong><span id="shape-coral" class="phase-shape">Largura 0 · Prof. 0</span><canvas id="tactical-map-coral" width="128" height="72" aria-label="Mapa de calor e rede de passes do time visitante"></canvas></div>
         </div>
         <div class="chart-block">
           <div class="chart-head"><strong>MAPA DE CHUTES</strong><span id="shot-count">0 finalizações</span></div>
@@ -520,18 +520,6 @@ export class MatchScreen implements Screen {
       this.find(`#shape-${team}`).textContent = collective
         ? `${styleLabel} · corredor ${channelLabel} · risco ${Math.round(collective.risk * 100)}%`
         : `Largura ${Math.round(shape.width)} · Prof. ${Math.round(shape.depth)}`;
-      // Como o time está dividido agora. Todo jogador aparece aqui: se a soma não bater com o
-      // tamanho do time, alguém ficou sem função — que é justamente o que não pode acontecer.
-      const duties = new Map<string, number>();
-      for (const assignment of Object.values(collective?.assignments ?? {})) {
-        duties.set(assignment.duty, (duties.get(assignment.duty) ?? 0) + 1);
-      }
-      this.find(`#duties-${team}`).textContent = duties.size === 0
-        ? "-"
-        : [...duties.entries()]
-          .sort(([, first], [, second]) => second - first)
-          .map(([duty, count]) => `${count} ${DUTY_LABELS[duty as AssignmentDuty]}`)
-          .join(" · ");
       drawTacticalMap(this.find<HTMLCanvasElement>(`#tactical-map-${team}`), state, team);
     }
     const groups = createStatGroups(state);
