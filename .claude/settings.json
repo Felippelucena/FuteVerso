@@ -7,7 +7,11 @@
       "Bash(npx vitest *)",
       "mcp__chrome-devtools__evaluate_script",
       "mcp__chrome-devtools__take_screenshot",
-      "Bash(npm test *)"
+      "Bash(npm test *)",
+      "mcp__chrome-devtools__take_snapshot",
+      "mcp__chrome-devtools__click",
+      "mcp__chrome-devtools__list_console_messages",
+      "Bash(break)"
     ]
   }
 }
