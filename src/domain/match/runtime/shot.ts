@@ -1,5 +1,6 @@
-import type { ActiveShot, CountableTeamStat, MatchState } from "../model";
+import type { ActiveShot, CountableTeamStat, MatchState, ShotOutcome } from "../model";
 import { BIG_CHANCE } from "./expected-goals";
+import { recordDeed } from "./player-stats";
 
 /**
  * O ciclo de vida do chute, num lugar só.
@@ -10,21 +11,6 @@ import { BIG_CHANCE } from "./expected-goals";
  * Corrigir número lançado é remendo: o chute passa a ser lançado quando termina, e aí não há o que
  * desfazer.
  */
-
-/** Como um chute acaba. É a pergunta que decide a estatística. */
-export type ShotOutcome =
-  /** Entrou. */
-  | "goal"
-  /** O goleiro resolveu: pegou, espalmou ou socou. */
-  | "saved"
-  /** Bateu na madeira. */
-  | "woodwork"
-  /** Alguém que não o goleiro alcançou a bola antes da meta. */
-  | "blocked"
-  /** Morreu sem ninguém tocá-la: passou por fora, por cima, ou parou no gramado. */
-  | "off"
-  /** A jogada acabou por outro motivo — o árbitro parou, ou o ataque seguiu com outra bola. */
-  | "dead";
 
 /**
  * Cada desfecho soma exatamente um número, e é esta tabela que diz qual. Chute no alvo é o que
@@ -58,9 +44,24 @@ export const resolveShot = (state: MatchState, outcome: ShotOutcome): void => {
   const shot = state.activeShot;
   if (!shot) return;
   state.activeShot = null;
+  // O registro guarda TODO chute, inclusive o que a jogada matou: ele foi dado, já somou em
+  // `shots` e no xG, e sumir daqui faria o mapa discordar da tabela ao lado.
+  state.shots.push({
+    id: shot.id,
+    team: shot.team,
+    shooterId: shot.shooterId,
+    at: state.elapsed,
+    origin: shot.origin,
+    expectedGoals: shot.expectedGoals,
+    outcome,
+  });
   const counter = OUTCOME_COUNTER[outcome as keyof typeof OUTCOME_COUNTER];
   if (!counter) return;
   state.stats[shot.team][counter] += 1;
+  if (counter === "shotsOnTarget") {
+    const shooter = state.players.find((player) => player.profile.id === shot.shooterId);
+    if (shooter) recordDeed(shooter, "shotsOnTarget");
+  }
   // Perdeu-se a grande chance: ela existia (contada na batida) e o lance terminou sem gol. O
   // `dead` já saiu acima — jogada que o árbitro parou não é chance desperdiçada por ninguém.
   if (outcome !== "goal" && shot.expectedGoals >= BIG_CHANCE) state.stats[shot.team].bigChancesMissed += 1;

@@ -135,9 +135,35 @@ export type PlayerIntent =
   | "holdingBall";
 export type MovementPace = "walk" | "run" | "burst" | "closeControl";
 
+/**
+ * O que o jogador fez NESTA partida.
+ *
+ * Existe porque `memory.stats` é CARREIRA — acumulada ao longo da vida do atleta e gravada pelo
+ * autosave a cada cinco segundos. O painel lia dali e mostrava "7 gols" aos quatro minutos de
+ * jogo. As duas contas são o mesmo fato em horizontes diferentes, e `recordDeed` escreve nas duas
+ * de uma vez para elas não divergirem.
+ */
+export interface PlayerMatchStats {
+  goals: number;
+  assists: number;
+  shots: number;
+  shotsOnTarget: number;
+  expectedGoals: number;
+  passes: number;
+  completedPasses: number;
+  failedPasses: number;
+  interceptions: number;
+  tacklesWon: number;
+  dribbles: number;
+  saves: number;
+  /** Em unidades do gramado, como `TeamStats.distanceCovered`. */
+  distanceCovered: number;
+}
+
 export interface PlayerRuntime {
   profile: PlayerProfile;
   memory: PlayerMemory;
+  match: PlayerMatchStats;
   team: Team;
   lineupIndex: number;
   shirtNumber: number;
@@ -405,6 +431,48 @@ export interface PendingPass {
    * significa "alcançável o voo inteiro", que é a verdade de qualquer bola rasteira.
    */
   reachableSeconds?: number;
+}
+
+/** Como um chute acaba. É a pergunta que decide a estatística. */
+export type ShotOutcome =
+  /** Entrou. */
+  | "goal"
+  /** O goleiro resolveu: pegou, espalmou ou socou. */
+  | "saved"
+  /** Bateu na madeira. */
+  | "woodwork"
+  /** Alguém que não o goleiro alcançou a bola antes da meta. */
+  | "blocked"
+  /** Morreu sem ninguém tocá-la: passou por fora, por cima, ou parou no gramado. */
+  | "off"
+  /** A jogada acabou por outro motivo — o árbitro parou, ou o ataque seguiu com outra bola. */
+  | "dead";
+
+/**
+ * O chute depois de terminado. A lista deles é o que o mapa de chutes desenha e de onde a curva
+ * de xG acumulado sai — as duas leem a MESMA coisa, porque são a mesma coisa vista de dois
+ * ângulos: onde a chance aconteceu e quando ela aconteceu.
+ *
+ * Cabe no snapshot do rebobinar porque são algumas dezenas por partida, ao contrário do log de
+ * eventos, que é cortado justamente por chegar a milhares.
+ */
+export interface ResolvedShot {
+  id: number;
+  team: Team;
+  shooterId: string;
+  at: number;
+  origin: Vec2;
+  expectedGoals: number;
+  outcome: ShotOutcome;
+}
+
+/**
+ * Uma janela do gráfico de momento. Guarda a soma e quantas amostras entraram nela porque a
+ * última janela da partida está sempre pela metade — dividir é o que a torna comparável.
+ */
+export interface MomentumWindow {
+  pressure: number;
+  samples: number;
 }
 
 export interface ActiveShot {
@@ -956,6 +1024,8 @@ export interface MatchState {
   learningEnabled: boolean;
   pendingPass: PendingPass | null;
   activeShot: ActiveShot | null;
+  /** Todo chute que já terminou, na ordem em que terminaram. */
+  shots: ResolvedShot[];
   /** Passe sob vigilância de impedimento, ou nulo quando não há ninguém em posição ilegal. */
   offsideWatch: OffsideWatch | null;
   /** Impedimento apitado, congelando a jogada até o tiro livre; nulo em jogo normal. */
@@ -977,6 +1047,8 @@ export interface MatchState {
   contestedSeconds: number;
   tactics: Record<Team, TeamTacticalState>;
   heatmaps: Record<Team, number[]>;
+  /** Quem estava por cima, janela a janela. Positivo é a casa; negativo, o visitante. */
+  momentum: MomentumWindow[];
   passNetwork: Record<Team, Record<string, number>>;
   nextAnalyticsSample: number;
   /** `elapsed` do último quadro percebido. Ver `COGNITION.perceptionSeconds`. */

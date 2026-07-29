@@ -7,13 +7,14 @@ import {
 } from "./runtime/formation-geometry";
 import { kickoffTeamOfHalf } from "./runtime/kickoff";
 import { unclaimedBall } from "./runtime/ball-situation";
-import { ANALYTICS_GRID, DEFAULT_MATCH_SEED, FIELD, RESTART } from "./config";
+import { ANALYTICS_GRID, DEFAULT_MATCH_SEED, FIELD, MOMENTUM_WINDOWS, RESTART } from "./config";
 import { DEFAULT_MATCH_RULES } from "./rules";
 import { DEFAULT_INSTRUCTION } from "../tactics/model";
 import { positionFit } from "../tactics/position-fit";
 import { findSlot } from "../tactics/slots";
 import type { Team } from "../shared/model";
 import type { MatchConfig, MatchParticipant, MatchState, PlayerRuntime, TeamAdjustment } from "./model";
+import { createPlayerMatchStats } from "./runtime/player-stats";
 import { createPhaseSeconds, createTacticalState } from "./systems/tactics-system";
 
 const clone = <T>(value: T): T => JSON.parse(JSON.stringify(value)) as T;
@@ -49,6 +50,7 @@ const makePlayer = (participant: MatchParticipant): PlayerRuntime => {
   const player: PlayerRuntime = {
     profile,
     memory,
+    match: createPlayerMatchStats(),
     team,
     lineupIndex,
     shirtNumber: participant.shirtNumber,
@@ -143,6 +145,7 @@ export function createMatchState(config: MatchConfig): MatchState {
     learningEnabled: config.learningEnabled,
     pendingPass: null,
     activeShot: null,
+    shots: [],
     offsideWatch: null,
     offsideCall: null,
     foulCall: null,
@@ -161,6 +164,7 @@ export function createMatchState(config: MatchConfig): MatchState {
       blue: Array(ANALYTICS_GRID.columns * ANALYTICS_GRID.rows).fill(0) as number[],
       coral: Array(ANALYTICS_GRID.columns * ANALYTICS_GRID.rows).fill(0) as number[],
     },
+    momentum: Array.from({ length: MOMENTUM_WINDOWS }, () => ({ pressure: 0, samples: 0 })),
     passNetwork: { blue: {}, coral: {} },
     nextAnalyticsSample: 0,
     perceivedAt: 0,

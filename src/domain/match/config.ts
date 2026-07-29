@@ -700,3 +700,10 @@ export const ANALYTICS_GRID = {
   rows: 8,
   sampleInterval: 0.5,
 } as const;
+
+/**
+ * Em quantas fatias a partida é dividida no gráfico de momento. Um NÚMERO de janelas, e não uma
+ * duração: o relógio do jogo é comprimido e configurável (ver rules.ts), e um intervalo em
+ * segundos daria trinta barras numa partida e três em outra.
+ */
+export const MOMENTUM_WINDOWS = 24;

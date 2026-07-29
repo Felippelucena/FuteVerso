@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { referenceMatchConfig, startOpenPlay } from "./__fixtures__/reference-match";
 import { FIELD, FIXED_STEP } from "./config";
 import { createMatchState, stepMatch } from "./index";
+import { recordDeed } from "./runtime/player-stats";
 
 const createState = () => createMatchState(referenceMatchConfig(2026));
 
@@ -74,5 +75,26 @@ describe("ciclo de vida da partida", () => {
 
     expect(state.pendingPass).toBeNull();
     expect(passer.memory.stats.failedPasses).toBe(1);
+    // Os dois livros andam juntos: `recordDeed` escreve na partida e na carreira de uma vez.
+    expect(passer.match.failedPasses).toBe(1);
+  });
+
+  /**
+   * O painel do jogador lia `memory.stats`, que é CARREIRA, e mostrava os gols de uma vida aos
+   * quatro minutos de jogo. A partida começa zerada mesmo com o atleta trazendo passado.
+   */
+  it("comeca a partida zerada mesmo com carreira acumulada", () => {
+    const state = createState();
+    const player = state.players[0]!;
+    player.memory.stats.goals = 7;
+    player.memory.stats.completedPasses = 214;
+
+    expect(player.match.goals).toBe(0);
+    expect(player.match.completedPasses).toBe(0);
+
+    recordDeed(player, "goals");
+
+    expect(player.match.goals).toBe(1);
+    expect(player.memory.stats.goals).toBe(8);
   });
 });

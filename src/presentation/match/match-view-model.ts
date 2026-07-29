@@ -1,4 +1,5 @@
-import { goalkeeperQuality, type MatchState } from "../../domain/match";
+import { goalkeeperQuality, playerRating, type MatchState } from "../../domain/match";
+import { FIELD } from "../../domain/match/config";
 import type { PlayerRuntime } from "../../domain/match/model";
 import type { Team } from "../../domain/shared/model";
 import { DRIBBLE_RANGE_REASON_LABELS, DRIBBLE_TOUCH_LABELS, INTENT_LABELS, PACE_LABELS, PASS_PURPOSE_LABELS, percentage, POSITION_LABELS, REASON_LABELS, ROLE_LABELS, SHOT_TECHNIQUE_LABELS, teamLabel, type TeamNames } from "../app/labels";
@@ -68,6 +69,11 @@ export interface DecisionDiagnostic {
   readonly detail: string;
 }
 
+interface Metric {
+  readonly label: string;
+  readonly value: string;
+}
+
 export interface PlayerDetailViewModel {
   readonly playerId: string;
   readonly team: Team;
@@ -75,8 +81,14 @@ export interface PlayerDetailViewModel {
   readonly position: string;
   readonly intent: string;
   readonly reason: string;
+  readonly rating: string;
   readonly diagnostics: readonly DecisionDiagnostic[];
-  readonly metrics: readonly { readonly label: string; readonly value: string }[];
+  /** O que ele fez nesta partida. */
+  readonly metrics: readonly Metric[];
+  /** O que ele está fazendo agora — inspetor de decisão, não de desempenho. */
+  readonly decision: readonly Metric[];
+  /** A carreira, em uma linha discreta: aqui ela é contexto, não a manchete. */
+  readonly career: string;
 }
 
 const saveActionLabels = {
@@ -150,9 +162,13 @@ const saving = (player: PlayerRuntime): DecisionDiagnostic | null => {
   };
 };
 
+const kilometres = (units: number): number => units / FIELD.unitsPerMeter / 1000;
+
 export const createPlayerDetailViewModel = (state: MatchState, player: PlayerRuntime): PlayerDetailViewModel => {
-  const stats = player.memory.stats;
+  const match = player.match;
+  const career = player.memory.stats;
   const planAge = player.plan ? Math.max(0, state.elapsed - player.plan.startedAt) : 0;
+  const isKeeper = player.profile.position === "goalkeeper";
   return {
     playerId: player.profile.id,
     team: player.team,
@@ -160,15 +176,28 @@ export const createPlayerDetailViewModel = (state: MatchState, player: PlayerRun
     position: `${POSITION_LABELS[player.profile.position]} · ${ROLE_LABELS[player.profile.role]}`,
     intent: intentLabel(state, player),
     reason: REASON_LABELS[player.decisionReason],
+    rating: playerRating(player).toFixed(1),
     diagnostics: [reception(state, player), preparation(player), carrying(player), shooting(player), saving(player)]
       .filter((diagnostic): diagnostic is DecisionDiagnostic => diagnostic !== null),
+    // Desta partida — o painel lia a CARREIRA aqui, e mostrava sete gols aos quatro minutos.
     metrics: [
+      { label: "GOLS", value: String(match.goals) },
+      { label: "ASSIST.", value: String(match.assists) },
+      isKeeper
+        ? { label: "DEFESAS", value: String(match.saves) }
+        : { label: "xG", value: match.expectedGoals.toFixed(2) },
+      { label: "CHUTES", value: `${match.shots} (${match.shotsOnTarget})` },
+      { label: "PASSES", value: `${match.completedPasses}/${match.passes}` },
+      { label: "DESARMES", value: String(match.tacklesWon) },
+      { label: "INTERCEP.", value: String(match.interceptions) },
+      { label: "DISTÂNCIA", value: `${kilometres(match.distanceCovered).toFixed(1)} km` },
+    ],
+    decision: [
       { label: "POSTURA", value: player.posture === "inPossession" ? "COM POSSE" : "SEM POSSE" },
       { label: "RITMO", value: PACE_LABELS[player.pace] },
       { label: "PLANO", value: `${planAge.toFixed(1)}s` },
-      { label: "GOLS", value: String(stats.goals) },
-      { label: "PASSES", value: String(stats.completedPasses) },
     ],
+    career: `${career.goals} ${career.goals === 1 ? "gol" : "gols"} em ${career.matches} ${career.matches === 1 ? "jogo" : "jogos"}`,
   };
 };
 
@@ -176,6 +205,9 @@ export const playerDetailSignature = (detail: PlayerDetailViewModel): string => 
   detail.playerId,
   detail.intent,
   detail.reason,
+  detail.rating,
+  detail.career,
   ...detail.diagnostics.map((item) => `${item.label}${item.headline}${item.detail}`),
   ...detail.metrics.map((item) => item.value),
+  ...detail.decision.map((item) => item.value),
 ].join("|");

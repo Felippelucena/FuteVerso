@@ -6,6 +6,7 @@ import { emitCognitiveEvent } from "../runtime/cognitive-events";
 import { duelEdge } from "../runtime/duel";
 import { activeChallengers, recklessChallenger } from "../runtime/engagement";
 import { emitMatchEvent } from "../runtime/events";
+import { recordDeed } from "../runtime/player-stats";
 import { resolveShot } from "../runtime/shot";
 
 const holderOf = (state: MatchState): PlayerRuntime | null =>
@@ -136,6 +137,7 @@ const creditTackle = (state: MatchState, challengerIds: string[]): void => {
   for (const player of state.players) {
     if (!challengerIds.includes(player.profile.id)) continue;
     teams.add(player.team);
+    recordDeed(player, "tacklesWon");
     player.duelCooldown = Math.max(player.duelCooldown, DUEL.tackleRecovery);
   }
   for (const team of teams) state.stats[team].tacklesWon += 1;

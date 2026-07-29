@@ -3,6 +3,7 @@ import { add, clamp, distance, length, limit, normalize, scale, subtract } from 
 import type { AgentDecision, MatchRules, MatchState, MovementPace, PlayerRuntime } from "../model";
 import { DEFAULT_MATCH_RULES, REFERENCE_COMPRESSION } from "../rules";
 import { playerSkillAcceleration, playerSkillSpeed } from "../runtime/player-metrics";
+import { recordDeed } from "../runtime/player-stats";
 import { goalkeeperAirborne } from "./goalkeeper-system";
 
 // Queda sutil de velocidade de topo conforme a estamina longa (fôlego) baixa: ~5% a 50%.
@@ -153,7 +154,9 @@ export const updatePlayers = (state: MatchState, decisions: Map<string, AgentDec
   for (const player of state.players) {
     const decision = decisions.get(player.profile.id)!;
     updatePlayer(state, player, decision, state.ball.controllerId === player.profile.id, dt);
-    state.stats[player.team].distanceCovered += length(player.velocity) * dt;
+    const travelled = length(player.velocity) * dt;
+    state.stats[player.team].distanceCovered += travelled;
+    recordDeed(player, "distanceCovered", travelled);
   }
 };
 

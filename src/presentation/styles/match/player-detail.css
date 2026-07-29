@@ -36,12 +36,45 @@
 
 .decision-explanation strong { font-size: var(--type-xs); text-align: right; }
 
+/*
+ * Uma grade que serve aos dois blocos: os oito números da partida e os três do estado de decisão.
+ * `auto-fit` colapsa as trilhas vazias, então o bloco menor não fica com buracos.
+ */
 .detail-metrics {
   margin-top: 12px;
   display: grid;
-  grid-template-columns: 1.5fr repeat(4, 1fr);
+  grid-template-columns: repeat(auto-fit, minmax(62px, 1fr));
   gap: 1px;
   background: var(--line);
+}
+
+.detail-legend {
+  grid-column: 1 / -1;
+  padding: 6px 7px 4px;
+  background: var(--surface-1);
+  color: var(--text-muted);
+  font-size: var(--type-3xs);
+  font-weight: 800;
+  letter-spacing: 0.09em;
+}
+
+.detail-career {
+  margin: 7px 0 0;
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  color: var(--text-muted);
+  font-size: var(--type-3xs);
+}
+
+.detail-career b { color: var(--text-soft); font-variant-numeric: tabular-nums; }
+
+/* O inspetor de decisão começa aqui: o que ele está fazendo agora, e não o que já fez. */
+.detail-title--decision {
+  margin-top: 14px;
+  padding-top: 11px;
+  justify-content: flex-end;
+  border-top: 1px solid var(--line);
 }
 
 .detail-metrics > span {
@@ -73,9 +106,6 @@
   color: var(--coral-soft);
 }
 
-@media (max-width: 680px) {
-  .detail-metrics { grid-template-columns: repeat(2, 1fr); }
-}
 
 @media (max-width: 580px) {
   .player-detail {

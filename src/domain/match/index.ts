@@ -10,5 +10,6 @@ export type { MatchConfig, MatchEvent, MatchParticipant, MatchState, TeamAdjustm
  */
 export { goalkeeperJumpHeight, goalkeeperQuality } from "./systems/goalkeeper-system";
 export { progressToX } from "./runtime/pitch";
+export { playerRating } from "./runtime/player-rating";
 export { captureMatchSnapshot, restoreMatchSnapshot } from "./runtime/snapshot";
 export type { MatchSnapshot } from "./runtime/snapshot";

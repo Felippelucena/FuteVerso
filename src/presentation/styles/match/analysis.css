@@ -58,6 +58,51 @@
   border: 1px solid var(--line);
 }
 
+.chart-block {
+  padding: 11px 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.chart-block:first-of-type { margin-top: 10px; border-top: 1px solid var(--line); }
+
+.chart-head {
+  padding-bottom: 8px;
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.chart-head strong { font-size: var(--type-sm); font-weight: 800; letter-spacing: 0.06em; }
+
+.chart-head span { color: var(--text-muted); font-size: var(--type-3xs); font-variant-numeric: tabular-nums; }
+
+.chart-block canvas { width: 100%; display: block; }
+
+.chart-legend {
+  padding-top: 8px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  color: var(--text-muted);
+  font-size: var(--type-3xs);
+}
+
+.chart-legend span { display: inline-flex; align-items: center; gap: 5px; }
+
+.key {
+  width: 7px;
+  height: 7px;
+  flex: none;
+  border-radius: var(--radius-round);
+}
+
+.key--goal { background: var(--lime); }
+.key--saved { background: var(--text-soft); }
+.key--blocked { background: var(--line-strong); }
+.key--off { border: 1px solid var(--line-hover); }
+.key--wood { background: var(--amber); }
+
 .analysis-table {
   margin-top: 10px;
   border-top: 1px solid var(--line);

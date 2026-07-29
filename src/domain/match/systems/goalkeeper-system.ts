@@ -7,6 +7,7 @@ import { emitMatchEvent } from "../runtime/events";
 import { insidePenaltyArea } from "../runtime/formation-geometry";
 import { goalkeeperGuardPost } from "../runtime/goalkeeper-geometry";
 import { signedMatchNoise } from "../runtime/random";
+import { recordDeed } from "../runtime/player-stats";
 import { resolveShot } from "../runtime/shot";
 import { predictShotPoint, timeToX } from "../runtime/shot-trajectory";
 
@@ -516,8 +517,8 @@ const resolveCatch = (state: MatchState, goalkeeper: PlayerRuntime, attempt: Goa
   if (state.pendingPass) {
     const pass = state.pendingPass;
     const passer = state.players.find((player) => player.profile.id === pass.passerId);
-    if (passer) passer.memory.stats.failedPasses += 1;
-    goalkeeper.memory.stats.interceptions += 1;
+    if (passer) recordDeed(passer, "failedPasses");
+    recordDeed(goalkeeper, "interceptions");
     emitCognitiveEvent(state, "passResolved", [goalkeeper.profile.id, pass.receiverId, ...relevantPlayersNear(state, goalkeeper.position)], {
       passId: pass.id,
       controllerId: goalkeeper.profile.id,
@@ -541,6 +542,7 @@ const resolveCatch = (state: MatchState, goalkeeper: PlayerRuntime, attempt: Goa
   if (attempt.source === "aerial") state.stats[goalkeeper.team].highBallClaims += 1;
   if (attempt.source === "shot") {
     state.stats[goalkeeper.team].saves += 1;
+    recordDeed(goalkeeper, "saves");
     emitMatchEvent(state, { type: "save-made", team: goalkeeper.team, playerId: goalkeeper.profile.id, outcome: "catch", height, shotId: attempt.sourceId });
   }
   resolveShot(state, attempt.source === "shot" ? "saved" : "dead");
@@ -571,6 +573,8 @@ const resolveLooseContact = (
     if (attempt.source === "aerial") state.stats[goalkeeper.team].punches += 1;
     if (attempt.source === "shot") {
       state.stats[goalkeeper.team].saves += 1;
+      recordDeed(goalkeeper, "saves");
+    recordDeed(goalkeeper, "saves");
       emitMatchEvent(state, { type: "save-made", team: goalkeeper.team, playerId: goalkeeper.profile.id, outcome: "parry", height, shotId: attempt.sourceId });
     }
     resolveShot(state, attempt.source === "shot" ? "saved" : "dead");

@@ -19,6 +19,7 @@ import { GOAL_MOUTH, insideGoalMouth, resolveGoalFrameContact } from "../runtime
 import { beginRestart, registerRestartKick } from "../runtime/restart";
 import { offsideOffendersAtPass } from "../runtime/offside";
 import { playerSkillSpeed } from "../runtime/player-metrics";
+import { recordDeed } from "../runtime/player-stats";
 import { signedMatchNoise } from "../runtime/random";
 import { estimatePassDuration, reachableFlightSeconds, solvePassTrajectory, targetAlongDirection } from "../runtime/pass-trajectory";
 import { laneClearance } from "../runtime/pass-viability";
@@ -169,7 +170,7 @@ export const executeBallAction = (state: MatchState, player: PlayerRuntime, acti
         };
         defender!.velocity = add(scale(defender!.velocity, 0.25), scale(escapeSide, -6.5));
         state.stats[player.team].feintsCompleted += 1;
-        player.memory.stats.dribbles += 1;
+        recordDeed(player, "dribbles");
         adaptPlayerPolicy(player, "dribble", state.learningEnabled ? 0.0012 : 0);
         player.velocity = add(player.velocity, scale(chosenDirection, 9));
       } else {
@@ -241,7 +242,7 @@ export const executeBallAction = (state: MatchState, player: PlayerRuntime, acti
     state.ball.height = contactHeight;
     state.ball.lastAction = "shot";
     player.kickCooldown = 0.48;
-    player.memory.stats.shots += 1;
+    recordDeed(player, "shots");
     state.stats[player.team].shots += 1;
     if (action.preparedPassId !== undefined) state.stats[player.team].firstTimeShots += 1;
     if (technique === "header") state.stats[player.team].headers += 1;
@@ -256,6 +257,7 @@ export const executeBallAction = (state: MatchState, player: PlayerRuntime, acti
     state.stats[player.team].expectedGoals += chance;
     if (chance >= BIG_CHANCE) state.stats[player.team].bigChances += 1;
     if (assistProvider(state, player.team, player.profile.id)) state.stats[player.team].expectedAssists += chance;
+    recordDeed(player, "expectedGoals", chance);
     const goalLineX = player.team === "blue" ? FIELD.width : 0;
     const goalPoint = predictShotPoint(state.ball.position, state.ball.velocity, state.ball.height, state.ball.verticalVelocity, solution.duration);
     // Previsão da rota, e só isso: é o que faz o goleiro reagir. A estatística de chute no alvo
@@ -315,6 +317,7 @@ export const executeBallAction = (state: MatchState, player: PlayerRuntime, acti
   resolveShot(state, "dead");
   player.kickCooldown = 0.4;
   state.stats[player.team].passes += 1;
+  recordDeed(player, "passes");
   if (action.range === "long") state.stats[player.team].longPasses += 1;
   if (action.trajectory === "air") state.stats[player.team].aerialPasses += 1;
   const progress = (player.team === "blue" ? 1 : -1) * (action.target.x - player.position.x);
@@ -483,12 +486,12 @@ const registerGoal = (state: MatchState, scorerTeam: Team): void => {
   state.stats[scorerTeam].reward += 1;
   state.stats[conceding].reward -= 1;
   if (scorer) {
-    scorer.memory.stats.goals += 1;
+    recordDeed(scorer, "goals");
     const learningAmount = state.learningEnabled ? 0.009 : 0;
     adaptPlayerPolicy(scorer, origin === "shot" ? "shoot" : origin === "pass" ? "pass" : "dribble", learningAmount);
   }
   const assist = assistProvider(state, scorerTeam, scorer?.profile.id);
-  if (assist) assist.memory.stats.assists += 1;
+  if (assist) recordDeed(assist, "assists");
   emitMatchEvent(state, { type: "goal-scored", team: scorerTeam, playerId: scorer?.profile.id ?? null, origin });
   state.lastAssist = null;
   // Bola no meio: os jogadores voltam à formação e o cobrador caminha até a marca central. A

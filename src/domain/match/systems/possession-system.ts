@@ -13,6 +13,7 @@ import {
 import { classifyReception, RECEPTION_NOISE, receptionMargin } from "../runtime/pass-viability";
 import { contactHeightBand } from "../runtime/reception-planning";
 import { signedMatchNoise } from "../runtime/random";
+import { recordDeed } from "../runtime/player-stats";
 import { restartForbidsTouch } from "../runtime/restart";
 import { resolveShot } from "../runtime/shot";
 import { emitCognitiveEvent, relevantPlayersNear } from "../runtime/cognitive-events";
@@ -39,7 +40,7 @@ const registerPassOutcome = (state: MatchState, controller: PlayerRuntime): void
   const outcome = controller.team !== pending.team ? "intercepted"
     : controller.profile.id === pending.receiverId ? "received" : "otherTeammate";
   if (controller.team === pending.team && controller.profile.id !== passer.profile.id) {
-    passer.memory.stats.completedPasses += 1;
+    recordDeed(passer, "completedPasses");
     state.stats[pending.team].completedPasses += 1;
     if (pending.range === "long") state.stats[pending.team].completedLongPasses += 1;
     if (pending.trajectory === "air") state.stats[pending.team].completedAerialPasses += 1;
@@ -48,8 +49,8 @@ const registerPassOutcome = (state: MatchState, controller: PlayerRuntime): void
     adaptPlayerPolicy(passer, "pass", state.learningEnabled ? 0.002 : 0);
     state.lastAssist = { playerId: passer.profile.id, team: passer.team, time: state.elapsed };
   } else {
-    passer.memory.stats.failedPasses += 1;
-    if (controller.team !== pending.team) controller.memory.stats.interceptions += 1;
+    recordDeed(passer, "failedPasses");
+    if (controller.team !== pending.team) recordDeed(controller, "interceptions");
     adaptPlayerPolicy(passer, "pass", state.learningEnabled ? -0.0015 : 0);
     if (controller.team !== pending.team) adaptPlayerPolicy(controller, "press", state.learningEnabled ? 0.0015 : 0);
   }
@@ -238,7 +239,7 @@ export const updatePossession = (state: MatchState, dt: number): void => {
     if (!dribbleOwner && !inFlightPassTeam) state.contestedSeconds += dt;
     return;
   }
-  if (state.ball.lastTouch && state.ball.lastTouch !== controller.team) controller.memory.stats.interceptions += 1;
+  if (state.ball.lastTouch && state.ball.lastTouch !== controller.team) recordDeed(controller, "interceptions");
   state.ball.controllerId = controller.profile.id;
   // Alguém que não o goleiro alcançou a bola antes da meta: o chute foi bloqueado.
   resolveShot(state, "blocked");
@@ -322,7 +323,7 @@ export const expirePendingPass = (state: MatchState): void => {
       passId: pending.id,
       outcome: "loose",
     });
-    if (passer) passer.memory.stats.failedPasses += 1;
+    if (passer) recordDeed(passer, "failedPasses");
     state.pendingPass = null;
   };
   // O passe só morre por tempo. Encerrá-lo assim que a bola sai da rota parece certo e não é: o

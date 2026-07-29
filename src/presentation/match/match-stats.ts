@@ -1,6 +1,8 @@
 import { FIELD } from "../../domain/match/config";
 import type { MatchState, TacticalPhase, TeamStats } from "../../domain/match/model";
-import { PASS_PURPOSE_LABELS, percentage, PHASE_LABELS } from "../app/labels";
+import { find, render } from "../app/dom";
+import { html } from "../app/html";
+import { PASS_PURPOSE_LABELS, percentage, PHASE_LABELS, type TeamNames } from "../app/labels";
 
 /**
  * Uma linha da tabela de análise: os dois números como o leitor os vê, mais a fatia que a barra
@@ -229,7 +231,78 @@ export const createStatGroups = (state: MatchState): readonly StatGroup[] => {
   ];
 };
 
-/** Assinatura da seção: o conteúdo exibido, e nada além dele. */
-export const statGroupsSignature = (groups: readonly StatGroup[]): string => groups
-  .map((group) => `${group.title}${group.summary}${group.rows.map((row) => `${row.label}${row.blue}${row.coral}`).join("")}`)
-  .join("|");
+/**
+ * Só o ESQUELETO da tabela — nomes dos times, grupos e rótulos. Nada que mude com a bola rolando:
+ * é essa a diferença entre reconstruir a tabela uma vez por partida e reconstruí-la a cada quadro.
+ */
+export const statTableSignature = (groups: readonly StatGroup[], names: TeamNames): string =>
+  `${names.blue}|${names.coral}|${groups.map((group) => `${group.title}:${group.rows.map((row) => row.label).join(",")}`).join("|")}`;
+
+interface RowNodes {
+  readonly blue: HTMLElement;
+  readonly coral: HTMLElement;
+  readonly fill: HTMLElement;
+}
+
+interface GroupNodes {
+  readonly summary: HTMLElement;
+  readonly rows: readonly RowNodes[];
+}
+
+/**
+ * A estrutura nasce uma vez; a cada tique só os números são reescritos.
+ *
+ * Reconstruir tudo por causa deles fechava os grupos que o leitor tinha aberto e tirava o
+ * elemento de baixo do cursor no meio do clique — a posse e as integrais de forma mudam a CADA
+ * quadro, então a tabela inteira se refazia sessenta vezes por segundo. Mesma divisão que a lista
+ * de jogadores já fazia, pelo mesmo motivo.
+ *
+ * De quebra, quais grupos estão abertos volta a ser do DOM: o `<details>` guarda o próprio estado
+ * enquanto ninguém o destrói, e não há mais o que espelhar do lado de cá.
+ */
+export class StatTable {
+  private groups: readonly GroupNodes[] = [];
+
+  constructor(private readonly target: HTMLElement) {}
+
+  rebuild(groups: readonly StatGroup[], names: TeamNames): void {
+    render(this.target, html`
+      <div class="stat-head"><strong>${names.blue}</strong><span>MÉTRICA</span><strong>${names.coral}</strong></div>
+      ${groups.map((group, index) => html`
+        <details class="stat-group" data-stat-group="${index}" ${group.open ? "open" : ""}>
+          <summary>${group.title}<em></em></summary>
+          ${group.rows.map((row) => html`
+            <div class="stat-row">
+              <strong class="stat-value"></strong>
+              <span>${row.label}</span>
+              <strong class="stat-value"></strong>
+              <i class="stat-bar"><b></b></i>
+            </div>`)}
+        </details>`)}`);
+    this.groups = groups.map((_group, index) => {
+      const element = find<HTMLElement>(this.target, `[data-stat-group="${index}"]`);
+      return {
+        summary: find<HTMLElement>(element, "summary em"),
+        rows: [...element.querySelectorAll<HTMLElement>(".stat-row")].map((row) => {
+          const values = row.querySelectorAll<HTMLElement>(".stat-value");
+          return { blue: values[0]!, coral: values[1]!, fill: find<HTMLElement>(row, ".stat-bar b") };
+        }),
+      };
+    });
+  }
+
+  patch(groups: readonly StatGroup[]): void {
+    groups.forEach((group, index) => {
+      const nodes = this.groups[index];
+      if (!nodes) return;
+      nodes.summary.textContent = group.summary;
+      group.rows.forEach((row, rowIndex) => {
+        const rowNodes = nodes.rows[rowIndex];
+        if (!rowNodes) return;
+        rowNodes.blue.textContent = row.blue;
+        rowNodes.coral.textContent = row.coral;
+        rowNodes.fill.style.width = `${(row.share * 100).toFixed(1)}%`;
+      });
+    });
+  }
+}

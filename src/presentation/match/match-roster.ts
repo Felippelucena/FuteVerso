@@ -1,9 +1,8 @@
-import type { MatchState } from "../../domain/match";
+import { playerRating, type MatchState } from "../../domain/match";
 import type { PlayerRuntime } from "../../domain/match/model";
 import { find, render } from "../app/dom";
 import { html } from "../app/html";
 import { POSITION_LABELS, type TeamNames } from "../app/labels";
-import { intentLabel } from "./match-view-model";
 
 const TEAMS = ["blue", "coral"] as const;
 const LOW_ENERGY = 30;
@@ -16,7 +15,32 @@ interface PlayerNodes {
   readonly meter: HTMLElement;
   readonly longFill: HTMLElement;
   readonly volatileFill: HTMLElement;
+  readonly rating: HTMLElement;
 }
+
+const ratingBand = (rating: number): string => rating >= 7.5 ? "high" : rating >= 6.5 ? "mid" : "low";
+
+/**
+ * O que este jogador fez de mais relevante até agora — o primeiro feito da lista que ele tem. A
+ * linha respondia "o que ele está fazendo neste instante", que o painel de detalhe já diz; quem
+ * corre os olhos pela lista quer saber quem decidiu a partida.
+ */
+const HIGHLIGHTS: readonly { readonly of: (stats: PlayerRuntime["match"]) => number; readonly one: string; readonly many: string }[] = [
+  { of: (stats) => stats.goals, one: "gol", many: "gols" },
+  { of: (stats) => stats.assists, one: "assistência", many: "assistências" },
+  { of: (stats) => stats.saves, one: "defesa", many: "defesas" },
+  { of: (stats) => stats.shotsOnTarget, one: "chute no alvo", many: "chutes no alvo" },
+  { of: (stats) => stats.tacklesWon, one: "desarme", many: "desarmes" },
+  { of: (stats) => stats.interceptions, one: "interceptação", many: "interceptações" },
+];
+
+const highlightOf = (player: PlayerRuntime): string => {
+  for (const highlight of HIGHLIGHTS) {
+    const count = highlight.of(player.match);
+    if (count > 0) return `${count} ${count === 1 ? highlight.one : highlight.many}`;
+  }
+  return `${player.match.completedPasses} passes`;
+};
 
 /** Só a composição em campo. O que muda a cada tique — intenção e energia — fica de fora. */
 export const rosterSignature = (players: readonly PlayerRuntime[], names: TeamNames): string =>
@@ -37,8 +61,11 @@ export class RosterList {
         ${players.filter((player) => player.team === team).map((player) => html`
           <button type="button" class="roster-player" data-inspect-player="${player.profile.id}">
             <span class="shirt shirt--${team}">${player.shirtNumber}</span>
-            <span><strong>${player.profile.name}</strong><small></small></span>
-            <span class="stamina-meter">${["long", "volatile"].map((kind) => html`<span class="stamina-meter-bar"><span class="stamina-meter-fill stamina-meter-fill--${kind}"></span></span>`)}</span>
+            <span>
+              <strong>${player.profile.name}</strong><small></small>
+              <span class="stamina-meter">${["long", "volatile"].map((kind) => html`<span class="stamina-meter-bar"><span class="stamina-meter-fill stamina-meter-fill--${kind}"></span></span>`)}</span>
+            </span>
+            <b class="rating"></b>
           </button>`)}
       </div>`)}`);
     this.nodes = new Map(players.map((player) => {
@@ -49,6 +76,7 @@ export class RosterList {
         meter: find<HTMLElement>(button, ".stamina-meter"),
         longFill: find<HTMLElement>(button, ".stamina-meter-fill--long"),
         volatileFill: find<HTMLElement>(button, ".stamina-meter-fill--volatile"),
+        rating: find<HTMLElement>(button, ".rating"),
       }];
     }));
   }
@@ -59,7 +87,10 @@ export class RosterList {
       if (!nodes) continue;
       const long = percent(player.stamina);
       const volatile = percent(player.sprintEnergy);
-      nodes.caption.textContent = `${POSITION_LABELS[player.profile.position]} · ${intentLabel(state, player)}`;
+      const rating = playerRating(player);
+      nodes.rating.textContent = rating.toFixed(1);
+      nodes.rating.className = `rating rating--${ratingBand(rating)}`;
+      nodes.caption.textContent = `${POSITION_LABELS[player.profile.position]} · ${highlightOf(player)}`;
       nodes.meter.title = `Fôlego ${long}% · Pique ${volatile}%`;
       nodes.longFill.style.width = `${long}%`;
       nodes.volatileFill.style.width = `${volatile}%`;

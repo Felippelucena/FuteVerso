@@ -13,8 +13,9 @@ import { icon } from "../app/icons";
 import type { Screen, ScreenDefinition } from "../app/screen";
 import { Section } from "../app/section";
 import { formatMatchEvent } from "./format-match-event";
+import { drawMomentum, drawShotMap, drawXgTimeline } from "./match-charts";
 import { RosterList, rosterSignature } from "./match-roster";
-import { createStatGroups, statGroupsSignature } from "./match-stats";
+import { createStatGroups, StatTable, statTableSignature } from "./match-stats";
 import { createContestMetric, createMatchHeaderViewModel, createMatchSummary, createPlayerDetailViewModel, playerDetailSignature, type PlayerDetailViewModel } from "./match-view-model";
 import { drawTacticalMap } from "./tactical-map";
 import { teamNamesOf } from "./team-names";
@@ -67,6 +68,23 @@ const matchScreenTemplate = (): Html => html`
         <div class="phase-grid">
           <div class="phase-card phase-card--blue"><small id="phase-name-blue">CASA</small><strong id="phase-blue">Bloco médio</strong><span id="shape-blue">Largura 0 · Prof. 0</span><span id="duties-blue" class="phase-duties">-</span><canvas id="tactical-map-blue" width="128" height="72" aria-label="Mapa de calor e rede de passes do time da casa"></canvas></div>
           <div class="phase-card phase-card--coral"><small id="phase-name-coral">VISITANTE</small><strong id="phase-coral">Bloco médio</strong><span id="shape-coral">Largura 0 · Prof. 0</span><span id="duties-coral" class="phase-duties">-</span><canvas id="tactical-map-coral" width="128" height="72" aria-label="Mapa de calor e rede de passes do time visitante"></canvas></div>
+        </div>
+        <div class="chart-block">
+          <div class="chart-head"><strong>MAPA DE CHUTES</strong><span id="shot-count">0 finalizações</span></div>
+          <canvas id="shot-map" aria-label="Mapa de chutes: cada ponto é uma finalização, o tamanho é o quanto a chance valia"></canvas>
+          <div class="chart-legend">
+            <span><i class="key key--goal"></i>gol</span><span><i class="key key--saved"></i>defendido</span>
+            <span><i class="key key--blocked"></i>bloqueado</span><span><i class="key key--off"></i>sem desfecho</span>
+            <span><i class="key key--wood"></i>trave</span>
+          </div>
+        </div>
+        <div class="chart-block">
+          <div class="chart-head"><strong>xG ACUMULADO</strong><span id="xg-summary">0.00 — 0.00</span></div>
+          <canvas id="xg-timeline" aria-label="Curvas de gols esperados acumulados ao longo da partida"></canvas>
+        </div>
+        <div class="chart-block">
+          <div class="chart-head"><strong>MOMENTO</strong><span>quem está por cima</span></div>
+          <canvas id="momentum-chart" aria-label="Gráfico de momento: barras para cima são pressão da casa, para baixo do visitante"></canvas>
         </div>
         <div class="analysis-table" id="analysis-table"></div>
         <p id="match-summary" class="match-summary">A análise será atualizada conforme a partida evolui.</p>
@@ -131,6 +149,10 @@ const PLAN_ADJUST_MESSAGES: Partial<Record<CommandError, string>> = {
 
 type InspectorTab = "players" | "analysis" | "events";
 
+/** Faixa da nota, para a cor dizer o mesmo que o número antes de alguém ler o número. */
+const ratingBand = (rating: string): "high" | "mid" | "low" =>
+  Number(rating) >= 7.5 ? "high" : Number(rating) >= 6.5 ? "mid" : "low";
+
 export const matchScreenDefinition = (application: GameApplication): ScreenDefinition => ({
   id: "match",
   label: "Partida",
@@ -145,13 +167,14 @@ export class MatchScreen implements Screen {
   private selectedPlayerId: string;
   private activeTab: InspectorTab = "players";
   private detailModel: PlayerDetailViewModel | null = null;
-  private openGroups: Set<string> | null = null;
   private readonly renderer: GameRenderer;
   private readonly roster: RosterList;
+  private readonly statTable: StatTable;
   private readonly rosterSection: Section;
   private readonly detailSection: Section;
   private readonly eventsSection: Section;
   private readonly analysisSection: Section;
+  private readonly chartsSection: Section;
   private readonly panels: Record<InspectorTab, () => void>;
   private readonly settingsDialog: HTMLDialogElement;
   private readonly planDialog: HTMLDialogElement;
@@ -175,10 +198,12 @@ export class MatchScreen implements Screen {
     this.renderer = new GameRenderer(this.find("#game-canvas"));
     new ResizeObserver(() => this.resize()).observe(this.find("#game-canvas"));
     this.roster = new RosterList(this.find("#match-roster"));
+    this.statTable = new StatTable(this.find("#analysis-table"));
     this.rosterSection = new Section(() => this.roster.rebuild(this.state.players, this.teamNames));
     this.detailSection = new Section(() => this.renderPlayerDetail());
     this.eventsSection = new Section(() => this.renderEvents());
-    this.analysisSection = new Section(() => this.renderAnalysisTable());
+    this.analysisSection = new Section(() => this.statTable.rebuild(createStatGroups(this.state), this.teamNames));
+    this.chartsSection = new Section(() => this.renderCharts());
     this.panels = {
       players: () => this.renderPlayersPanel(),
       analysis: () => this.renderAnalysis(),
@@ -316,14 +341,6 @@ export class MatchScreen implements Screen {
       this.session.resumeLive();
       this.renderScrubFrame();
     });
-    // `toggle` não borbulha: só a fase de captura enxerga o grupo que o leitor abriu.
-    this.find("#analysis-table").addEventListener("toggle", (event) => {
-      const details = event.target as HTMLDetailsElement;
-      const title = details.dataset?.statGroup;
-      if (!title || !this.openGroups) return;
-      if (details.open) this.openGroups.add(title);
-      else this.openGroups.delete(title);
-    }, true);
     this.find("#match-roster").addEventListener("click", (event) => {
       const button = (event.target as HTMLElement).closest<HTMLButtonElement>("[data-inspect-player]");
       if (!button) return;
@@ -471,10 +488,25 @@ export class MatchScreen implements Screen {
     const detail = this.detailModel;
     if (!detail) return;
     render(this.find("#player-detail"), html`
-      <div class="detail-title"><div><strong>${detail.name}</strong><span>${detail.position}</span></div><span class="intent intent--${detail.team}">${detail.intent}</span></div>
+      <div class="detail-title">
+        <div><strong>${detail.name}</strong><span>${detail.position}</span></div>
+        <b class="rating rating--${ratingBand(detail.rating)}">${detail.rating}</b>
+      </div>
+      <div class="detail-metrics detail-metrics--match"><small class="detail-legend">NESTA PARTIDA</small>${detail.metrics.map((item) => html`<span><small>${item.label}</small><strong>${item.value}</strong></span>`)}</div>
+      <p class="detail-career">Carreira <b>${detail.career}</b></p>
+      <div class="detail-title detail-title--decision"><span class="intent intent--${detail.team}">${detail.intent}</span></div>
       <div class="decision-explanation"><small>POR QUÊ</small><strong>${detail.reason}</strong></div>
       ${detail.diagnostics.map((item) => html`<div class="decision-explanation"><small>${item.label}</small><strong>${item.headline}<br>${item.detail}</strong></div>`)}
-      <div class="detail-metrics">${detail.metrics.map((item) => html`<span><small>${item.label}</small><strong>${item.value}</strong></span>`)}</div>`);
+      <div class="detail-metrics">${detail.decision.map((item) => html`<span><small>${item.label}</small><strong>${item.value}</strong></span>`)}</div>`);
+  }
+
+  private renderCharts(): void {
+    const state = this.state;
+    this.find("#shot-count").textContent = `${state.shots.length} ${state.shots.length === 1 ? "finalização" : "finalizações"}`;
+    this.find("#xg-summary").textContent = `${state.stats.blue.expectedGoals.toFixed(2)} — ${state.stats.coral.expectedGoals.toFixed(2)}`;
+    drawShotMap(this.find<HTMLCanvasElement>("#shot-map"), state.shots);
+    drawXgTimeline(this.find<HTMLCanvasElement>("#xg-timeline"), state);
+    drawMomentum(this.find<HTMLCanvasElement>("#momentum-chart"), state.momentum);
   }
 
   private renderAnalysis(): void {
@@ -502,34 +534,17 @@ export class MatchScreen implements Screen {
           .join(" · ");
       drawTacticalMap(this.find<HTMLCanvasElement>(`#tactical-map-${team}`), state, team);
     }
-    this.analysisSection.update(statGroupsSignature(createStatGroups(state)) + this.teamNames.blue + this.teamNames.coral);
+    const groups = createStatGroups(state);
+    this.analysisSection.update(statTableSignature(groups, this.teamNames));
+    this.statTable.patch(groups);
+    // Os gráficos só mudam quando um chute termina ou uma janela é amostrada — redesenhá-los a
+    // cada quadro seria trabalho de canvas para pixel idêntico.
+    this.chartsSection.update(`${state.shots.length}|${state.momentum.reduce((total, window) => total + window.samples, 0)}`);
     this.find("#contest-metric").textContent = createContestMetric(state);
     this.find("#analysis-title").textContent = state.finished ? "Relatório final" : "Relatório ao vivo";
     this.find("#match-summary").textContent = createMatchSummary(state, this.teamNames);
   }
 
-  /**
-   * A tabela se refaz a cada número que muda, então quais grupos estão abertos não pode morar no
-   * DOM: o que o leitor abriu vive aqui, e o view-model só decide o estado da primeira montagem.
-   */
-  private renderAnalysisTable(): void {
-    const groups = createStatGroups(this.state);
-    this.openGroups ??= new Set(groups.filter((group) => group.open).map((group) => group.title));
-    const names = this.teamNames;
-    render(this.find("#analysis-table"), html`
-      <div class="stat-head"><strong>${names.blue}</strong><span>MÉTRICA</span><strong>${names.coral}</strong></div>
-      ${groups.map((group) => html`
-        <details class="stat-group" data-stat-group="${group.title}" ${this.openGroups!.has(group.title) ? "open" : ""}>
-          <summary>${group.title}<em>${group.summary}</em></summary>
-          ${group.rows.map((row) => html`
-            <div class="stat-row">
-              <strong class="stat-value">${row.blue}</strong>
-              <span>${row.label}</span>
-              <strong class="stat-value">${row.coral}</strong>
-              <i class="stat-bar"><b style="width:${(row.share * 100).toFixed(1)}%"></b></i>
-            </div>`)}
-        </details>`)}`);
-  }
 
   private find<T extends HTMLElement>(selector: string): T {
     return find<T>(this.root, selector);
