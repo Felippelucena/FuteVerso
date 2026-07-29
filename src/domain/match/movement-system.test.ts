@@ -44,7 +44,7 @@ describe("movimento dos jogadores", () => {
     expect(length(runner.velocity)).toBeLessThan(0.5);
   });
 
-  it("mantém a bola colada sempre lenta e diferencia corrida e explosão sem a bola", () => {
+  it("mantém a bola colada lenta e diferencia corrida e explosão sem a bola", () => {
     const player = createTestMatch().players[3];
     const walk = playerSpeedLimit(player, false);
     const run = playerSpeedLimit(player, false, true);
@@ -53,8 +53,10 @@ describe("movimento dos jogadores", () => {
     const controlledWhileSprinting = playerSpeedLimit(player, true);
     const burst = playerSpeedLimit(player, false);
     expect(controlled / walk).toBeCloseTo(PHYSICS.controlledSpeedFactor / PHYSICS.walkSpeedFactor, 5);
-    // Bola colada é sempre close control: ter pique na perna não acelera; avançar exige soltar a bola.
-    expect(controlledWhileSprinting).toBeCloseTo(controlled, 5);
+    // Conduzir dentro de um pique já lançado é mais rápido que acomodar a bola no pé — e ainda
+    // assim mais lento que correr sem ela: conduzir nunca é fugir de quem vem atrás.
+    expect(controlledWhileSprinting).toBeGreaterThan(controlled);
+    expect(controlledWhileSprinting).toBeLessThan(run);
     expect(controlled).toBeLessThan(run);
     expect(run / walk).toBeCloseTo(PHYSICS.runSpeedFactor / PHYSICS.walkSpeedFactor, 5);
     expect(burst / run).toBeCloseTo(PHYSICS.burstSpeedFactor / PHYSICS.runSpeedFactor, 5);

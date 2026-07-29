@@ -91,8 +91,8 @@ const reception = (state: MatchState, player: PlayerRuntime): DecisionDiagnostic
 const preparation = (player: PlayerRuntime): DecisionDiagnostic | null => {
   const prepared = player.plan?.preparedReceptionAction;
   if (!prepared) return null;
-  const headline = prepared.kind === "shot" || prepared.kind === "redirect"
-    ? SHOT_TECHNIQUE_LABELS[prepared.technique ?? "redirect"]
+  const headline = prepared.shotAction
+    ? SHOT_TECHNIQUE_LABELS[prepared.shotAction.technique ?? "redirect"]
     : prepared.kind === "pass" ? "Passe de primeira"
       : prepared.fallback === "protectBall" ? "Proteger a bola" : "Domínio orientado";
   return {

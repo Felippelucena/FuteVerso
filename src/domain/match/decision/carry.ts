@@ -154,7 +154,7 @@ export const carrierDecision = (
   const goalTargetPoint = goalCenter(player.team, false);
   const carryOrigin = touchChoice.target;
   const futureShot = touchChoice.range
-    ? evaluateShotOpportunity(player, opponents, state, false, undefined, { position: carryOrigin, facing: subtract(goalTargetPoint, carryOrigin) })
+    ? evaluateShotOpportunity(player, opponents, state, { origin: { position: carryOrigin, facing: subtract(goalTargetPoint, carryOrigin) } })
     : null;
   const carryShotGain = (futureShot?.utility ?? -1) - (shot?.utility ?? -1);
   const carryShotBonus = futureShot && !futureShot.blocked

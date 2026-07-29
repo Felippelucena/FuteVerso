@@ -27,7 +27,7 @@ describe("lookahead condução→finalização (Item 3)", () => {
 
     const shotNow = evaluateShotOpportunity(shooter, opponents, state);
     const ahead = { x: FIELD.width * 0.94, y: FIELD.height / 2 };
-    const shotAhead = evaluateShotOpportunity(shooter, opponents, state, false, undefined, { position: ahead, facing: { x: 1, y: 0 } });
+    const shotAhead = evaluateShotOpportunity(shooter, opponents, state, { origin: { position: ahead, facing: { x: 1, y: 0 } } });
 
     expect(shotNow).not.toBeNull();
     expect(shotAhead).not.toBeNull();

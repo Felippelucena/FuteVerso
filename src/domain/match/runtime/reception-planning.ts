@@ -60,7 +60,7 @@ export const prepareReceptionAction = (state: MatchState, player: PlayerRuntime)
   const technique: ShotTechnique = expectedHeight > CONTACT_BAND.plan.header * PHYSICS.reachableBallHeight ? "header"
     : expectedHeight > CONTACT_BAND.plan.volley * PHYSICS.reachableBallHeight ? "volley"
       : "placed";
-  const shot = evaluateShotOpportunity(virtualPlayer, opponents, state, true, technique);
+  const shot = evaluateShotOpportunity(virtualPlayer, opponents, state, { prepared: true, technique, contactHeight: expectedHeight });
   const arrivalPressure = clamp(1 - predictedSpaceAt(contact, opponents, Math.max(0.12, pending.expectedArrivalAt - state.elapsed)) / fieldX(8), 0, 1);
   const shotScore = shot ? shot.utility + (directContext ? 0.24 : -0.38) - Math.max(0, expectedSpeed - 58) / 100 : -1;
   const passTarget = [...teammates]
@@ -94,14 +94,19 @@ export const prepareReceptionAction = (state: MatchState, player: PlayerRuntime)
     };
   }
   if (shot && shotScore >= Math.max(controlScore + 0.08, passScore + 0.04)) {
-    return { ...base, kind: "shot", technique, target: shot.action.target, score: shotScore };
+    return { ...base, kind: "shot", shotAction: shot.action, target: shot.action.target, score: shotScore };
   }
   if (passTarget && passScore >= controlScore + 0.18 && distance(contact, passTarget.target) > player.radius * 2) {
     return { ...base, kind: "pass", target: passTarget.target, receiverId: passTarget.teammate.profile.id, score: passScore };
   }
   if (directContext && shot && shotScore >= controlScore - 0.12 && pressureAt(state, virtualPlayer) > 0.42) {
-    const headerHeight = CONTACT_BAND.plan.header * PHYSICS.reachableBallHeight;
-    return { ...base, kind: "redirect", technique: expectedHeight > headerHeight ? "header" : "redirect", target: shot.action.target, score: shotScore };
+    // Desviar de primeira é outro contato, e outra batida: reavalia com a técnica que vai sair.
+    const redirect = technique === "header"
+      ? shot
+      : evaluateShotOpportunity(virtualPlayer, opponents, state, { prepared: true, technique: "redirect", contactHeight: expectedHeight });
+    if (redirect) {
+      return { ...base, kind: "redirect", shotAction: redirect.action, target: redirect.action.target, score: shotScore };
+    }
   }
   return { ...base, kind: "control", target: contact, score: controlScore };
 };

@@ -4,6 +4,7 @@ import type { BallAction, MatchState, PlayerRuntime, ShotTechnique, Vec2 } from 
 import { predictPlayerPosition } from "./prediction";
 import { pressureAt } from "./control";
 import { fieldX } from "./pitch";
+import { highestAimUnderCrossbar, shotLaunchSpeed } from "./shot-trajectory";
 
 export interface ShotOpportunity {
   action: Extract<BallAction, { kind: "shot" }>;
@@ -15,14 +16,31 @@ export interface ShotOpportunity {
   isLong: boolean;
 }
 
+export interface ShotContext {
+  /** Primeiro toque: a bola já chega com pace e o contato só a direciona. */
+  prepared?: boolean;
+  technique?: ShotTechnique;
+  /** Avaliar o chute a partir de outra posição/orientação — por exemplo, depois de conduzir. */
+  origin?: { position: Vec2; facing: Vec2 };
+  /** Altura da bola no contato. Padrão: a altura de agora. */
+  contactHeight?: number;
+}
+
+/**
+ * O que o primeiro toque tira da batida. Bola que chega em movimento não se bate como bola parada
+ * no pé: quem dá a velocidade é o passe, e o contato só a redireciona.
+ */
+const PREPARED_POWER: Record<ShotTechnique, number> = {
+  header: 0.7, volley: 0.84, placed: 0.76, redirect: 0.76, power: 0.76,
+};
+
 export const evaluateShotOpportunity = (
   player: PlayerRuntime,
   opponents: PlayerRuntime[],
   state: MatchState,
-  prepared = false,
-  preparedTechnique?: ShotTechnique,
-  origin?: { position: Vec2; facing: Vec2 },
+  context: ShotContext = {},
 ): ShotOpportunity | null => {
+  const { prepared = false, technique: preparedTechnique, origin } = context;
   // Item 3: opcionalmente avalia o chute a partir de uma posição/orientação futura (após conduzir),
   // mantendo a pressão medida na posição atual (conservador).
   const shooterPosition = origin?.position ?? player.position;
@@ -55,9 +73,22 @@ export const evaluateShotOpportunity = (
   const highShot = preparedTechnique === "header"
     || preparedTechnique === "volley" && goalDistance > fieldX(12)
     || powerful && goalDistance > fieldX(16) && goalDistance < fieldX(38) && (goalkeeperCoversLane || blockers.length > 0);
-  const targetHeight = highShot
+  const preferredHeight = highShot
     ? preparedTechnique === "header" ? 2.9 : preparedTechnique === "volley" ? 2.65 : GOALKEEPING.highHeight
     : goalDistance > fieldX(18) ? GOALKEEPING.mediumHeight : GOALKEEPING.lowHeight;
+  const power = prepared
+    ? PREPARED_POWER[technique]
+    : clamp(0.58 + goalDistance / fieldX(72) + (technique === "power" ? 0.08 : 0), 0.62, 1);
+  // Mirar é escolher DENTRO do que a batida alcança: a altura pedida vale só até onde a bola ainda
+  // cabe sob o travessão o caminho todo. Não cabendo nem rasteira, não há chute daqui.
+  const contactHeight = context.contactHeight ?? state.ball.height;
+  const highestAim = highestAimUnderCrossbar(
+    goalDistance,
+    contactHeight,
+    shotLaunchSpeed(player.profile.skills, power, technique),
+  );
+  if (highestAim === null) return null;
+  const targetHeight = Math.min(preferredHeight, highestAim);
   const utility = 0.72 + rangeCloseness * 1.28 + visibleAngle * 0.48
     + player.memory.policy.shoot * 0.38
     + player.profile.skills.finishing / 100 * 0.28
@@ -73,7 +104,7 @@ export const evaluateShotOpportunity = (
       kind: "shot",
       target,
       targetHeight,
-      power: clamp(0.58 + goalDistance / fieldX(72) + (technique === "power" ? 0.08 : 0), 0.62, 1),
+      power,
       technique,
       utility,
       blocked,

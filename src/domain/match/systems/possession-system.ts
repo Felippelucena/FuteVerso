@@ -111,12 +111,11 @@ const tryPreparedContact = (state: MatchState, player: PlayerRuntime): boolean =
   const prepared = player.plan?.preparedReceptionAction;
   if (!pending || !prepared || prepared.kind === "control") return false;
   if (prepared.passId !== (pending.id ?? 0)) return false;
+  if (prepared.kind !== "pass" && !prepared.shotAction) return false;
   if (state.elapsed < prepared.validFrom - 0.08 || state.elapsed > prepared.expiresAt) return false;
   const height = state.ball.height;
-  const band = contactHeightBand(prepared.technique === "header" ? "header"
-    : prepared.technique === "volley" ? "volley"
-      : prepared.technique === "redirect" ? "redirect"
-        : "placed");
+  const technique = prepared.shotAction?.technique ?? "placed";
+  const band = contactHeightBand(technique === "power" ? "placed" : technique);
   const heightValid = height >= band.low && height <= band.high;
   if (!heightValid || Math.abs(length(state.ball.velocity) - prepared.expectedSpeed) > 32) return false;
   const techniqueBase = prepared.kind === "pass"
@@ -124,7 +123,7 @@ const tryPreparedContact = (state: MatchState, player: PlayerRuntime): boolean =
       + player.profile.mental.anticipation * 0.1 + player.profile.mental.composure * 0.1) / 100
     : (player.profile.skills.finishing * 0.55 + player.profile.skills.control * 0.25
       + player.profile.mental.anticipation * 0.1 + player.profile.mental.composure * 0.1) / 100;
-  const contactDifficulty = (prepared.technique === "header" ? 0.04 : prepared.technique === "volley" ? 0.07 : 0)
+  const contactDifficulty = (technique === "header" ? 0.04 : technique === "volley" ? 0.07 : 0)
     + pressureAt(state, player) * 0.08 + Math.max(0, length(state.ball.velocity) - 48) * 0.002;
   const ready = techniqueBase - contactDifficulty + signedMatchNoise(state) * 0.12
     >= (prepared.kind === "pass" ? 0.82 : 0.75);
@@ -148,13 +147,7 @@ const tryPreparedContact = (state: MatchState, player: PlayerRuntime): boolean =
       selectionReason: "firstTimeAction",
     });
   } else {
-    executeBallAction(state, player, {
-      kind: "shot",
-      target: prepared.target,
-      power: prepared.technique === "header" ? 0.7 : prepared.technique === "volley" ? 0.84 : 0.76,
-      technique: prepared.technique ?? "redirect",
-      preparedPassId: passId,
-    });
+    executeBallAction(state, player, { ...prepared.shotAction!, preparedPassId: passId });
   }
   player.intent = "firstTime";
   player.decisionReason = "firstTimeAction";

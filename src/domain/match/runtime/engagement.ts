@@ -1,8 +1,9 @@
-import { DUEL } from "../config";
+import { DUEL, PHYSICS } from "../config";
 import { add, clamp, distance, dot, length, normalize, scale, subtract } from "../../shared/math";
 import type { MatchState, PlayerRuntime, Vec2 } from "../model";
 import { isEvadedDefender } from "./control";
 import { duelStrength } from "./duel";
+import { playerSkillSpeed } from "./player-metrics";
 
 // As forças de uma disputa (ver `Engagement` em model). Os desfechos que antes eram quatro
 // funções — roubo limpo, cutucada, repelir — agora saem da geometria: se a bola escapou, o
@@ -154,6 +155,21 @@ export const contestForces = (state: MatchState, holder: PlayerRuntime, challeng
  * absurdas para vencer uma mola rígida, e a bola sairia voando em vez de ser arrancada.
  */
 export const gripFactor = (holder: PlayerRuntime, bite: number): number => {
-  const hold = duelStrength(holder, "holder");
+  const hold = duelStrength(holder, "holder") * carrySteadiness(holder);
   return clamp(hold / (hold + bite * DUEL.contestGripBite), DUEL.gripFloor, 1);
+};
+
+/**
+ * O preço de conduzir em disparada. Correr com a bola custa DOMÍNIO, não velocidade: a bola vai
+ * mais solta no pé de quem corre — e é a mesma mão frouxa que a deixa mais fácil de alcançar para
+ * quem chega dividindo. Sem isto, o pique que sobrevive ao toque sairia de graça.
+ */
+const carrySteadiness = (holder: PlayerRuntime): number => {
+  const pace = length(holder.velocity) / Math.max(1, playerSkillSpeed(holder));
+  const overControl = clamp(
+    (pace - PHYSICS.controlledSpeedFactor) / (PHYSICS.sprintCarrySpeedFactor - PHYSICS.controlledSpeedFactor),
+    0,
+    1,
+  );
+  return 1 - overControl * DUEL.carryPaceGripCost;
 };

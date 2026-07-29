@@ -53,7 +53,11 @@ export const pursueBallDecision = (player: PlayerRuntime, state: MatchState, tea
   const race = mine
     ? gap / Math.max(0.12, situation.contactIn) > runSpeed * 0.88 || situation.margin < CONTEST.settleMargin
     : committed || situation.phase !== "controlled";
-  const burst = race && player.sprintCooldown <= 0 && player.sprintEnergy > (mine ? 0.48 : 0.12);
+  // A régua de energia é uma só. Exigir mais de quem vai buscar a PRÓPRIA bola do que de quem vai
+  // tomá-la invertia o lance: o toque à frente sai com 0,26 de barra (ver `dribble-runway`) e o
+  // pique atrás dele pedia 0,48 — o motor autorizava o avanço e proibia a corrida que o completa,
+  // enquanto o adversário disparava com 0,12.
+  const burst = race && player.sprintCooldown <= 0 && player.sprintEnergy > 0.12;
   const raceSpeed = playerSkillSpeed(player) * PHYSICS.burstSpeedFactor;
   return {
     movementTarget: clampToField(target, 3),

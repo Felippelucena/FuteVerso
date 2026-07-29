@@ -1,5 +1,5 @@
 import { DUEL, FIELD, PHYSICS, SHIELD } from "../config";
-import { add, clamp, cross, distance, dot, lerp, length, limit, normalize, rotate, scale, subtract } from "../../shared/math";
+import { add, clamp, cross, distance, dot, length, limit, normalize, rotate, scale, subtract } from "../../shared/math";
 import { desiredBallAnchor } from "../runtime/ball-anchor";
 import { activeChallengers, contestForces, gripFactor } from "../runtime/engagement";
 import type { AgentDecision, BallAction, DribbleStyle, DribbleTouchRange, MatchState, PlayerRuntime, Team, Vec2 } from "../model";
@@ -21,7 +21,7 @@ import { signedMatchNoise } from "../runtime/random";
 import { estimatePassDuration, reachableFlightSeconds, solvePassTrajectory, targetAlongDirection } from "../runtime/pass-trajectory";
 import { laneClearance } from "../runtime/pass-viability";
 import { beginShot, resolveShot } from "../runtime/shot";
-import { predictShotPoint, solveShotTrajectory } from "../runtime/shot-trajectory";
+import { predictShotPoint, shotLaunchSpeed, solveShotTrajectory } from "../runtime/shot-trajectory";
 import { resolveGoalkeeperContact } from "./goalkeeper-system";
 
 const dribbleTravelPlan = (
@@ -231,11 +231,9 @@ export const executeBallAction = (state: MatchState, player: PlayerRuntime, acti
     const quality = clamp((player.profile.skills.finishing * 0.72 + player.profile.skills.control * 0.28) / 100
       - pressure * 0.22 - aerialDifficulty, 0.2, 0.98);
     const direction = rotate(normalize(subtract(action.target, state.ball.position)), signedMatchNoise(state) * (1 - quality) * (technique === "volley" ? 0.64 : 0.5));
-    const skillFactor = 0.78 + player.profile.skills.kickPower / 220;
-    const techniqueSpeed = technique === "header" ? 0.76 : technique === "redirect" ? 0.82 : 1;
-    const speed = lerp(54, 92, action.power) * skillFactor * techniqueSpeed;
+    const speed = shotLaunchSpeed(player.profile.skills, action.power, technique);
     const executedTarget = targetAlongDirection(state.ball.position, action.target, direction);
-    const requestedHeight = clamp(action.targetHeight ?? (technique === "header" ? 2.9 : technique === "volley" ? 2.65 : 0.35), 0.1, GOAL_MOUTH.ceiling - 0.25);
+    const requestedHeight = clamp(action.targetHeight ?? 0.35, 0.1, GOAL_MOUTH.ceiling - 0.25);
     const solution = solveShotTrajectory(state.ball.position, executedTarget, contactHeight, requestedHeight, speed);
     releaseBall(state, player, normalize(solution.velocity), length(solution.velocity), solution.verticalVelocity);
     state.ball.height = contactHeight;

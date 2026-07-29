@@ -356,7 +356,12 @@ export interface PlayerPlan {
 export interface PreparedReceptionAction {
   passId: number;
   kind: PreparedReceptionKind;
-  technique?: ShotTechnique;
+  /**
+   * O chute que ele vai bater, resolvido por quem o avaliou. A execução o desfere como está — antes
+   * ela remontava a ação com uma tabela de força própria e sem altura nenhuma, e o chute que saía
+   * não era o que o jogador tinha avaliado.
+   */
+  shotAction?: Extract<BallAction, { kind: "shot" }>;
   target: Vec2;
   receiverId?: string;
   validFrom: number;

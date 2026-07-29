@@ -10,10 +10,8 @@ export const fatigueSpeedFactor = (player: PlayerRuntime): number =>
   1 - (1 - player.stamina) * STAMINA.fatigueSpeedSlope;
 
 export const playerSpeedLimit = (player: PlayerRuntime, controlsBall: boolean, running = false): number => {
-  // Com a bola colada é sempre close control (lento): avançar em velocidade exige soltar a
-  // bola à frente (knock-on), quando o portador vira dribbleOwner e deixa de "controlar".
   const factor = controlsBall
-    ? PHYSICS.controlledSpeedFactor
+    ? player.sprintTimer > 0 ? PHYSICS.sprintCarrySpeedFactor : PHYSICS.controlledSpeedFactor
     : player.sprintTimer > 0 ? PHYSICS.burstSpeedFactor : running ? PHYSICS.runSpeedFactor : PHYSICS.walkSpeedFactor;
   return playerSkillSpeed(player) * factor * fatigueSpeedFactor(player);
 };
@@ -83,6 +81,7 @@ const updatePlayer = (state: MatchState, player: PlayerRuntime, decision: AgentD
     player.position.y = clamp(player.position.y, player.radius, FIELD.height - player.radius);
     return;
   }
+  const entrySpeed = length(player.velocity);
   const movementGap = distance(decision.movementTarget, player.position);
   const goalkeeperSetting = decision.intent === "preparingSave" && player.profile.position === "goalkeeper";
   // Depois de rebater, o goleiro fica em alerta e se reposiciona em velocidade (não na
@@ -100,14 +99,18 @@ const updatePlayer = (state: MatchState, player: PlayerRuntime, decision: AgentD
     || decision.intent === "knockingOn"
     || decision.intent === "feinting"
   );
+  // O pique é do LANCE, não do toque: quem empurrou a bola à frente e a alcançou segue lançado até
+  // o pique acabar, em vez de parar por ter encostado nela. Fora de um pique, a bola no pé é close
+  // control e avançar exige soltá-la de novo.
+  const sprintCarry = controlsBall && player.sprintTimer > 0;
   const speedFactor = controlsBall
-    ? PHYSICS.controlledSpeedFactor
+    ? sprintCarry ? PHYSICS.sprintCarrySpeedFactor : PHYSICS.controlledSpeedFactor
     : goalkeeperSetting ? GOALKEEPING.approachSpeedFactor
       : goalkeeperAlert ? GOALKEEPING.alertSpeedFactor
         : player.sprintTimer > 0 ? PHYSICS.burstSpeedFactor : running ? PHYSICS.runSpeedFactor : PHYSICS.walkSpeedFactor;
-  // Com a bola colada é sempre close control (lento): um pique residual não acelera nem
-  // conta como disparada; avançar em velocidade exige soltar a bola (knock-on).
-  player.pace = controlsBall ? "closeControl" : player.sprintTimer > 0 || goalkeeperAlert ? "burst" : running || goalkeeperSetting ? "run" : "walk";
+  player.pace = sprintCarry || (!controlsBall && (player.sprintTimer > 0 || goalkeeperAlert)) ? "burst"
+    : controlsBall ? "closeControl"
+      : running || goalkeeperSetting ? "run" : "walk";
   const maximumSpeed = baseSpeed * speedFactor * fatigueSpeedFactor(player);
   const reactionFactor = player.reactionTimer > 0 ? 0.38 : 1;
   const burstAcceleration = player.sprintTimer > 0 ? PHYSICS.burstAccelerationFactor : 1;
@@ -127,7 +130,12 @@ const updatePlayer = (state: MatchState, player: PlayerRuntime, decision: AgentD
   const acceleration = limit(scale(subtract(desired, player.velocity), 1 / dt), accelerationRate);
   player.velocity = add(player.velocity, scale(acceleration, dt));
   player.velocity = scale(player.velocity, Math.exp(-PHYSICS.playerDrag * dt));
-  player.velocity = limit(player.velocity, maximumSpeed * (player.reactionTimer > 0 ? 0.7 : 1));
+  // O teto se alcança FREANDO, e não cortando. Era o único ponto do integrador em que a velocidade
+  // mudava sem passar pela aceleração: quem vinha a 20 u/s e encostava na própria bola adiantada ia
+  // a 9 no mesmo quadro. Isso não é desacelerar, é uma trava — e ela caía justamente no instante em
+  // que o adversário chegava na dividida, com o pique dele inteiro contra um portador parado.
+  const ceiling = maximumSpeed * (player.reactionTimer > 0 ? 0.7 : 1);
+  player.velocity = limit(player.velocity, Math.max(ceiling, entrySpeed - accelerationRate * dt));
   player.position = add(player.position, scale(player.velocity, dt));
   const speed = length(player.velocity);
   if (speed > 0.3 && (!controlsBall || decision.ballAction.kind === "dribble")) player.facing = normalize(player.velocity);

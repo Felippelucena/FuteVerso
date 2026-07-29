@@ -107,6 +107,12 @@ export const PHYSICS = {
   aerialPassLaunchSpeed: 56,
   walkSpeedFactor: 0.62,
   controlledSpeedFactor: 0.68,
+  // Conduzir DENTRO de um pique já lançado. É a velocidade nominal do jogador: mais que acomodar a
+  // bola no pé (0,68) e menos que correr solto (1,32), de modo que conduzir nunca é fugir de quem
+  // vem atrás. Existe porque o pique é do LANCE e não do toque — quem empurrou a bola à frente e a
+  // alcançou não para de correr por ter encostado nela. O preço não é velocidade, é domínio: ver
+  // `DUEL.carryPaceGripCost`.
+  sprintCarrySpeedFactor: 1,
   runSpeedFactor: 1.32,
   burstSpeedFactor: 2.05,
   burstAccelerationFactor: 2.25,
@@ -581,6 +587,10 @@ export const DUEL = {
   // domínio, e não só empurrar a bola — sem isto a mola de controle seria intransponível.
   contestGripBite: 2,
   gripFloor: 0.16,
+  // O que se paga por conduzir em disparada (ver `PHYSICS.sprintCarrySpeedFactor`): quanto do
+  // domínio se perde à velocidade cheia. A bola vai mais solta no pé de quem corre, e quem chega
+  // para dividir encontra uma bola mais fácil de alcançar — é o que impede correr com ela de graça.
+  carryPaceGripCost: 0.35,
   // Quem está perdendo a bola na dividida fica desequilibrado por um instante. É o que impede o
   // portador de reclamar a própria bola perdida no quadro seguinte — sem isso o desarme nunca sai.
   beatenKickCooldown: 0.38,
