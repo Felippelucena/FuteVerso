@@ -413,6 +413,10 @@ export interface ActiveShot {
   team: Team;
   startedAt: number;
   technique: ShotTechnique;
+  /** De onde a bola foi batida. O desfecho precisa dela para saber o que se perdeu. */
+  origin: Vec2;
+  /** O que a chance valia no instante do contato — ver runtime/expected-goals. */
+  expectedGoals: number;
   target: Vec2;
   targetHeight: number;
   expectedArrivalAt: number;
@@ -495,6 +499,19 @@ export interface TeamStats {
   goals: number;
   shots: number;
   shotsOnTarget: number;
+  shotsOffTarget: number;
+  shotsBlocked: number;
+  shotsOnWoodwork: number;
+  shotsInsideBox: number;
+  /**
+   * Gols esperados: a soma do que valia cada chance criada. Não tem par "xG concedido" porque
+   * numa partida ele é, literalmente, a coluna do adversário ao lado.
+   */
+  expectedGoals: number;
+  /** xG dos chutes que vieram de um passe — o crédito de quem deu a bola. */
+  expectedAssists: number;
+  bigChances: number;
+  bigChancesMissed: number;
   saves: number;
   saveAttempts: number;
   catches: number;
@@ -525,13 +542,20 @@ export interface TeamStats {
   tacklesAttempted: number;
   tacklesWon: number;
   fouls: number;
+  offsides: number;
+  corners: number;
+  throwIns: number;
+  goalKicks: number;
+  freeKicks: number;
   goalsFromShots: number;
   goalsFromPasses: number;
   goalsFromDribbles: number;
   possessionSeconds: number;
   reward: number;
   turnoversWon: number;
+  attackingThirdRecoveries: number;
   finalThirdEntries: number;
+  boxEntries: number;
   lineBreaks: number;
   switches: number;
   distanceCovered: number;
@@ -542,11 +566,31 @@ export interface TeamStats {
   phaseSeconds: Record<TacticalPhase, number>;
 }
 
+/**
+ * As colunas de `TeamStats` que são um número só — tudo menos o tempo por fase. É o que uma
+ * tabela "isto soma naquilo" pode apontar sem que o compilador precise acreditar.
+ */
+export type CountableTeamStat = {
+  [K in keyof TeamStats]: TeamStats[K] extends number ? K : never;
+}[keyof TeamStats];
+
 export interface TeamShape {
   width: number;
   depth: number;
   compactness: number;
   lineHeight: number;
+}
+
+/** Zona do campo de ataque cuja visita se conta. */
+export type AttackZone = "finalThird" | "box";
+
+/**
+ * O estado de uma zona entre visitas. Sem ele a bola parada no terço final somaria uma entrada
+ * por quadro: o que se conta é a visita, não o tempo dentro dela.
+ */
+export interface ZoneVisit {
+  inside: boolean;
+  lastEntryAt: number;
 }
 
 export interface TeamTacticalState {
@@ -557,8 +601,7 @@ export interface TeamTacticalState {
   candidatePhase: TacticalPhase;
   candidatePhaseStartedAt: number;
   shape: TeamShape;
-  finalThirdLatched: boolean;
-  lastFinalThirdEntryAt: number;
+  zoneVisits: Record<AttackZone, ZoneVisit>;
   collectivePlan: TeamCollectivePlan | null;
   /** Último homem da atualização anterior. Só existe para dar histerese ao rest defense. */
   safetyPlayerId: string | null;

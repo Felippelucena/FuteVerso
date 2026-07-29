@@ -11,11 +11,17 @@ export interface MatchHeaderViewModel {
   possessionLabel: string;
   bluePossession: number;
   coralPossession: number;
+  blueXg: string;
+  coralXg: string;
+  /** Quanto da barra de xG é do time da casa, em porcentagem. Sem chute ainda, metade. */
+  xgShare: number;
 }
 
 export const createMatchHeaderViewModel = (state: MatchState, teamNames: TeamNames): MatchHeaderViewModel => {
   const total = state.stats.blue.possessionSeconds + state.stats.coral.possessionSeconds;
   const bluePossession = total > 0 ? Math.round(state.stats.blue.possessionSeconds / total * 100) : 50;
+  const blueXg = state.stats.blue.expectedGoals;
+  const coralXg = state.stats.coral.expectedGoals;
   return {
     blueGoals: String(state.stats.blue.goals),
     coralGoals: String(state.stats.coral.goals),
@@ -23,6 +29,9 @@ export const createMatchHeaderViewModel = (state: MatchState, teamNames: TeamNam
     possessionLabel: state.ballControlTeam ? `${teamLabel(state.ballControlTeam, teamNames)} com a bola` : "Bola em disputa",
     bluePossession,
     coralPossession: 100 - bluePossession,
+    blueXg: blueXg.toFixed(2),
+    coralXg: coralXg.toFixed(2),
+    xgShare: blueXg + coralXg > 0 ? Math.round(blueXg / (blueXg + coralXg) * 100) : 50,
   };
 };
 

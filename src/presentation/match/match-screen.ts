@@ -8,12 +8,13 @@ import { PlanEditor } from "../tactics/plan-editor";
 import { GameRenderer } from "../canvas/game-renderer";
 import { find, render } from "../app/dom";
 import { html, type Html } from "../app/html";
-import { DUTY_LABELS, formatClock, percentage, PHASE_LABELS, type TeamNames } from "../app/labels";
+import { DUTY_LABELS, formatClock, PHASE_LABELS, type TeamNames } from "../app/labels";
 import { icon } from "../app/icons";
 import type { Screen, ScreenDefinition } from "../app/screen";
 import { Section } from "../app/section";
 import { formatMatchEvent } from "./format-match-event";
 import { RosterList, rosterSignature } from "./match-roster";
+import { createStatGroups, statGroupsSignature } from "./match-stats";
 import { createContestMetric, createMatchHeaderViewModel, createMatchSummary, createPlayerDetailViewModel, playerDetailSignature, type PlayerDetailViewModel } from "./match-view-model";
 import { drawTacticalMap } from "./tactical-map";
 import { teamNamesOf } from "./team-names";
@@ -43,6 +44,9 @@ const matchScreenTemplate = (): Html => html`
         <div><span>POSSE <em id="possession-name-blue">CASA</em></span><strong id="possession-blue">50%</strong></div>
         <div class="possession-track"><span id="possession-fill"></span></div>
         <div><span>POSSE <em id="possession-name-coral">VISITANTE</em></span><strong id="possession-coral">50%</strong></div>
+        <div class="strip-minor"><span>xG</span><strong id="xg-blue">0.00</strong></div>
+        <div class="possession-track possession-track--xg"><span id="xg-fill"></span></div>
+        <div class="strip-minor"><strong id="xg-coral">0.00</strong><span>xG</span></div>
       </div>
     </div>
     <aside class="inspector" aria-label="Painel da partida">
@@ -141,6 +145,7 @@ export class MatchScreen implements Screen {
   private selectedPlayerId: string;
   private activeTab: InspectorTab = "players";
   private detailModel: PlayerDetailViewModel | null = null;
+  private openGroups: Set<string> | null = null;
   private readonly renderer: GameRenderer;
   private readonly roster: RosterList;
   private readonly rosterSection: Section;
@@ -212,6 +217,9 @@ export class MatchScreen implements Screen {
     this.find("#possession-blue").textContent = `${header.bluePossession}%`;
     this.find("#possession-coral").textContent = `${header.coralPossession}%`;
     this.find<HTMLSpanElement>("#possession-fill").style.width = `${header.bluePossession}%`;
+    this.find("#xg-blue").textContent = header.blueXg;
+    this.find("#xg-coral").textContent = header.coralXg;
+    this.find<HTMLSpanElement>("#xg-fill").style.width = `${header.xgShare}%`;
     this.renderTimeline();
     this.find<HTMLButtonElement>("#pause-button").disabled = state.finished;
     // Só a aba visível é montada: as outras duas nascem `hidden` e reconstruí-las é desperdício.
@@ -308,6 +316,14 @@ export class MatchScreen implements Screen {
       this.session.resumeLive();
       this.renderScrubFrame();
     });
+    // `toggle` não borbulha: só a fase de captura enxerga o grupo que o leitor abriu.
+    this.find("#analysis-table").addEventListener("toggle", (event) => {
+      const details = event.target as HTMLDetailsElement;
+      const title = details.dataset?.statGroup;
+      if (!title || !this.openGroups) return;
+      if (details.open) this.openGroups.add(title);
+      else this.openGroups.delete(title);
+    }, true);
     this.find("#match-roster").addEventListener("click", (event) => {
       const button = (event.target as HTMLElement).closest<HTMLButtonElement>("[data-inspect-player]");
       if (!button) return;
@@ -461,11 +477,6 @@ export class MatchScreen implements Screen {
       <div class="detail-metrics">${detail.metrics.map((item) => html`<span><small>${item.label}</small><strong>${item.value}</strong></span>`)}</div>`);
   }
 
-  private averageShape(team: Team, key: "widthIntegral" | "depthIntegral" | "compactnessIntegral"): number {
-    const stats = this.state.stats[team];
-    return stats.spatialSeconds > 0 ? stats[key] / stats.spatialSeconds : 0;
-  }
-
   private renderAnalysis(): void {
     const state = this.state;
     for (const team of ["blue", "coral"] as const) {
@@ -491,37 +502,33 @@ export class MatchScreen implements Screen {
           .join(" · ");
       drawTacticalMap(this.find<HTMLCanvasElement>(`#tactical-map-${team}`), state, team);
     }
-    this.analysisSection.update(this.analysisRows().flat().join("|") + this.teamNames.blue + this.teamNames.coral);
+    this.analysisSection.update(statGroupsSignature(createStatGroups(state)) + this.teamNames.blue + this.teamNames.coral);
     this.find("#contest-metric").textContent = createContestMetric(state);
     this.find("#analysis-title").textContent = state.finished ? "Relatório final" : "Relatório ao vivo";
     this.find("#match-summary").textContent = createMatchSummary(state, this.teamNames);
   }
 
+  /**
+   * A tabela se refaz a cada número que muda, então quais grupos estão abertos não pode morar no
+   * DOM: o que o leitor abriu vive aqui, e o view-model só decide o estado da primeira montagem.
+   */
   private renderAnalysisTable(): void {
-    render(this.find("#analysis-table"), html`<div class="analysis-row analysis-row--head"><span>MÉTRICA</span><strong>${this.teamNames.blue}</strong><strong>${this.teamNames.coral}</strong></div>${this.analysisRows().map(([label, blueValue, coralValue]) => html`<div class="analysis-row"><span>${label}</span><strong>${blueValue}</strong><strong>${coralValue}</strong></div>`)}`);
-  }
-
-  /** As próprias linhas servem de assinatura da seção: são exatamente o conteúdo exibido. */
-  private analysisRows(): (string | number)[][] {
-    const blue = this.state.stats.blue;
-    const coral = this.state.stats.coral;
-    return [
-      ["Passes certos", `${blue.completedPasses}/${blue.passes}`, `${coral.completedPasses}/${coral.passes}`],
-      ["Precisão", percentage(blue.completedPasses, blue.passes), percentage(coral.completedPasses, coral.passes)],
-      ["Passes longos", `${blue.completedLongPasses}/${blue.longPasses}`, `${coral.completedLongPasses}/${coral.longPasses}`],
-      ["Passes aéreos", `${blue.completedAerialPasses}/${blue.aerialPasses}`, `${coral.completedAerialPasses}/${coral.aerialPasses}`],
-      ["Finalizações", blue.shots, coral.shots], ["Chutes no alvo", blue.shotsOnTarget, coral.shotsOnTarget], ["Defesas", blue.saves, coral.saves],
-      ["Encaixes", blue.catches, coral.catches], ["Rebotes", blue.parries, coral.parries], ["Raspões", blue.glancingTouches, coral.glancingTouches],
-      ["Saídas aéreas", blue.highBallClaims, coral.highBallClaims], ["Socos", blue.punches, coral.punches],
-      ["De primeira", blue.firstTimeShots, coral.firstTimeShots], ["De longe", blue.longShots, coral.longShots], ["Cruzamentos", blue.crosses, coral.crosses],
-      ["Fintas", `${blue.feintsCompleted}/${blue.feintsAttempted}`, `${coral.feintsCompleted}/${coral.feintsAttempted}`], ["Toques longos", blue.sprintDribbles, coral.sprintDribbles],
-      ["Desarmes", `${blue.tacklesWon}/${blue.tacklesAttempted}`, `${coral.tacklesWon}/${coral.tacklesAttempted}`], ["Recuperações", blue.turnoversWon, coral.turnoversWon],
-      ["Faltas", blue.fouls, coral.fouls],
-      ["Avanços agressivos", blue.aggressiveBreaks, coral.aggressiveBreaks],
-      ["Entradas no terço final", blue.finalThirdEntries, coral.finalThirdEntries], ["Quebras de linha", blue.lineBreaks, coral.lineBreaks], ["Inversões", blue.switches, coral.switches],
-      ["Largura média", Math.round(this.averageShape("blue", "widthIntegral")), Math.round(this.averageShape("coral", "widthIntegral"))],
-      ["Compactação média", Math.round(this.averageShape("blue", "compactnessIntegral")), Math.round(this.averageShape("coral", "compactnessIntegral"))],
-    ];
+    const groups = createStatGroups(this.state);
+    this.openGroups ??= new Set(groups.filter((group) => group.open).map((group) => group.title));
+    const names = this.teamNames;
+    render(this.find("#analysis-table"), html`
+      <div class="stat-head"><strong>${names.blue}</strong><span>MÉTRICA</span><strong>${names.coral}</strong></div>
+      ${groups.map((group) => html`
+        <details class="stat-group" data-stat-group="${group.title}" ${this.openGroups!.has(group.title) ? "open" : ""}>
+          <summary>${group.title}<em>${group.summary}</em></summary>
+          ${group.rows.map((row) => html`
+            <div class="stat-row">
+              <strong class="stat-value">${row.blue}</strong>
+              <span>${row.label}</span>
+              <strong class="stat-value">${row.coral}</strong>
+              <i class="stat-bar"><b style="width:${(row.share * 100).toFixed(1)}%"></b></i>
+            </div>`)}
+        </details>`)}`);
   }
 
   private find<T extends HTMLElement>(selector: string): T {

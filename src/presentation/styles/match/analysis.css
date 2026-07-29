@@ -63,22 +63,108 @@
   border-top: 1px solid var(--line);
 }
 
-.analysis-row {
-  min-height: 24px;
+/* O cabeçalho usa a mesma grade das linhas: o nome do time fica sobre a coluna dele. */
+.stat-head,
+.stat-row {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 46px 46px;
+  grid-template-columns: 40px minmax(0, 1fr) 40px;
   align-items: center;
-  border-bottom: 1px solid var(--line-soft);
+  column-gap: 8px;
+}
+
+.stat-head {
+  min-height: 21px;
+  font-size: var(--type-3xs);
+  font-weight: 800;
+}
+
+.stat-head strong { font-size: var(--type-3xs); }
+
+.stat-head strong:first-child { color: var(--blue-soft); }
+
+.stat-head strong:last-child { color: var(--coral-soft); text-align: right; }
+
+.stat-head span { color: var(--text-muted); text-align: center; }
+
+.stat-group { border-bottom: 1px solid var(--line); }
+
+.stat-group > summary {
+  min-height: 30px;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--text-muted);
+  font-size: var(--type-3xs);
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  list-style: none;
+  cursor: pointer;
+}
+
+.stat-group > summary::-webkit-details-marker { display: none; }
+
+.stat-group > summary::before {
+  content: "";
+  width: 0;
+  height: 0;
+  flex: none;
+  border-top: 3px solid transparent;
+  border-bottom: 3px solid transparent;
+  border-left: 4px solid currentcolor;
+}
+
+.stat-group[open] > summary::before { transform: rotate(90deg); }
+
+.stat-group > summary:hover,
+.stat-group > summary:focus-visible {
+  color: var(--text-soft);
+  outline: none;
+}
+
+.stat-group > summary em {
+  margin-left: auto;
+  font-style: normal;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0;
+  opacity: 0.72;
+}
+
+.stat-row {
+  row-gap: 5px;
+  padding: 6px 0 7px;
   font-size: var(--type-2xs);
 }
 
-.analysis-row span { color: var(--text-muted); }
+.stat-row + .stat-row { border-top: 1px solid var(--line-soft); }
 
-.analysis-row strong { text-align: right; font-size: var(--type-2xs); font-variant-numeric: tabular-nums; }
+.stat-group > .stat-row:last-child { margin-bottom: 7px; }
 
-.analysis-row--head { min-height: 21px; font-size: var(--type-3xs); font-weight: 800; }
+.stat-row span { color: var(--text-soft); text-align: center; }
 
-.analysis-row--head strong { color: var(--text-muted); font-size: var(--type-3xs); }
+/* A cor do número diz de quem ele é: o cabeçalho rola para fora, a linha não. */
+.stat-value {
+  font-size: var(--type-sm);
+  font-variant-numeric: tabular-nums;
+}
+
+.stat-row .stat-value:first-of-type { color: var(--blue-soft); }
+
+.stat-row .stat-value:last-of-type { color: var(--coral-soft); text-align: right; }
+
+/* Mesma peça da faixa de posse sob o campo: trilho coral, preenchimento azul. */
+.stat-bar {
+  grid-column: 1 / -1;
+  height: 3px;
+  display: block;
+  background: var(--coral);
+}
+
+.stat-bar b {
+  height: 100%;
+  display: block;
+  border-right: 1px solid var(--surface-1);
+  background: var(--blue);
+}
 
 .match-summary {
   margin-top: 10px;

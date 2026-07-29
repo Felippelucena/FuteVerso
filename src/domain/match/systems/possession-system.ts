@@ -302,6 +302,7 @@ const resolveOffsideOnTouch = (state: MatchState, toucher: PlayerRuntime): boole
   if (state.pendingPass) emitCognitiveEvent(state, "passResolved", null, { passId: state.pendingPass.id, outcome: "out" });
   state.pendingPass = null;
   resolveShot(state, "dead");
+  state.stats[watch.team].offsides += 1;
   emitMatchEvent(state, {
     type: "offside-called",
     team: watch.team,

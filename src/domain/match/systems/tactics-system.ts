@@ -3,7 +3,9 @@ import { clamp, distance } from "../../shared/math";
 import { mentalityBias, type TeamDirectives } from "../../tactics/model";
 import type {
   AttackChannel,
+  AttackZone,
   BuildUpStyle,
+  CountableTeamStat,
   DefensiveBlock,
   MatchState,
   PlayerRuntime,
@@ -13,9 +15,11 @@ import type {
   TeamCollectivePlan,
   TeamShape,
   TeamTacticalState,
+  Vec2,
 } from "../model";
 import { perceive } from "../runtime/ball-situation";
 import { activeBallPlayerId } from "../runtime/control";
+import { insidePenaltyArea } from "../runtime/formation-geometry";
 import { attackingProgress, channelY } from "../runtime/pitch";
 import { predictPlayerPosition, predictedSpaceAt, predictionHorizon } from "../runtime/prediction";
 import { buildAssignments, placementFor } from "./assignment-system";
@@ -36,8 +40,11 @@ export const createTacticalState = (directives: TeamDirectives): TeamTacticalSta
   candidatePhase: "midBlock",
   candidatePhaseStartedAt: 0,
   shape: { width: 0, depth: 0, compactness: 0, lineHeight: 0 },
-  finalThirdLatched: false,
-  lastFinalThirdEntryAt: -POSSESSION.finalThirdEntryCooldown,
+  // A carência começa vencida: a primeira visita a cada zona conta desde o apito inicial.
+  zoneVisits: {
+    finalThird: { inside: false, lastEntryAt: -POSSESSION.finalThirdEntryCooldown },
+    box: { inside: false, lastEntryAt: -POSSESSION.boxEntryCooldown },
+  },
   collectivePlan: null,
   safetyPlayerId: null,
 });
@@ -219,6 +226,53 @@ const collectivePlanNeedsRefresh = (state: MatchState, team: Team): boolean => {
 };
 
 /**
+ * As zonas de ataque cuja visita se conta. `entered` e `left` são propositalmente diferentes: a
+ * histerese impede que a bola oscilando na fronteira some uma entrada por quadro, e a carência
+ * impede que a mesma investida conte duas vezes.
+ */
+interface AttackZoneRule {
+  readonly id: AttackZone;
+  readonly stat: CountableTeamStat;
+  readonly cooldown: number;
+  readonly entered: (team: Team, ball: Vec2) => boolean;
+  readonly left: (team: Team, ball: Vec2) => boolean;
+}
+
+const ATTACK_ZONES: readonly AttackZoneRule[] = [
+  {
+    id: "finalThird",
+    stat: "finalThirdEntries",
+    cooldown: POSSESSION.finalThirdEntryCooldown,
+    entered: (team, ball) => attackingProgress(team, ball.x) >= POSSESSION.finalThirdEnter,
+    left: (team, ball) => attackingProgress(team, ball.x) <= POSSESSION.finalThirdRearm,
+  },
+  {
+    id: "box",
+    stat: "boxEntries",
+    cooldown: POSSESSION.boxEntryCooldown,
+    entered: (team, ball) => insidePenaltyArea(team, ball, false),
+    left: (team, ball) => attackingProgress(team, ball.x) <= POSSESSION.boxRearm,
+  },
+];
+
+/**
+ * Conta a visita de um time a uma zona do campo de ataque — a visita, não o tempo dentro dela.
+ * Só conta com a posse confirmada: bola que o adversário toca para dentro da própria área não é
+ * ataque de ninguém.
+ */
+const countZoneVisit = (state: MatchState, team: Team, zone: AttackZoneRule): void => {
+  const visit = state.tactics[team].zoneVisits[zone.id];
+  const ball = state.ball.position;
+  const withPossession = state.possessionTeam === team;
+  if (!withPossession || zone.left(team, ball)) visit.inside = false;
+  if (!withPossession || !zone.entered(team, ball) || visit.inside) return;
+  if (state.elapsed - visit.lastEntryAt < zone.cooldown) return;
+  state.stats[team][zone.stat] += 1;
+  visit.inside = true;
+  visit.lastEntryAt = state.elapsed;
+};
+
+/**
  * O passo de percepção do coletivo: refaz o quadro (`perceive`) e o contexto que sai dele —
  * postura, fase, plano e colocação. Quem manda na cadência é o motor
  * (`COGNITION.perceptionSeconds`), e o `dt` é o tempo desde a leitura anterior, para as integrais
@@ -263,14 +317,7 @@ export const updateTacticalContext = (state: MatchState, dt: number): void => {
         previousSafetyId: tactical.safetyPlayerId,
       });
     }
-    const progress = attackingProgress(team, state.ball.position.x);
-    if (state.possessionTeam !== team || progress <= POSSESSION.finalThirdRearm) tactical.finalThirdLatched = false;
-    const inFinalThird = state.possessionTeam === team && progress >= POSSESSION.finalThirdEnter;
-    if (inFinalThird && !tactical.finalThirdLatched && state.elapsed - tactical.lastFinalThirdEntryAt >= POSSESSION.finalThirdEntryCooldown) {
-      state.stats[team].finalThirdEntries += 1;
-      tactical.finalThirdLatched = true;
-      tactical.lastFinalThirdEntryAt = state.elapsed;
-    }
+    for (const zone of ATTACK_ZONES) countZoneVisit(state, team, zone);
     if (dt <= 0) continue;
     state.stats[team].phaseSeconds[tactical.phase] += dt;
     state.stats[team].widthIntegral += shape.width * dt;

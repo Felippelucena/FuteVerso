@@ -3,6 +3,7 @@ import { clamp, distance } from "../../shared/math";
 import type { MatchState, PlayerRuntime, Team } from "../model";
 import { policyLearningBounds } from "../../roster/personality";
 import { emitCognitiveEvent } from "./cognitive-events";
+import { attackingProgress } from "./pitch";
 
 export const pressureAt = (state: MatchState, player: PlayerRuntime): number => {
   const closest = Math.min(...state.players.filter((other) => other.team !== player.team).map((other) => distance(other.position, player.position)));
@@ -38,7 +39,13 @@ export const adaptPlayerPolicy = (
 const confirmPossession = (state: MatchState, team: Team): void => {
   const previous = state.lastControlledTeam;
   if (previous !== team) {
-    if (previous) state.stats[team].turnoversWon += 1;
+    if (previous) {
+      state.stats[team].turnoversWon += 1;
+      // Onde a bola foi recuperada é o que separa a saída de bola da pressão alta que gera chance.
+      if (attackingProgress(team, state.ball.position.x) >= POSSESSION.finalThirdEnter) {
+        state.stats[team].attackingThirdRecoveries += 1;
+      }
+    }
     state.previousControlledTeam = previous;
     state.lastControlledTeam = team;
     state.controlChangedAt = state.elapsed;

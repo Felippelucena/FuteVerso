@@ -425,6 +425,34 @@ describe("qualidade coletiva da simulacao", () => {
     expect(state.stats.blue.finalThirdEntries).toBe(2);
   });
 
+  // Mesmo mecanismo do terço final, aplicado à grande área: a segunda zona existe justamente para
+  // provar que a regra é uma só. Contar por quadro daria dezenas de entradas numa investida.
+  it("usa latch e cooldown nas entradas da area", () => {
+    const state = createTestMatch(1001);
+    startOpenPlay(state);
+    state.elapsed = 10;
+    state.possessionTeam = "blue";
+    state.ballControlTeam = "blue";
+    state.lastControlledTeam = "blue";
+    state.ball.position = { x: FIELD.width - 5, y: FIELD.height / 2 };
+    for (let tick = 0; tick < 12; tick += 1) updateTacticalContext(state, 0);
+    expect(state.stats.blue.boxEntries).toBe(1);
+
+    // Saiu da área, mas não recuou o bastante para rearmar: voltar não é entrada nova.
+    state.ball.position.x = FIELD.width * 0.8;
+    updateTacticalContext(state, 0);
+    state.ball.position.x = FIELD.width - 5;
+    updateTacticalContext(state, 0);
+    expect(state.stats.blue.boxEntries).toBe(1);
+
+    state.ball.position.x = FIELD.width * 0.7;
+    updateTacticalContext(state, 0);
+    state.elapsed = 10 + POSSESSION.boxEntryCooldown + 0.1;
+    state.ball.position.x = FIELD.width - 5;
+    updateTacticalContext(state, 0);
+    expect(state.stats.blue.boxEntries).toBe(2);
+  });
+
   it("aplica lateral para o adversario do ultimo toque", () => {
     const state = createTestMatch(123);
     startOpenPlay(state);

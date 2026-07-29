@@ -21,7 +21,7 @@ const createState = (seed = 21): MatchState => {
  * Põe a bola no pé do atacante coral, virado para a meta azul, e manda chutar. Ninguém no caminho
  * além do goleiro: o cenário mede o desfecho do chute, não o zagueiro que o corta antes.
  */
-const shootAtBlueGoal = (state: MatchState, fromX: number): void => {
+const shootAtBlueGoal = (state: MatchState, fromX: number, targetY = FIELD.height / 2): void => {
   const striker = state.players.find((player) => player.profile.id === "maya-fw")!;
   for (const player of state.players) {
     if (player === striker || player.profile.position === "goalkeeper") continue;
@@ -39,7 +39,7 @@ const shootAtBlueGoal = (state: MatchState, fromX: number): void => {
   state.ball.controlStartedAt = state.elapsed;
   executeBallAction(state, striker, {
     kind: "shot",
-    target: { x: 0, y: FIELD.height / 2 },
+    target: { x: 0, y: targetY },
     targetHeight: 0.4,
     power: 0.9,
     technique: "power",
@@ -50,6 +50,12 @@ const totals = (state: MatchState) => ({
   shots: state.stats.coral.shots,
   onTarget: state.stats.coral.shotsOnTarget,
 });
+
+/** Quanto dos chutes já foi classificado. Nunca pode passar de `shots`. */
+const resolved = (state: MatchState): number => {
+  const stats = state.stats.coral;
+  return stats.shotsOnTarget + stats.shotsOffTarget + stats.shotsBlocked + stats.shotsOnWoodwork;
+};
 
 describe("ciclo de vida do chute", () => {
   it("nao conta chute no alvo no instante do chute — so quando ele termina", () => {
@@ -73,7 +79,26 @@ describe("ciclo de vida do chute", () => {
     expect(totals(state)).toEqual({ shots: 1, onTarget: 1 });
   });
 
-  it("a estatistica nunca anda para tras", () => {
+  /**
+   * O chute que sai pela linha é o desfecho mais comum do futebol, e era o único que não somava em
+   * lugar nenhum: o reinício o fechava como jogada desfeita antes de alguém classificá-lo.
+   */
+  it("conta como fora o chute que sai pela linha de fundo", () => {
+    const state = createState();
+    // Mirando o canto da linha de fundo, bem por fora do poste: ninguém resolve, a bola sai.
+    shootAtBlueGoal(state, FIELD.width * 0.28, 2);
+
+    for (let tick = 0; tick < 600 && state.activeShot; tick += 1) stepMatch(state, FIXED_STEP);
+
+    expect(state.activeShot).toBeNull();
+    expect(state.stats.coral.shotsOffTarget).toBe(1);
+    expect(totals(state)).toEqual({ shots: 1, onTarget: 0 });
+    // Âncora do cenário: foi a saída pela linha que resolveu, não o goleiro nem um bloqueio.
+    expect(state.stats.blue.saves).toBe(0);
+    expect(state.stats.coral.shotsBlocked).toBe(0);
+  });
+
+  it("a estatistica nunca anda para tras, e cada chute cai em uma coluna so", () => {
     const state = createState(7);
     shootAtBlueGoal(state, FIELD.width * 0.3);
     let highest = 0;
@@ -84,6 +109,9 @@ describe("ciclo de vida do chute", () => {
       expect(onTarget).toBeGreaterThanOrEqual(highest);
       highest = onTarget;
       expect(onTarget).toBeLessThanOrEqual(state.stats.coral.shots);
+      expect(resolved(state)).toBeLessThanOrEqual(state.stats.coral.shots);
     }
+    // Discrimina: o laço acima passaria de graça se nenhum chute tivesse sido classificado.
+    expect(resolved(state)).toBeGreaterThan(0);
   });
 });

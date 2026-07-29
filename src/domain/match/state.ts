@@ -21,7 +21,10 @@ const clone = <T>(value: T): T => JSON.parse(JSON.stringify(value)) as T;
 const clamp01 = (value: number): number => Math.min(1, Math.max(0, value));
 
 const teamStats = () => ({
-  goals: 0, shots: 0, shotsOnTarget: 0, saves: 0, saveAttempts: 0,
+  goals: 0, shots: 0, shotsOnTarget: 0, shotsOffTarget: 0, shotsBlocked: 0,
+  shotsOnWoodwork: 0, shotsInsideBox: 0,
+  expectedGoals: 0, expectedAssists: 0, bigChances: 0, bigChancesMissed: 0,
+  saves: 0, saveAttempts: 0,
   catches: 0, parries: 0, glancingTouches: 0, highBallClaims: 0, punches: 0,
   passes: 0, completedPasses: 0,
   longPasses: 0, completedLongPasses: 0, aerialPasses: 0, completedAerialPasses: 0,
@@ -30,9 +33,11 @@ const teamStats = () => ({
   crosses: 0, cutbacks: 0, throughBalls: 0, firstTimeShots: 0,
   headers: 0, volleys: 0, longShots: 0, aggressiveBreaks: 0,
   tacklesAttempted: 0, tacklesWon: 0, fouls: 0,
+  offsides: 0, corners: 0, throwIns: 0, goalKicks: 0, freeKicks: 0,
   goalsFromShots: 0, goalsFromPasses: 0, goalsFromDribbles: 0,
   possessionSeconds: 0, reward: 0,
-  turnoversWon: 0, finalThirdEntries: 0, lineBreaks: 0, switches: 0, distanceCovered: 0,
+  turnoversWon: 0, attackingThirdRecoveries: 0,
+  finalThirdEntries: 0, boxEntries: 0, lineBreaks: 0, switches: 0, distanceCovered: 0,
   widthIntegral: 0, depthIntegral: 0, compactnessIntegral: 0, spatialSeconds: 0,
   phaseSeconds: createPhaseSeconds(),
 });

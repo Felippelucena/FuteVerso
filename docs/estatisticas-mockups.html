@@ -1,0 +1,1772 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>FuteVerso · Estatísticas da partida</title>
+<style>
+  :root {
+    /* Tokens do projeto — src/presentation/styles/tokens.css, sem alteração. */
+    --surface-0: #0d110f;
+    --surface-1: #101512;
+    --surface-2: #151a17;
+    --surface-3: #1a211d;
+    --surface-hover: #202722;
+    --surface-track: #2a322d;
+    --surface-pitch: #17201c;
+
+    --line: #303833;
+    --line-soft: #282f2b;
+    --line-strong: #465049;
+    --line-hover: #718078;
+
+    --text: #eef2ef;
+    --text-soft: #c6cfca;
+    --text-muted: #929d97;
+
+    --blue: #3b82f6;
+    --blue-soft: #8fb4ff;
+    --coral: #f36f56;
+    --coral-soft: #ff9e8b;
+    --lime: #b9df62;
+    --amber: #f5c451;
+    --danger: #e06a5c;
+
+    --type-3xs: 7px;
+    --type-2xs: 8px;
+    --type-xs: 9px;
+    --type-sm: 10px;
+    --type-md: 11px;
+    --type-lg: 13px;
+    --type-xl: 15px;
+
+    --sans: "Inter Variable", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+    --mono: ui-monospace, "Cascadia Mono", "SF Mono", Consolas, monospace;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background: var(--surface-0);
+    color: var(--text);
+    font-family: var(--sans);
+    font-synthesis: none;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .doc {
+    max-width: 1160px;
+    margin: 0 auto;
+    padding: 56px 28px 96px;
+    display: flex;
+    flex-direction: column;
+    gap: 56px;
+  }
+
+  /* ---------- cabeçalho do documento ---------- */
+
+  .masthead { display: flex; flex-direction: column; gap: 18px; }
+
+  .eyebrow {
+    color: var(--lime);
+    font-family: var(--mono);
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+  }
+
+  h1 {
+    margin: 0;
+    max-width: 22ch;
+    font-size: clamp(30px, 5vw, 46px);
+    font-weight: 800;
+    letter-spacing: -0.03em;
+    line-height: 1.04;
+    text-wrap: balance;
+  }
+
+  .deck {
+    margin: 0;
+    max-width: 62ch;
+    color: var(--text-soft);
+    font-size: 16px;
+    line-height: 1.6;
+  }
+
+  .masthead-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px 22px;
+    padding-top: 8px;
+    border-top: 1px solid var(--line);
+    color: var(--text-muted);
+    font-family: var(--mono);
+    font-size: 11px;
+  }
+
+  .masthead-meta b { color: var(--text-soft); font-weight: 600; }
+
+  /* ---------- controles do documento ---------- */
+
+  .doc-controls {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 14px 22px;
+    padding: 14px 18px;
+    border: 1px solid var(--line);
+    background: var(--surface-1);
+  }
+
+  .legend { display: flex; flex-wrap: wrap; gap: 8px 18px; }
+
+  .legend span {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    color: var(--text-soft);
+    font-size: 12px;
+  }
+
+  .dot {
+    width: 8px;
+    height: 8px;
+    flex: none;
+    border-radius: 50%;
+  }
+
+  .dot--have { background: var(--lime); }
+  .dot--derive { background: var(--amber); }
+  .dot--new { border: 1.5px solid var(--line-hover, #718078); background: transparent; }
+
+  .annot-toggle {
+    margin-left: auto;
+    display: inline-flex;
+    align-items: center;
+    gap: 9px;
+    color: var(--text-muted);
+    font-size: 12px;
+    cursor: pointer;
+    user-select: none;
+  }
+
+  .annot-toggle input { accent-color: var(--lime); width: 14px; height: 14px; cursor: pointer; }
+
+  /* ---------- seções ---------- */
+
+  .wave { display: flex; flex-direction: column; gap: 22px; }
+
+  .wave-head { display: flex; flex-direction: column; gap: 7px; }
+
+  .wave-tag {
+    display: flex;
+    align-items: baseline;
+    gap: 12px;
+    color: var(--text-muted);
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+
+  .wave-tag b { color: var(--lime); font-size: 22px; font-weight: 700; letter-spacing: -0.02em; }
+
+  .wave-head h2 {
+    margin: 0;
+    font-size: 24px;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    text-wrap: balance;
+  }
+
+  .wave-body {
+    display: grid;
+    grid-template-columns: 330px minmax(0, 1fr);
+    gap: 44px;
+    align-items: start;
+  }
+
+  .wave-body--wide { grid-template-columns: minmax(0, 1fr); }
+
+  /* ---------- palco da maquete ---------- */
+
+  .stage { display: flex; flex-direction: column; gap: 10px; }
+
+  .ruler {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    color: var(--text-muted);
+    font-family: var(--mono);
+    font-size: 10px;
+  }
+
+  .ruler::before,
+  .ruler::after {
+    content: "";
+    height: 1px;
+    flex: 1;
+    background: var(--line);
+  }
+
+  .switcher {
+    display: inline-flex;
+    align-self: flex-start;
+    border: 1px solid var(--line);
+    background: var(--surface-1);
+  }
+
+  .switcher button {
+    padding: 6px 13px;
+    border: 0;
+    background: transparent;
+    color: var(--text-muted);
+    font-family: var(--sans);
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    cursor: pointer;
+  }
+
+  .switcher button + button { border-left: 1px solid var(--line); }
+
+  .switcher button[aria-pressed="true"] { background: var(--surface-hover); color: var(--lime); }
+
+  .switcher button:focus-visible { outline: 2px solid var(--lime); outline-offset: -2px; }
+
+  /* ---------- réplica do inspetor (330px reais) ---------- */
+
+  .panel {
+    width: 330px;
+    max-width: 100%;
+    border: 1px solid var(--line);
+    background: var(--surface-2);
+    font-size: var(--type-sm);
+  }
+
+  .panel-heading {
+    min-height: 60px;
+    padding: 11px 18px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    border-bottom: 1px solid var(--line);
+  }
+
+  .panel-heading > div { display: flex; flex-direction: column; gap: 3px; }
+
+  .panel-eyebrow {
+    color: var(--text-muted);
+    font-size: var(--type-3xs);
+    font-weight: 800;
+    letter-spacing: 0.08em;
+  }
+
+  .panel-heading h3 { margin: 0; font-size: var(--type-xl); font-weight: 700; }
+
+  .panel-heading .glyph { color: var(--text-muted); font-size: 13px; }
+
+  .panel-tabs {
+    min-height: 40px;
+    padding: 0 10px;
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 3px;
+    border-bottom: 1px solid var(--line);
+    background: var(--surface-1);
+  }
+
+  .panel-tabs span {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-bottom: 2px solid transparent;
+    color: var(--text-muted);
+    font-size: var(--type-sm);
+    font-weight: 750;
+  }
+
+  .panel-tabs span.is-active { border-bottom-color: var(--lime); color: var(--text); }
+
+  .panel-body { padding: 14px 18px 18px; }
+
+  .panel-scroll { max-height: 560px; overflow-y: auto; scrollbar-width: thin; scrollbar-color: var(--line-strong) transparent; }
+
+  .panel-scroll::-webkit-scrollbar { width: 6px; }
+  .panel-scroll::-webkit-scrollbar-thumb { border-radius: 999px; background: var(--line-strong); }
+
+  .panel-topline {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding-bottom: 11px;
+    border-bottom: 1px solid var(--line);
+  }
+
+  .panel-topline strong { font-size: var(--type-lg); font-weight: 700; }
+  .panel-topline em { color: var(--text-muted); font-size: var(--type-2xs); font-style: normal; font-weight: 750; }
+
+  .clubline {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+    align-items: center;
+    gap: 8px;
+    padding: 11px 0;
+    border-bottom: 1px solid var(--line);
+  }
+
+  .clubline span { overflow: hidden; font-size: var(--type-xs); font-weight: 800; text-overflow: ellipsis; white-space: nowrap; }
+  .clubline .home { color: var(--blue-soft); }
+  .clubline .away { color: var(--coral-soft); text-align: right; }
+  .clubline b { font-size: var(--type-lg); font-variant-numeric: tabular-nums; letter-spacing: 0.04em; }
+
+  /* ---------- tabela plana (estado atual) ---------- */
+
+  .flat { border-top: 1px solid var(--line); }
+
+  .flat-row {
+    min-height: 24px;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 46px 46px;
+    align-items: center;
+    border-bottom: 1px solid var(--line-soft);
+    font-size: var(--type-2xs);
+  }
+
+  .flat-row span { color: var(--text-muted); }
+  .flat-row strong { text-align: right; font-size: var(--type-2xs); font-variant-numeric: tabular-nums; }
+  .flat-row--head { min-height: 21px; font-size: var(--type-3xs); font-weight: 800; }
+  .flat-row--head strong { color: var(--text-muted); font-size: var(--type-3xs); }
+
+  /* ---------- estatística agrupada (proposta) ---------- */
+
+  .sgroup { border-bottom: 1px solid var(--line); }
+
+  .sgroup > summary {
+    min-height: 30px;
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    color: var(--text-muted);
+    font-size: var(--type-3xs);
+    font-weight: 800;
+    letter-spacing: 0.1em;
+    list-style: none;
+    cursor: pointer;
+  }
+
+  .sgroup > summary::-webkit-details-marker { display: none; }
+
+  .sgroup > summary::before {
+    content: "";
+    width: 0;
+    height: 0;
+    flex: none;
+    border-left: 4px solid currentColor;
+    border-top: 3px solid transparent;
+    border-bottom: 3px solid transparent;
+    transition: transform 140ms ease;
+  }
+
+  .sgroup[open] > summary::before { transform: rotate(90deg); }
+  .sgroup > summary:hover { color: var(--text-soft); }
+  .sgroup > summary:focus-visible { outline: 1px solid var(--lime); outline-offset: 2px; }
+  .sgroup > summary .count { margin-left: auto; letter-spacing: 0; opacity: 0.7; }
+
+  .sgroup-body { padding-bottom: 8px; }
+
+  .srow {
+    display: grid;
+    grid-template-columns: 40px minmax(0, 1fr) 40px;
+    align-items: center;
+    column-gap: 8px;
+    row-gap: 5px;
+    padding: 6px 0 7px;
+  }
+
+  .srow + .srow { border-top: 1px solid var(--line-soft); }
+
+  .srow .sl {
+    position: relative;
+    color: var(--text-soft);
+    font-size: var(--type-2xs);
+    text-align: center;
+  }
+
+  .srow .sv {
+    font-size: var(--type-sm);
+    font-variant-numeric: tabular-nums;
+    font-weight: 700;
+  }
+
+  .srow .sv--b { color: var(--blue-soft); }
+  .srow .sv--c { color: var(--coral-soft); text-align: right; }
+  .srow.is-lead .sv--b,
+  .srow.is-lead .sv--c { color: var(--text); }
+
+  .sbar {
+    grid-column: 1 / -1;
+    height: 3px;
+    display: flex;
+    background: var(--coral);
+  }
+
+  .sbar i { display: block; height: 100%; background: var(--blue); border-right: 1px solid var(--surface-2); }
+
+  /* Anotação de procedência: vive na margem do painel, fora do conteúdo do produto. */
+  .panel.is-annotated .srow { position: relative; }
+
+  .panel.is-annotated .srow::before {
+    content: "";
+    position: absolute;
+    top: 10px;
+    left: -12px;
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+  }
+
+  .panel.is-annotated [data-src="have"]::before { background: var(--lime); }
+  .panel.is-annotated [data-src="derive"]::before { background: var(--amber); }
+  .panel.is-annotated [data-src="new"]::before { border: 1.5px solid var(--line-hover); }
+
+  /* ---------- blocos de gráfico dentro do painel ---------- */
+
+  .viz { padding: 12px 0; border-bottom: 1px solid var(--line); }
+
+  .viz-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 8px;
+    padding-bottom: 8px;
+  }
+
+  .viz-head strong { font-size: var(--type-sm); font-weight: 800; letter-spacing: 0.06em; }
+  .viz-head span { color: var(--text-muted); font-size: var(--type-3xs); }
+
+  .viz canvas { width: 100%; display: block; }
+
+  .viz-legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px 11px;
+    padding-top: 9px;
+    color: var(--text-muted);
+    font-size: var(--type-3xs);
+  }
+
+  .viz-legend span { display: inline-flex; align-items: center; gap: 5px; }
+
+  .key { width: 7px; height: 7px; flex: none; border-radius: 50%; }
+  .key--goal { background: var(--lime); }
+  .key--saved { background: var(--text-soft); }
+  .key--blocked { background: var(--line-strong); }
+  .key--off { border: 1px solid var(--line-hover, #718078); }
+  .key--wood { background: var(--amber); }
+
+  /* ---------- lista de jogadores ---------- */
+
+  .plist { border-top: 1px solid var(--line); }
+
+  .pteam {
+    min-height: 26px;
+    display: flex;
+    align-items: center;
+    border-bottom: 1px solid var(--line);
+    font-size: var(--type-xs);
+    font-weight: 850;
+  }
+
+  .pteam--blue { color: var(--blue-soft); }
+  .pteam--coral { color: var(--coral-soft); }
+
+  .prow {
+    min-height: 42px;
+    display: grid;
+    grid-template-columns: 24px minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 8px;
+    padding: 5px 0;
+    border-bottom: 1px solid var(--line-soft);
+  }
+
+  .prow.is-selected { box-shadow: inset 2px 0 var(--lime); }
+
+  .shirt {
+    width: 24px;
+    height: 24px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--text);
+    font-size: var(--type-xs);
+    font-weight: 800;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .shirt--blue { background: #1f3f6b; }
+  .shirt--coral { background: #6b2e22; }
+
+  .prow > .who { min-width: 0; display: flex; flex-direction: column; }
+  .prow strong { overflow: hidden; font-size: var(--type-sm); text-overflow: ellipsis; white-space: nowrap; }
+  .prow small { color: var(--text-muted); font-size: var(--type-3xs); }
+
+  .rating {
+    min-width: 30px;
+    padding: 3px 5px;
+    text-align: center;
+    color: #0d110f;
+    font-size: var(--type-sm);
+    font-weight: 800;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .rating--high { background: var(--lime); }
+  .rating--mid { background: #7f9e56; }
+  .rating--low { background: var(--surface-track); color: var(--text-soft); }
+
+  .pdetail { padding-top: 12px; display: flex; flex-direction: column; gap: 8px; }
+
+  .pdetail-title { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+  .pdetail-title strong { font-size: var(--type-lg); }
+  .pdetail-title small { display: block; color: var(--text-muted); font-size: var(--type-3xs); }
+
+  .metricbox {
+    padding: 8px 9px;
+    border: 1px solid var(--line);
+    background: var(--surface-3);
+  }
+
+  .metricbox > small {
+    display: block;
+    padding-bottom: 7px;
+    color: var(--text-muted);
+    font-size: var(--type-3xs);
+    font-weight: 800;
+    letter-spacing: 0.09em;
+  }
+
+  .metricgrid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px 6px; }
+
+  .metricgrid > span { display: flex; flex-direction: column; gap: 2px; }
+  .metricgrid small { color: var(--text-muted); font-size: var(--type-3xs); font-weight: 750; letter-spacing: 0.05em; }
+  .metricgrid strong { font-size: var(--type-md); font-variant-numeric: tabular-nums; }
+
+  .career {
+    display: flex;
+    justify-content: space-between;
+    gap: 8px;
+    padding-top: 3px;
+    color: var(--text-muted);
+    font-size: var(--type-3xs);
+  }
+
+  .career b { color: var(--text-soft); font-variant-numeric: tabular-nums; }
+
+  .warnbox {
+    padding: 8px 9px;
+    border: 1px solid var(--danger);
+    background: rgb(224 106 92 / 9%);
+    color: var(--text-soft);
+    font-size: var(--type-2xs);
+    line-height: 1.45;
+  }
+
+  .warnbox b { color: var(--danger); }
+
+  /* ---------- faixa sob o campo ---------- */
+
+  .strip {
+    max-width: 660px;
+    padding: 11px 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 9px;
+    border: 1px solid var(--line);
+    background: var(--surface-1);
+  }
+
+  .strip-line {
+    display: grid;
+    grid-template-columns: auto minmax(120px, 1fr) auto;
+    align-items: center;
+    gap: 14px;
+  }
+
+  .strip-line > div { display: flex; align-items: baseline; gap: 8px; }
+  .strip-line > div:last-child { justify-content: flex-end; }
+  .strip-line span { color: var(--text-muted); font-size: var(--type-xs); font-weight: 750; }
+  .strip-line strong { font-size: var(--type-xl); font-variant-numeric: tabular-nums; }
+  .strip-track { height: 5px; background: var(--coral); }
+  .strip-track i { display: block; height: 100%; background: var(--blue); }
+  .strip-xg strong { font-size: var(--type-lg); }
+
+  /* ---------- notas ---------- */
+
+  .notes { display: flex; flex-direction: column; gap: 16px; max-width: 64ch; }
+
+  .notes p { margin: 0; color: var(--text-soft); font-size: 15px; line-height: 1.65; }
+
+  .notes h4 {
+    margin: 0;
+    color: var(--text);
+    font-size: 13px;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+  }
+
+  .notes ul { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 8px; }
+  .notes li { color: var(--text-soft); font-size: 14px; line-height: 1.55; }
+  .notes code, .path { font-family: var(--mono); font-size: 0.88em; color: var(--lime); }
+
+  .callout {
+    padding: 14px 16px;
+    border-left: 2px solid var(--lime);
+    background: var(--surface-1);
+  }
+
+  .callout p { color: var(--text-soft); font-size: 14px; line-height: 1.6; }
+  .callout strong { color: var(--text); }
+
+  .cost {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px 8px;
+    padding-top: 4px;
+  }
+
+  .chip {
+    padding: 4px 9px;
+    border: 1px solid var(--line);
+    background: var(--surface-1);
+    color: var(--text-muted);
+    font-family: var(--mono);
+    font-size: 11px;
+  }
+
+  .chip--lime { border-color: rgb(185 223 98 / 45%); color: var(--lime); }
+  .chip--amber { border-color: rgb(245 196 81 / 40%); color: var(--amber); }
+
+  /* ---------- anatomia da linha ---------- */
+
+  .anatomy {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 14px;
+    padding: 16px;
+    border: 1px solid var(--line);
+    background: var(--surface-1);
+  }
+
+  .anatomy > div { display: flex; flex-direction: column; gap: 5px; }
+  .anatomy b { color: var(--lime); font-family: var(--mono); font-size: 11px; }
+  .anatomy span { color: var(--text-muted); font-size: 13px; line-height: 1.5; }
+
+  /* ---------- roteiro final ---------- */
+
+  .roadmap-wrap { overflow-x: auto; border: 1px solid var(--line); }
+
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+
+  th, td {
+    padding: 11px 14px;
+    text-align: left;
+    border-bottom: 1px solid var(--line-soft);
+    vertical-align: top;
+  }
+
+  th {
+    background: var(--surface-1);
+    color: var(--text-muted);
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.09em;
+    text-transform: uppercase;
+    white-space: nowrap;
+  }
+
+  td { color: var(--text-soft); }
+  td:first-child { color: var(--text); font-weight: 600; white-space: nowrap; }
+  tr:last-child td { border-bottom: 0; }
+
+  .closing {
+    padding: 24px 26px;
+    border: 1px solid var(--line);
+    background: var(--surface-1);
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .closing h2 { margin: 0; font-size: 19px; font-weight: 700; letter-spacing: -0.01em; }
+  .closing p { margin: 0; max-width: 70ch; color: var(--text-soft); font-size: 15px; line-height: 1.65; }
+
+  @media (prefers-reduced-motion: reduce) {
+    * { transition: none !important; }
+  }
+
+  @media (max-width: 900px) {
+    .doc { padding: 40px 18px 64px; gap: 44px; }
+    .wave-body { grid-template-columns: minmax(0, 1fr); gap: 24px; }
+    .panel { width: 100%; max-width: 360px; }
+  }
+</style>
+</head>
+<body>
+
+<div class="doc">
+
+  <header class="masthead">
+    <span class="eyebrow">FuteVerso · proposta de interface</span>
+    <h1>Estatísticas da partida</h1>
+    <p class="deck">
+      Seis maquetes desenhadas na largura real do inspetor, com os tokens do projeto.
+      A referência é a organização do FotMob — grupos, barra comparativa, mapa de chutes,
+      xG acumulado e nota do jogador — traduzida para um painel de 330&nbsp;px e para o
+      formato 5&nbsp;×&nbsp;5 do motor.
+    </p>
+    <div class="masthead-meta">
+      <span>Partida de exemplo <b>Atlético Sorocaba 2 × 1 Grêmio Ilhéus</b></span>
+      <span>Painel <b>330 px</b></span>
+      <span>Referência <b>fotmob.com</b></span>
+    </div>
+  </header>
+
+  <div class="doc-controls">
+    <div class="legend">
+      <span><i class="dot dot--have"></i>já é coletado hoje — só falta mostrar</span>
+      <span><i class="dot dot--derive"></i>derivável de evento ou heatmap</span>
+      <span><i class="dot dot--new"></i>precisa de motor novo</span>
+    </div>
+    <label class="annot-toggle">
+      <input type="checkbox" id="annot" checked />
+      anotar procedência
+    </label>
+  </div>
+
+  <!-- ═══════════════ 1 ═══════════════ -->
+  <section class="wave">
+    <div class="wave-head">
+      <div class="wave-tag"><b>01</b> <span>Aba Análise · agrupamento e barra</span></div>
+      <h2>A lista plana vira seis grupos com comparação visual</h2>
+    </div>
+
+    <div class="wave-body">
+      <div class="stage">
+        <div class="switcher" role="group" aria-label="Alternar entre estado atual e proposta">
+          <button type="button" data-view="today" aria-pressed="false">Hoje</button>
+          <button type="button" data-view="new" aria-pressed="true">Proposto</button>
+        </div>
+        <div class="ruler">330 px</div>
+
+        <!-- estado atual -->
+        <div class="panel" data-panel="today" hidden>
+          <div class="panel-heading">
+            <div><span class="panel-eyebrow">CENTRAL DA PARTIDA</span><h3>Leitura ao vivo</h3></div>
+            <span class="glyph">⚙</span>
+          </div>
+          <div class="panel-tabs"><span>Jogadores</span><span class="is-active">Análise</span><span>Eventos</span></div>
+          <div class="panel-body panel-scroll">
+            <div class="panel-topline"><strong>Relatório ao vivo</strong><em>DISPUTA 12%</em></div>
+            <div class="flat">
+              <div class="flat-row flat-row--head"><span>MÉTRICA</span><strong>Sorocaba</strong><strong>Ilhéus</strong></div>
+              <div class="flat-row"><span>Passes certos</span><strong>168/201</strong><strong>141/178</strong></div>
+              <div class="flat-row"><span>Precisão</span><strong>84%</strong><strong>79%</strong></div>
+              <div class="flat-row"><span>Passes longos</span><strong>12/19</strong><strong>9/17</strong></div>
+              <div class="flat-row"><span>Passes aéreos</span><strong>7/14</strong><strong>11/21</strong></div>
+              <div class="flat-row"><span>Finalizações</span><strong>11</strong><strong>8</strong></div>
+              <div class="flat-row"><span>Chutes no alvo</span><strong>5</strong><strong>3</strong></div>
+              <div class="flat-row"><span>Defesas</span><strong>2</strong><strong>4</strong></div>
+              <div class="flat-row"><span>Encaixes</span><strong>1</strong><strong>2</strong></div>
+              <div class="flat-row"><span>Rebotes</span><strong>1</strong><strong>2</strong></div>
+              <div class="flat-row"><span>Raspões</span><strong>0</strong><strong>1</strong></div>
+              <div class="flat-row"><span>Saídas aéreas</span><strong>2</strong><strong>1</strong></div>
+              <div class="flat-row"><span>Socos</span><strong>0</strong><strong>1</strong></div>
+              <div class="flat-row"><span>De primeira</span><strong>3</strong><strong>2</strong></div>
+              <div class="flat-row"><span>De longe</span><strong>4</strong><strong>4</strong></div>
+              <div class="flat-row"><span>Cruzamentos</span><strong>6</strong><strong>9</strong></div>
+              <div class="flat-row"><span>Fintas</span><strong>4/7</strong><strong>2/6</strong></div>
+              <div class="flat-row"><span>Toques longos</span><strong>9</strong><strong>6</strong></div>
+              <div class="flat-row"><span>Desarmes</span><strong>8/13</strong><strong>6/11</strong></div>
+              <div class="flat-row"><span>Recuperações</span><strong>14</strong><strong>17</strong></div>
+              <div class="flat-row"><span>Faltas</span><strong>7</strong><strong>9</strong></div>
+              <div class="flat-row"><span>Avanços agressivos</span><strong>6</strong><strong>4</strong></div>
+              <div class="flat-row"><span>Entradas no terço final</span><strong>23</strong><strong>16</strong></div>
+              <div class="flat-row"><span>Quebras de linha</span><strong>14</strong><strong>9</strong></div>
+              <div class="flat-row"><span>Inversões</span><strong>4</strong><strong>2</strong></div>
+              <div class="flat-row"><span>Largura média</span><strong>38</strong><strong>34</strong></div>
+              <div class="flat-row"><span>Compactação média</span><strong>21</strong><strong>25</strong></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- proposta -->
+        <div class="panel is-annotated" data-panel="new">
+          <div class="panel-heading">
+            <div><span class="panel-eyebrow">CENTRAL DA PARTIDA</span><h3>Leitura ao vivo</h3></div>
+            <span class="glyph">⚙</span>
+          </div>
+          <div class="panel-tabs"><span>Jogadores</span><span class="is-active">Análise</span><span>Eventos</span></div>
+          <div class="panel-body panel-scroll">
+            <div class="panel-topline"><strong>Relatório ao vivo</strong><em>DISPUTA 12%</em></div>
+            <div class="clubline">
+              <span class="home">Atlético Sorocaba</span>
+              <b>2 – 1</b>
+              <span class="away">Grêmio Ilhéus</span>
+            </div>
+
+            <details class="sgroup" open>
+              <summary>DESTAQUES</summary>
+              <div class="sgroup-body">
+                <div class="srow is-lead" data-src="have">
+                  <span class="sv sv--b">54%</span><span class="sl">Posse de bola</span><span class="sv sv--c">46%</span>
+                  <div class="sbar"><i style="width:54%"></i></div>
+                </div>
+                <div class="srow is-lead" data-src="new">
+                  <span class="sv sv--b">1.84</span><span class="sl">Gols esperados (xG)</span><span class="sv sv--c">1.12</span>
+                  <div class="sbar"><i style="width:62%"></i></div>
+                </div>
+                <div class="srow" data-src="have">
+                  <span class="sv sv--b">11</span><span class="sl">Finalizações</span><span class="sv sv--c">8</span>
+                  <div class="sbar"><i style="width:58%"></i></div>
+                </div>
+                <div class="srow" data-src="have">
+                  <span class="sv sv--b">5</span><span class="sl">No alvo</span><span class="sv sv--c">3</span>
+                  <div class="sbar"><i style="width:63%"></i></div>
+                </div>
+                <div class="srow" data-src="new">
+                  <span class="sv sv--b">3</span><span class="sl">Grandes chances</span><span class="sv sv--c">2</span>
+                  <div class="sbar"><i style="width:60%"></i></div>
+                </div>
+                <div class="srow" data-src="have">
+                  <span class="sv sv--b">84%</span><span class="sl">Precisão de passe</span><span class="sv sv--c">79%</span>
+                  <div class="sbar"><i style="width:52%"></i></div>
+                </div>
+              </div>
+            </details>
+
+            <details class="sgroup" open>
+              <summary>FINALIZAÇÃO <span class="count">11 · 8</span></summary>
+              <div class="sgroup-body">
+                <div class="srow" data-src="derive">
+                  <span class="sv sv--b">7</span><span class="sl">Dentro da área</span><span class="sv sv--c">4</span>
+                  <div class="sbar"><i style="width:64%"></i></div>
+                </div>
+                <div class="srow" data-src="have">
+                  <span class="sv sv--b">4</span><span class="sl">De longe</span><span class="sv sv--c">4</span>
+                  <div class="sbar"><i style="width:50%"></i></div>
+                </div>
+                <div class="srow" data-src="derive">
+                  <span class="sv sv--b">2</span><span class="sl">Bloqueadas</span><span class="sv sv--c">2</span>
+                  <div class="sbar"><i style="width:50%"></i></div>
+                </div>
+                <div class="srow" data-src="derive">
+                  <span class="sv sv--b">4</span><span class="sl">Para fora</span><span class="sv sv--c">2</span>
+                  <div class="sbar"><i style="width:67%"></i></div>
+                </div>
+                <div class="srow" data-src="derive">
+                  <span class="sv sv--b">0</span><span class="sl">Na trave</span><span class="sv sv--c">1</span>
+                  <div class="sbar"><i style="width:0%"></i></div>
+                </div>
+                <div class="srow" data-src="have">
+                  <span class="sv sv--b">3</span><span class="sl">De primeira</span><span class="sv sv--c">2</span>
+                  <div class="sbar"><i style="width:60%"></i></div>
+                </div>
+                <div class="srow" data-src="have">
+                  <span class="sv sv--b">1</span><span class="sl">Cabeceios</span><span class="sv sv--c">2</span>
+                  <div class="sbar"><i style="width:33%"></i></div>
+                </div>
+                <div class="srow" data-src="new">
+                  <span class="sv sv--b">1</span><span class="sl">Grandes chances perdidas</span><span class="sv sv--c">1</span>
+                  <div class="sbar"><i style="width:50%"></i></div>
+                </div>
+                <div class="srow" data-src="new">
+                  <span class="sv sv--b">0.17</span><span class="sl">xG por finalização</span><span class="sv sv--c">0.14</span>
+                  <div class="sbar"><i style="width:55%"></i></div>
+                </div>
+              </div>
+            </details>
+
+            <details class="sgroup">
+              <summary>PASSE <span class="count">84% · 79%</span></summary>
+              <div class="sgroup-body">
+                <div class="srow" data-src="have">
+                  <span class="sv sv--b">168</span><span class="sl">Passes certos</span><span class="sv sv--c">141</span>
+                  <div class="sbar"><i style="width:54%"></i></div>
+                </div>
+                <div class="srow" data-src="have">
+                  <span class="sv sv--b">12/19</span><span class="sl">Passes longos</span><span class="sv sv--c">9/17</span>
+                  <div class="sbar"><i style="width:57%"></i></div>
+                </div>
+                <div class="srow" data-src="have">
+                  <span class="sv sv--b">7/14</span><span class="sl">Passes aéreos</span><span class="sv sv--c">11/21</span>
+                  <div class="sbar"><i style="width:39%"></i></div>
+                </div>
+                <div class="srow" data-src="have">
+                  <span class="sv sv--b">6</span><span class="sl">Cruzamentos</span><span class="sv sv--c">9</span>
+                  <div class="sbar"><i style="width:40%"></i></div>
+                </div>
+                <div class="srow" data-src="have">
+                  <span class="sv sv--b">5</span><span class="sl">Bolas em profundidade</span><span class="sv sv--c">3</span>
+                  <div class="sbar"><i style="width:63%"></i></div>
+                </div>
+                <div class="srow" data-src="have">
+                  <span class="sv sv--b">4</span><span class="sl">Inversões</span><span class="sv sv--c">2</span>
+                  <div class="sbar"><i style="width:67%"></i></div>
+                </div>
+                <div class="srow" data-src="have">
+                  <span class="sv sv--b">14</span><span class="sl">Quebras de linha</span><span class="sv sv--c">9</span>
+                  <div class="sbar"><i style="width:61%"></i></div>
+                </div>
+                <div class="srow" data-src="have">
+                  <span class="sv sv--b">23</span><span class="sl">Entradas no terço final</span><span class="sv sv--c">16</span>
+                  <div class="sbar"><i style="width:59%"></i></div>
+                </div>
+                <div class="srow" data-src="derive">
+                  <span class="sv sv--b">18</span><span class="sl">Toques na área adversária</span><span class="sv sv--c">11</span>
+                  <div class="sbar"><i style="width:62%"></i></div>
+                </div>
+                <div class="srow" data-src="new">
+                  <span class="sv sv--b">1.21</span><span class="sl">Assistências esperadas (xA)</span><span class="sv sv--c">0.88</span>
+                  <div class="sbar"><i style="width:58%"></i></div>
+                </div>
+              </div>
+            </details>
+
+            <details class="sgroup">
+              <summary>DEFESA <span class="count">2 · 4</span></summary>
+              <div class="sgroup-body">
+                <div class="srow" data-src="have">
+                  <span class="sv sv--b">2</span><span class="sl">Defesas</span><span class="sv sv--c">4</span>
+                  <div class="sbar"><i style="width:33%"></i></div>
+                </div>
+                <div class="srow" data-src="have">
+                  <span class="sv sv--b">1</span><span class="sl">Encaixes</span><span class="sv sv--c">2</span>
+                  <div class="sbar"><i style="width:33%"></i></div>
+                </div>
+                <div class="srow" data-src="have">
+                  <span class="sv sv--b">1</span><span class="sl">Rebotes</span><span class="sv sv--c">2</span>
+                  <div class="sbar"><i style="width:33%"></i></div>
+                </div>
+                <div class="srow" data-src="have">
+                  <span class="sv sv--b">2</span><span class="sl">Saídas aéreas</span><span class="sv sv--c">1</span>
+                  <div class="sbar"><i style="width:67%"></i></div>
+                </div>
+                <div class="srow" data-src="have">
+                  <span class="sv sv--b">0</span><span class="sl">Socos</span><span class="sv sv--c">1</span>
+                  <div class="sbar"><i style="width:0%"></i></div>
+                </div>
+                <div class="srow" data-src="derive">
+                  <span class="sv sv--b">9</span><span class="sl">Interceptações</span><span class="sv sv--c">12</span>
+                  <div class="sbar"><i style="width:43%"></i></div>
+                </div>
+                <div class="srow" data-src="derive">
+                  <span class="sv sv--b">3</span><span class="sl">Bloqueios</span><span class="sv sv--c">2</span>
+                  <div class="sbar"><i style="width:60%"></i></div>
+                </div>
+                <div class="srow" data-src="have">
+                  <span class="sv sv--b">14</span><span class="sl">Recuperações</span><span class="sv sv--c">17</span>
+                  <div class="sbar"><i style="width:45%"></i></div>
+                </div>
+                <div class="srow" data-src="derive">
+                  <span class="sv sv--b">4</span><span class="sl">Recuperações no terço final</span><span class="sv sv--c">2</span>
+                  <div class="sbar"><i style="width:67%"></i></div>
+                </div>
+              </div>
+            </details>
+
+            <details class="sgroup">
+              <summary>DUELOS <span class="count">34 · 29</span></summary>
+              <div class="sgroup-body">
+                <div class="srow" data-src="derive">
+                  <span class="sv sv--b">34</span><span class="sl">Duelos ganhos</span><span class="sv sv--c">29</span>
+                  <div class="sbar"><i style="width:54%"></i></div>
+                </div>
+                <div class="srow" data-src="have">
+                  <span class="sv sv--b">8/13</span><span class="sl">Desarmes</span><span class="sv sv--c">6/11</span>
+                  <div class="sbar"><i style="width:57%"></i></div>
+                </div>
+                <div class="srow" data-src="have">
+                  <span class="sv sv--b">4/7</span><span class="sl">Fintas</span><span class="sv sv--c">2/6</span>
+                  <div class="sbar"><i style="width:67%"></i></div>
+                </div>
+                <div class="srow" data-src="have">
+                  <span class="sv sv--b">9</span><span class="sl">Toques longos no pique</span><span class="sv sv--c">6</span>
+                  <div class="sbar"><i style="width:60%"></i></div>
+                </div>
+                <div class="srow" data-src="have">
+                  <span class="sv sv--b">6</span><span class="sl">Avanços agressivos</span><span class="sv sv--c">4</span>
+                  <div class="sbar"><i style="width:60%"></i></div>
+                </div>
+              </div>
+            </details>
+
+            <details class="sgroup">
+              <summary>DISCIPLINA <span class="count">7 · 9</span></summary>
+              <div class="sgroup-body">
+                <div class="srow" data-src="have">
+                  <span class="sv sv--b">7</span><span class="sl">Faltas</span><span class="sv sv--c">9</span>
+                  <div class="sbar"><i style="width:44%"></i></div>
+                </div>
+                <div class="srow" data-src="derive">
+                  <span class="sv sv--b">2</span><span class="sl">Impedimentos</span><span class="sv sv--c">3</span>
+                  <div class="sbar"><i style="width:40%"></i></div>
+                </div>
+                <div class="srow" data-src="derive">
+                  <span class="sv sv--b">5</span><span class="sl">Escanteios</span><span class="sv sv--c">3</span>
+                  <div class="sbar"><i style="width:63%"></i></div>
+                </div>
+                <div class="srow" data-src="derive">
+                  <span class="sv sv--b">14</span><span class="sl">Laterais</span><span class="sv sv--c">12</span>
+                  <div class="sbar"><i style="width:54%"></i></div>
+                </div>
+                <div class="srow" data-src="new">
+                  <span class="sv sv--b">1</span><span class="sl">Cartões amarelos</span><span class="sv sv--c">2</span>
+                  <div class="sbar"><i style="width:33%"></i></div>
+                </div>
+              </div>
+            </details>
+          </div>
+        </div>
+      </div>
+
+      <div class="notes">
+        <p>
+          Hoje são 26 linhas com o mesmo peso visual e nenhuma noção de quem está por cima —
+          o leitor precisa comparar dois números por linha, 26 vezes. Alterne para
+          <em>Hoje</em> acima e a diferença aparece sozinha.
+        </p>
+
+        <div class="anatomy">
+          <div><b>valor · rótulo · valor</b><span>Grid de 40&nbsp;px nas pontas: o número do time da casa à esquerda, sempre alinhado.</span></div>
+          <div><b>barra proporcional</b><span>Mesma peça do <span class="path">.possession-track</span> que já existe: trilho coral, preenchimento azul.</span></div>
+          <div><b>grupo colapsável</b><span>Só DESTAQUES e FINALIZAÇÃO abrem por padrão. Os outros quatro cabem em quatro linhas.</span></div>
+        </div>
+
+        <h4>Por que resolve mais do que parece</h4>
+        <ul>
+          <li><strong>Cerca de 15 campos de <span class="path">TeamStats</span> já coletados nunca chegaram à tela</strong> — <span class="path">throughBalls</span>, <span class="path">headers</span>, <span class="path">cutbacks</span>, <span class="path">volleys</span>, a quebra do pique. Os grupos dão lugar a todos sem inchar a leitura.</li>
+          <li>Os pontos verdes na margem contam a história: a maior parte da lista é dado que <em>já existe</em>. Só quatro linhas dependem de motor novo.</li>
+          <li>Exige reformular <span class="path">analysisRows()</span>, que hoje devolve <span class="path">(string | number)[][]</span> e usa o próprio conteúdo como assinatura de render. Vira view-model tipado (grupo → linhas com <span class="path">share</span>) e sai do <span class="path">match-screen</span> para o <span class="path">match-view-model</span>.</li>
+        </ul>
+
+        <div class="cost">
+          <span class="chip chip--lime">não toca no domínio</span>
+          <span class="chip">match-view-model.ts</span>
+          <span class="chip">match-screen.ts</span>
+          <span class="chip">analysis.css</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══════════════ 2 ═══════════════ -->
+  <section class="wave">
+    <div class="wave-head">
+      <div class="wave-tag"><b>02</b> <span>Mapa de chutes e xG acumulado</span></div>
+      <h2>Onde o time finalizou, e quanto valia cada bola</h2>
+    </div>
+
+    <div class="wave-body">
+      <div class="stage">
+        <div class="ruler">330 px</div>
+        <div class="panel">
+          <div class="panel-heading">
+            <div><span class="panel-eyebrow">CENTRAL DA PARTIDA</span><h3>Leitura ao vivo</h3></div>
+            <span class="glyph">⚙</span>
+          </div>
+          <div class="panel-tabs"><span>Jogadores</span><span class="is-active">Análise</span><span>Eventos</span></div>
+          <div class="panel-body">
+            <div class="viz">
+              <div class="viz-head"><strong>MAPA DE CHUTES</strong><span>19 finalizações</span></div>
+              <canvas id="shotmap" aria-label="Mapa de chutes: 11 finalizações da casa atacando para a direita, 8 do visitante atacando para a esquerda; o raio de cada ponto é o xG do lance"></canvas>
+              <div class="viz-legend">
+                <span><i class="key key--goal"></i>gol</span>
+                <span><i class="key key--saved"></i>defendido</span>
+                <span><i class="key key--blocked"></i>bloqueado</span>
+                <span><i class="key key--off"></i>para fora</span>
+                <span><i class="key key--wood"></i>trave</span>
+              </div>
+            </div>
+            <div class="viz">
+              <div class="viz-head"><strong>xG ACUMULADO</strong><span>1.84 — 1.12</span></div>
+              <canvas id="xgline" aria-label="Curvas de gols esperados acumulados: a casa termina em 1,84 e o visitante em 1,12; os degraus maiores marcam os três gols"></canvas>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="notes">
+        <p>
+          O xG é o que separa &ldquo;lista de números&rdquo; de análise: com ele, um 2&nbsp;×&nbsp;1 passa a
+          dizer se foi merecido. O mapa responde <em>de onde</em> vem o perigo; a curva responde
+          <em>quando</em>.
+        </p>
+
+        <div class="callout">
+          <p>
+            <strong>A arquitetura já está pronta para receber.</strong>
+            <span class="path">resolveShot()</span> é o funil único por onde todo chute passa
+            exatamente uma vez, e <span class="path">ActiveShot</span> já carrega atirador,
+            técnica, alvo e ponto do gol. O comentário no topo de <span class="path">shot.ts</span>
+            conta que centralizar esse ciclo já resolveu um bug de estatística — é o mesmo lugar,
+            pelo mesmo motivo.
+          </p>
+        </div>
+
+        <h4>Duas armadilhas</h4>
+        <ul>
+          <li><strong>Não reusar o <span class="path">utility</span> da decisão como xG.</strong> Aquilo é utilidade de decisão: inclui ousadia do jogador, política aprendida e contexto tático. Usar como xG faz o número refletir a personalidade do elenco, não a qualidade da chance.</li>
+          <li><strong>xG é função pura da geometria do lance</strong>, num módulo só (<span class="path">runtime/expected-goals.ts</span>): distância, ângulo visível do gol, técnica, pressão do marcador e linha bloqueada. Sem caso especial.</li>
+        </ul>
+
+        <p>
+          De brinde vêm grandes chances (xG acima de um limiar), grandes chances perdidas,
+          xG concedido e xG por finalização — todas as linhas vazadas da maquete&nbsp;01.
+          O mapa exige apenas que os chutes resolvidos fiquem registrados: hoje o
+          <span class="path">ActiveShot</span> é descartado ao resolver.
+        </p>
+
+        <div class="cost">
+          <span class="chip chip--amber">motor novo</span>
+          <span class="chip">runtime/expected-goals.ts</span>
+          <span class="chip">runtime/shot.ts</span>
+          <span class="chip">model.ts</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══════════════ 3 ═══════════════ -->
+  <section class="wave">
+    <div class="wave-head">
+      <div class="wave-tag"><b>03</b> <span>Momento da partida</span></div>
+      <h2>Quem estava por cima, minuto a minuto</h2>
+    </div>
+
+    <div class="wave-body">
+      <div class="stage">
+        <div class="ruler">330 px</div>
+        <div class="panel">
+          <div class="panel-heading">
+            <div><span class="panel-eyebrow">CENTRAL DA PARTIDA</span><h3>Leitura ao vivo</h3></div>
+            <span class="glyph">⚙</span>
+          </div>
+          <div class="panel-tabs"><span>Jogadores</span><span class="is-active">Análise</span><span>Eventos</span></div>
+          <div class="panel-body">
+            <div class="viz">
+              <div class="viz-head"><strong>MOMENTO</strong><span>90 min</span></div>
+              <canvas id="momentum" aria-label="Gráfico de momento: barras para cima indicam pressão da casa, para baixo do visitante; marcadores nos minutos 23, 51 e 67 assinalam os gols"></canvas>
+              <div class="viz-legend">
+                <span><i class="key" style="background:#3b82f6"></i>Sorocaba</span>
+                <span><i class="key" style="background:#f36f56"></i>Ilhéus</span>
+                <span><i class="key key--goal"></i>gol</span>
+              </div>
+            </div>
+            <div class="viz" style="border-bottom:0">
+              <div class="viz-head"><strong>FASE TÁTICA</strong><span>tempo em cada bloco</span></div>
+              <div class="srow" data-src="have" style="padding-top:2px">
+                <span class="sv sv--b">31%</span><span class="sl">Bloco alto</span><span class="sv sv--c">22%</span>
+                <div class="sbar"><i style="width:58%"></i></div>
+              </div>
+              <div class="srow" data-src="have">
+                <span class="sv sv--b">44%</span><span class="sl">Bloco médio</span><span class="sv sv--c">41%</span>
+                <div class="sbar"><i style="width:52%"></i></div>
+              </div>
+              <div class="srow" data-src="have">
+                <span class="sv sv--b">25%</span><span class="sl">Bloco baixo</span><span class="sv sv--c">37%</span>
+                <div class="sbar"><i style="width:40%"></i></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="notes">
+        <p>
+          O gráfico de momento é o que mais dá sensação de partida acompanhada: mostra os
+          15 minutos em que o visitante mandou no jogo e a virada que veio depois. Sem ele,
+          uma simulação de 90 minutos vira um placar com anexos.
+        </p>
+
+        <div class="callout">
+          <p>
+            <strong>A infraestrutura de série temporal já existe pela metade.</strong>
+            <span class="path">match-session.ts</span> guarda um keyframe a cada 2&nbsp;s para o
+            scrubbing da linha do tempo. Momento e xG acumulado não precisam de mecanismo novo —
+            precisam de uma amostragem leve no mesmo ritmo, dentro do
+            <span class="path">analytics-system</span>, que hoje só alimenta o heatmap.
+          </p>
+        </div>
+
+        <h4>O que define &ldquo;momento&rdquo;</h4>
+        <p>
+          Aqui vale usar o que o motor já sabe em vez de inventar fórmula: posição média da bola,
+          entradas no terço final e toques na área, integrados por janela. O bloco de fase tática
+          logo abaixo usa <span class="path">phaseSeconds</span> — um campo que já é preenchido
+          hoje e nunca foi exibido.
+        </p>
+
+        <div class="cost">
+          <span class="chip chip--amber">amostragem periódica</span>
+          <span class="chip">systems/analytics-system.ts</span>
+          <span class="chip">match-session.ts</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══════════════ 4 ═══════════════ -->
+  <section class="wave">
+    <div class="wave-head">
+      <div class="wave-tag"><b>04</b> <span>Aba Jogadores · nota e desempenho</span></div>
+      <h2>A estatística do jogador passa a ser desta partida</h2>
+    </div>
+
+    <div class="wave-body">
+      <div class="stage">
+        <div class="switcher" role="group" aria-label="Alternar entre estado atual e proposta">
+          <button type="button" data-view2="today" aria-pressed="false">Hoje</button>
+          <button type="button" data-view2="new" aria-pressed="true">Proposto</button>
+        </div>
+        <div class="ruler">330 px</div>
+
+        <div class="panel" data-panel2="today" hidden>
+          <div class="panel-heading">
+            <div><span class="panel-eyebrow">CENTRAL DA PARTIDA</span><h3>Leitura ao vivo</h3></div>
+            <span class="glyph">⚙</span>
+          </div>
+          <div class="panel-tabs"><span class="is-active">Jogadores</span><span>Análise</span><span>Eventos</span></div>
+          <div class="panel-body">
+            <div class="plist">
+              <div class="pteam pteam--blue">SOROCABA</div>
+              <div class="prow"><i class="shirt shirt--blue">1</i><span class="who"><strong>Bento Andrade</strong><small>GOL · Goleiro</small></span></div>
+              <div class="prow is-selected"><i class="shirt shirt--blue">9</i><span class="who"><strong>Théo Vasconcelos</strong><small>ATA · Centroavante</small></span></div>
+            </div>
+            <div class="pdetail">
+              <div class="pdetail-title"><div><strong>Théo Vasconcelos</strong><small>ATA · Centroavante</small></div></div>
+              <div class="metricbox">
+                <small>MÉTRICAS</small>
+                <div class="metricgrid">
+                  <span><small>POSTURA</small><strong>COM POSSE</strong></span>
+                  <span><small>RITMO</small><strong>PIQUE</strong></span>
+                  <span><small>PLANO</small><strong>0.4s</strong></span>
+                  <span><small>GOLS</small><strong>7</strong></span>
+                  <span><small>PASSES</small><strong>214</strong></span>
+                </div>
+              </div>
+              <div class="warnbox">
+                <b>7 gols e 214 passes aos 4 minutos de jogo.</b> O painel lê
+                <span class="path">memory.stats</span>, que é <b>carreira</b>, não partida.
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="panel is-annotated" data-panel2="new">
+          <div class="panel-heading">
+            <div><span class="panel-eyebrow">CENTRAL DA PARTIDA</span><h3>Leitura ao vivo</h3></div>
+            <span class="glyph">⚙</span>
+          </div>
+          <div class="panel-tabs"><span class="is-active">Jogadores</span><span>Análise</span><span>Eventos</span></div>
+          <div class="panel-body">
+            <div class="plist">
+              <div class="pteam pteam--blue">SOROCABA</div>
+              <div class="prow"><i class="shirt shirt--blue">1</i><span class="who"><strong>Bento Andrade</strong><small>GOL · 2 defesas</small></span><b class="rating rating--low">6.8</b></div>
+              <div class="prow"><i class="shirt shirt--blue">4</i><span class="who"><strong>Caio Nogueira</strong><small>ZAG · 5 desarmes</small></span><b class="rating rating--mid">7.1</b></div>
+              <div class="prow"><i class="shirt shirt--blue">6</i><span class="who"><strong>Iuri Meireles</strong><small>ALA · 3 cruzamentos</small></span><b class="rating rating--low">6.5</b></div>
+              <div class="prow"><i class="shirt shirt--blue">8</i><span class="who"><strong>Ravi Bittencourt</strong><small>MEI · 1 assistência</small></span><b class="rating rating--mid">7.9</b></div>
+              <div class="prow is-selected"><i class="shirt shirt--blue">9</i><span class="who"><strong>Théo Vasconcelos</strong><small>ATA · 2 gols</small></span><b class="rating rating--high">8.4</b></div>
+            </div>
+            <div class="pdetail">
+              <div class="pdetail-title">
+                <div><strong>Théo Vasconcelos</strong><small>ATA · Centroavante</small></div>
+                <b class="rating rating--high">8.4</b>
+              </div>
+              <div class="metricbox">
+                <small>NESTA PARTIDA</small>
+                <div class="metricgrid">
+                  <span><small>GOLS</small><strong>2</strong></span>
+                  <span><small>xG</small><strong>0.94</strong></span>
+                  <span><small>CHUTES</small><strong>5 (3)</strong></span>
+                  <span><small>PASSES</small><strong>24/29</strong></span>
+                  <span><small>DUELOS</small><strong>7/11</strong></span>
+                  <span><small>NA ÁREA</small><strong>9</strong></span>
+                </div>
+              </div>
+              <div class="career"><span>Carreira</span><span><b>7</b> gols em <b>12</b> jogos</span></div>
+              <div class="metricbox">
+                <small>DECISÃO AGORA</small>
+                <div class="metricgrid">
+                  <span><small>POSTURA</small><strong>COM POSSE</strong></span>
+                  <span><small>RITMO</small><strong>PIQUE</strong></span>
+                  <span><small>PLANO</small><strong>0.4s</strong></span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="notes">
+        <p>
+          A aba Jogadores hoje é um inspetor de <em>decisão</em>, não de desempenho — e o pouco
+          de desempenho que mostra está errado. Alterne para <em>Hoje</em>: aos 4 minutos, o
+          atacante aparece com 7 gols.
+        </p>
+
+        <div class="callout">
+          <p>
+            <strong>É o buraco mais sério dos seis.</strong>
+            <span class="path">match-view-model.ts</span> lê <span class="path">player.memory.stats.goals</span>,
+            que é <span class="path">PlayerCareerStats</span> — acumulado ao longo da vida do jogador.
+            <em>Não existe estatística por jogador desta partida</em>, e toda a camada de nota
+            depende dela.
+          </p>
+        </div>
+
+        <h4>O que muda</h4>
+        <ul>
+          <li>Uma <span class="path">PlayerMatchStats</span> no runtime do jogador, separada da carreira. A carreira continua existindo — só desce para uma linha discreta, onde é contexto e não protagonista.</li>
+          <li>A nota destrava com ela: é o dado mais lido do FotMob e o que mais rende num jogo de gestão. Começar simples (gols, xG, passes, duelos, defesas, ponderados por posição) e calibrar depois.</li>
+          <li>A lista ganha uma linha de contexto por jogador — <em>2 gols</em>, <em>5 desarmes</em> — que já responde &ldquo;quem decidiu&rdquo; antes de abrir o detalhe.</li>
+        </ul>
+
+        <div class="cost">
+          <span class="chip chip--amber">corrige um bug</span>
+          <span class="chip">model.ts</span>
+          <span class="chip">match-view-model.ts</span>
+          <span class="chip">match-roster.ts</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══════════════ 5 ═══════════════ -->
+  <section class="wave">
+    <div class="wave-head">
+      <div class="wave-tag"><b>05</b> <span>Faixa sob o campo</span></div>
+      <h2>O número que não deveria exigir abrir uma aba</h2>
+    </div>
+
+    <div class="wave-body wave-body--wide">
+      <div class="stage">
+        <div class="ruler">largura do campo · fora dos 330 px</div>
+        <div class="strip">
+          <div class="strip-line">
+            <div><span>POSSE <b style="color:var(--blue-soft)">SOROCABA</b></span><strong>54%</strong></div>
+            <div class="strip-track"><i style="width:54%"></i></div>
+            <div><strong>46%</strong><span><b style="color:var(--coral-soft)">ILHÉUS</b> POSSE</span></div>
+          </div>
+          <div class="strip-line strip-xg">
+            <div><span>xG</span><strong>1.84</strong></div>
+            <div class="strip-track" style="background:var(--surface-track)"><i style="width:62%;background:var(--lime)"></i></div>
+            <div><strong>1.12</strong><span>xG</span></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="notes" style="max-width:78ch">
+        <p>
+          A faixa <span class="path">.match-strip</span> já existe sob o campo e hoje carrega
+          só a posse. Somar uma segunda linha de xG é a mudança mais barata da lista inteira —
+          umas poucas linhas de CSS e um valor — e é a que mais aparece, porque fica visível
+          enquanto a partida corre, sem abrir aba nenhuma.
+        </p>
+        <p>
+          Nada disso é desenhado sobre o gramado: a faixa está abaixo do campo, e todo o
+          resto vive no painel lateral.
+        </p>
+        <div class="cost">
+          <span class="chip chip--lime">depende só do xG</span>
+          <span class="chip">match-screen.ts</span>
+          <span class="chip">match-strip.css</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══════════════ roteiro ═══════════════ -->
+  <section class="wave">
+    <div class="wave-head">
+      <div class="wave-tag"><b>06</b> <span>Ordem de execução</span></div>
+      <h2>O que vem antes do quê</h2>
+    </div>
+
+    <div class="roadmap-wrap">
+      <table>
+        <thead>
+          <tr><th>Maquete</th><th>Depende de</th><th>O que muda no código</th><th>Toca o domínio?</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>01 · Agrupamento</td>
+            <td>nada</td>
+            <td><span class="path">analysisRows()</span> vira view-model tipado com grupos e <span class="path">share</span>; sobe ~15 campos já coletados para a tela</td>
+            <td>não</td>
+          </tr>
+          <tr>
+            <td>01 · Linhas âmbar</td>
+            <td>maquete 01</td>
+            <td>escanteios, laterais e impedimentos <strong>derivados do log de eventos</strong>; interceptações e duelos promovidos a <span class="path">TeamStats</span>; toques na área no <span class="path">analytics-system</span></td>
+            <td>sim, leve</td>
+          </tr>
+          <tr>
+            <td>02 · xG</td>
+            <td>nada</td>
+            <td>novo <span class="path">runtime/expected-goals.ts</span>, chamado de <span class="path">resolveShot()</span>; chutes resolvidos passam a ficar registrados no estado</td>
+            <td>sim</td>
+          </tr>
+          <tr>
+            <td>02 · Mapa e curva</td>
+            <td>xG</td>
+            <td>dois canvas no painel, no mesmo padrão do <span class="path">tactical-map.ts</span></td>
+            <td>não</td>
+          </tr>
+          <tr>
+            <td>03 · Momento</td>
+            <td>nada</td>
+            <td>amostragem por janela no <span class="path">analytics-system</span>, no ritmo do keyframe</td>
+            <td>sim, leve</td>
+          </tr>
+          <tr>
+            <td>04 · Jogadores</td>
+            <td>xG (para a nota)</td>
+            <td><span class="path">PlayerMatchStats</span> separada da carreira; nota derivada dela</td>
+            <td>sim</td>
+          </tr>
+          <tr>
+            <td>05 · Faixa</td>
+            <td>xG</td>
+            <td>segunda linha na <span class="path">.match-strip</span></td>
+            <td>não</td>
+          </tr>
+          <tr>
+            <td>Cartões</td>
+            <td>decisão à parte</td>
+            <td>não existe cartão no modelo — <span class="path">Engagement</span> já marca <span class="path">recklessById</span>, falta a consequência. Muda a simulação (jogar com um a menos)</td>
+            <td>sim, muito</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <div class="closing">
+    <h2>Antes de qualquer campo novo</h2>
+    <p>
+      <span class="path">TeamStats</span> é mutado em <strong>52 pontos espalhados por 9 arquivos</strong> —
+      só o <span class="path">ball-system</span> tem 25. Não há fonte de incumbência única, e isso já
+      custou caro: o próprio <span class="path">shot.ts</span> documenta que
+      <span class="path">shotsOnTarget</span> era somado por previsão e depois subtraído.
+    </p>
+    <p>
+      Cada campo novo empilhado nessa dispersão encarece a mudança seguinte. A recomendação é
+      resolver o registro junto com a maquete 01 — derivando do log de eventos tudo que já é
+      evento, e deixando o contador só para o que é frequente demais para virar evento (passes,
+      toques, posse).
+    </p>
+  </div>
+
+</div>
+
+<script>
+  (function () {
+    "use strict";
+
+    var BLUE = "#3b82f6";
+    var BLUE_SOFT = "#8fb4ff";
+    var CORAL = "#f36f56";
+    var CORAL_SOFT = "#ff9e8b";
+    var LIME = "#b9df62";
+    var AMBER = "#f5c451";
+    var LINE = "#303833";
+    var MUTED = "#929d97";
+    var PITCH = "#17201c";
+
+    /* ---------- alternadores hoje/proposto ---------- */
+
+    function bindSwitcher(attr, panelAttr) {
+      var buttons = document.querySelectorAll("[" + attr + "]");
+      Array.prototype.forEach.call(buttons, function (button) {
+        button.addEventListener("click", function () {
+          var view = button.getAttribute(attr);
+          Array.prototype.forEach.call(buttons, function (other) {
+            other.setAttribute("aria-pressed", String(other === button));
+          });
+          Array.prototype.forEach.call(document.querySelectorAll("[" + panelAttr + "]"), function (panel) {
+            panel.hidden = panel.getAttribute(panelAttr) !== view;
+          });
+        });
+      });
+    }
+
+    bindSwitcher("data-view", "data-panel");
+    bindSwitcher("data-view2", "data-panel2");
+
+    var annot = document.getElementById("annot");
+    annot.addEventListener("change", function () {
+      Array.prototype.forEach.call(document.querySelectorAll("[data-panel='new'], [data-panel2='new']"), function (panel) {
+        panel.classList.toggle("is-annotated", annot.checked);
+      });
+    });
+
+    /* ---------- utilitário de canvas ---------- */
+
+    function setup(canvas, cssWidth, cssHeight) {
+      var ratio = window.devicePixelRatio || 1;
+      canvas.style.height = cssHeight + "px";
+      canvas.width = Math.round(cssWidth * ratio);
+      canvas.height = Math.round(cssHeight * ratio);
+      var context = canvas.getContext("2d");
+      context.scale(ratio, ratio);
+      return context;
+    }
+
+    /* ---------- mapa de chutes ---------- */
+
+    /* Campo oficial do motor: 105 × 64 m. Casa ataca para a direita. */
+    var FIELD_W = 105;
+    var FIELD_H = 64;
+
+    var SHOTS = [
+      { team: "b", x: 93, y: 30, xg: 0.34, out: "goal" },
+      { team: "b", x: 96, y: 36, xg: 0.42, out: "goal" },
+      { team: "b", x: 88, y: 26, xg: 0.18, out: "saved" },
+      { team: "b", x: 90, y: 41, xg: 0.21, out: "saved" },
+      { team: "b", x: 97, y: 29, xg: 0.28, out: "saved" },
+      { team: "b", x: 86, y: 34, xg: 0.15, out: "blocked" },
+      { team: "b", x: 78, y: 44, xg: 0.05, out: "blocked" },
+      { team: "b", x: 80, y: 20, xg: 0.06, out: "off" },
+      { team: "b", x: 74, y: 32, xg: 0.04, out: "off" },
+      { team: "b", x: 70, y: 31, xg: 0.03, out: "off" },
+      { team: "b", x: 84, y: 22, xg: 0.08, out: "off" },
+      { team: "c", x: 9, y: 30, xg: 0.38, out: "goal" },
+      { team: "c", x: 14, y: 33, xg: 0.26, out: "saved" },
+      { team: "c", x: 17, y: 40, xg: 0.12, out: "saved" },
+      { team: "c", x: 12, y: 38, xg: 0.14, out: "blocked" },
+      { team: "c", x: 20, y: 27, xg: 0.07, out: "blocked" },
+      { team: "c", x: 22, y: 24, xg: 0.09, out: "off" },
+      { team: "c", x: 28, y: 32, xg: 0.04, out: "off" },
+      { team: "c", x: 16, y: 29, xg: 0.02, out: "woodwork" }
+    ];
+
+    function drawShotMap() {
+      var canvas = document.getElementById("shotmap");
+      var width = canvas.clientWidth || 292;
+      var height = Math.round(width * FIELD_H / FIELD_W);
+      var context = setup(canvas, width, height);
+      var sx = width / FIELD_W;
+      var sy = height / FIELD_H;
+      var mx = function (v) { return v * sx; };
+      var my = function (v) { return v * sy; };
+
+      context.fillStyle = PITCH;
+      context.fillRect(0, 0, width, height);
+
+      context.strokeStyle = "rgba(235,247,238,.24)";
+      context.lineWidth = 1;
+      context.strokeRect(0.5, 0.5, width - 1, height - 1);
+      context.beginPath();
+      context.moveTo(width / 2, 0);
+      context.lineTo(width / 2, height);
+      context.stroke();
+      context.beginPath();
+      context.arc(width / 2, height / 2, mx(9.15), 0, Math.PI * 2);
+      context.stroke();
+
+      /* Grande área (40,32 × 16,5 m) e pequena área (18,32 × 5,5 m), dos dois lados. */
+      [
+        [16.5, 40.32],
+        [5.5, 18.32]
+      ].forEach(function (box) {
+        var depth = mx(box[0]);
+        var boxHeight = my(box[1]);
+        var top = (height - boxHeight) / 2;
+        context.strokeRect(0.5, top, depth, boxHeight);
+        context.strokeRect(width - depth - 0.5, top, depth, boxHeight);
+      });
+
+      var COLORS = {
+        goal: LIME,
+        saved: "#c6cfca",
+        blocked: "#465049",
+        off: null,
+        woodwork: AMBER
+      };
+
+      SHOTS.forEach(function (shot) {
+        var radius = 2.6 + Math.sqrt(shot.xg) * 9;
+        var cx = mx(shot.x);
+        var cy = my(shot.y);
+        context.beginPath();
+        context.arc(cx, cy, radius, 0, Math.PI * 2);
+        if (COLORS[shot.out]) {
+          context.fillStyle = COLORS[shot.out];
+          context.globalAlpha = shot.out === "goal" ? 0.95 : 0.72;
+          context.fill();
+          context.globalAlpha = 1;
+        } else {
+          context.strokeStyle = "#718078";
+          context.lineWidth = 1.2;
+          context.stroke();
+        }
+        /* Anel do time: diz de quem é o chute sem competir com a cor do desfecho. */
+        context.beginPath();
+        context.arc(cx, cy, radius + 1.8, 0, Math.PI * 2);
+        context.strokeStyle = shot.team === "b" ? BLUE : CORAL;
+        context.lineWidth = 1;
+        context.globalAlpha = 0.85;
+        context.stroke();
+        context.globalAlpha = 1;
+      });
+    }
+
+    /* ---------- xG acumulado ---------- */
+
+    var XG_BLUE = [
+      [0, 0], [8, 0.06], [14, 0.10], [23, 0.44], [31, 0.62], [39, 0.67],
+      [44, 0.70], [58, 0.85], [62, 1.06], [67, 1.48], [78, 1.76], [85, 1.84], [90, 1.84]
+    ];
+    var XG_CORAL = [
+      [0, 0], [11, 0.09], [26, 0.16], [34, 0.30], [43, 0.32], [51, 0.70],
+      [60, 0.82], [71, 1.08], [83, 1.12], [90, 1.12]
+    ];
+    var GOALS = [
+      { minute: 23, xg: 0.44, team: "b" },
+      { minute: 51, xg: 0.70, team: "c" },
+      { minute: 67, xg: 1.48, team: "b" }
+    ];
+
+    function drawXgLine() {
+      var canvas = document.getElementById("xgline");
+      var width = canvas.clientWidth || 292;
+      var height = 92;
+      var context = setup(canvas, width, height);
+      var padTop = 8;
+      var padBottom = 14;
+      var maxXg = 2;
+      var px = function (minute) { return minute / 90 * width; };
+      var py = function (value) { return height - padBottom - value / maxXg * (height - padTop - padBottom); };
+
+      context.strokeStyle = "rgba(48,56,51,.9)";
+      context.lineWidth = 1;
+      [0.5, 1, 1.5, 2].forEach(function (value) {
+        context.beginPath();
+        context.moveTo(0, Math.round(py(value)) + 0.5);
+        context.lineTo(width, Math.round(py(value)) + 0.5);
+        context.stroke();
+      });
+
+      /* Linha do intervalo. */
+      context.setLineDash([2, 3]);
+      context.beginPath();
+      context.moveTo(px(45), padTop - 4);
+      context.lineTo(px(45), height - padBottom);
+      context.stroke();
+      context.setLineDash([]);
+
+      context.strokeStyle = LINE;
+      context.beginPath();
+      context.moveTo(0, height - padBottom + 0.5);
+      context.lineTo(width, height - padBottom + 0.5);
+      context.stroke();
+
+      function drawSeries(series, color) {
+        context.strokeStyle = color;
+        context.lineWidth = 1.6;
+        context.lineJoin = "round";
+        context.beginPath();
+        context.moveTo(px(series[0][0]), py(series[0][1]));
+        for (var i = 1; i < series.length; i += 1) {
+          context.lineTo(px(series[i][0]), py(series[i - 1][1]));
+          context.lineTo(px(series[i][0]), py(series[i][1]));
+        }
+        context.stroke();
+        /* Ponta enfatizada: o valor final é o que se lê primeiro. */
+        var last = series[series.length - 1];
+        context.beginPath();
+        context.arc(px(last[0]) - 2, py(last[1]), 2.4, 0, Math.PI * 2);
+        context.fillStyle = color;
+        context.fill();
+      }
+
+      drawSeries(XG_CORAL, CORAL_SOFT);
+      drawSeries(XG_BLUE, BLUE_SOFT);
+
+      GOALS.forEach(function (goal) {
+        context.beginPath();
+        context.arc(px(goal.minute), py(goal.xg), 3.2, 0, Math.PI * 2);
+        context.fillStyle = LIME;
+        context.fill();
+        context.strokeStyle = PITCH;
+        context.lineWidth = 1.2;
+        context.stroke();
+      });
+
+      context.fillStyle = MUTED;
+      context.font = "600 7px ui-sans-serif, system-ui, sans-serif";
+      context.fillText("0'", 1, height - 4);
+      context.fillText("45'", px(45) - 6, height - 4);
+      context.fillText("90'", width - 12, height - 4);
+    }
+
+    /* ---------- momento ---------- */
+
+    var MOMENTUM = [15, 30, 45, 25, 65, 40, 10, -20, -35, -15, -50, -30, 20, 55, 35, -10, 25, 45];
+    var MOMENTUM_GOALS = [{ bucket: 4, team: "b" }, { bucket: 10, team: "c" }, { bucket: 13, team: "b" }];
+
+    function drawMomentum() {
+      var canvas = document.getElementById("momentum");
+      var width = canvas.clientWidth || 292;
+      var height = 78;
+      var context = setup(canvas, width, height);
+      var mid = height / 2;
+      var slot = width / MOMENTUM.length;
+      var barWidth = slot - 2;
+
+      MOMENTUM.forEach(function (value, index) {
+        var magnitude = Math.abs(value) / 100 * (mid - 8);
+        var x = index * slot + 1;
+        context.fillStyle = value >= 0 ? BLUE : CORAL;
+        context.globalAlpha = 0.55 + Math.abs(value) / 100 * 0.45;
+        if (value >= 0) context.fillRect(x, mid - magnitude, barWidth, magnitude);
+        else context.fillRect(x, mid, barWidth, magnitude);
+        context.globalAlpha = 1;
+      });
+
+      context.strokeStyle = LINE;
+      context.lineWidth = 1;
+      context.beginPath();
+      context.moveTo(0, Math.round(mid) + 0.5);
+      context.lineTo(width, Math.round(mid) + 0.5);
+      context.stroke();
+
+      MOMENTUM_GOALS.forEach(function (goal) {
+        var x = goal.bucket * slot + slot / 2;
+        var y = goal.team === "b" ? 5 : height - 5;
+        context.beginPath();
+        context.arc(x, y, 3, 0, Math.PI * 2);
+        context.fillStyle = LIME;
+        context.fill();
+      });
+
+      context.fillStyle = MUTED;
+      context.font = "600 7px ui-sans-serif, system-ui, sans-serif";
+      context.fillText("0'", 1, mid - 2);
+      context.fillText("45'", width / 2 - 6, mid - 2);
+      context.fillText("90'", width - 12, mid - 2);
+    }
+
+    drawShotMap();
+    drawXgLine();
+    drawMomentum();
+  }());
+</script>
+
+</body>
+</html>

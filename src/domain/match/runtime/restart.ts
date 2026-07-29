@@ -1,6 +1,6 @@
 import { FIELD, RESTART, STAMINA } from "../config";
 import { add, clamp, distance, normalize, scale, subtract } from "../../shared/math";
-import type { MatchState, PlayerRuntime, RestartKind, RestartReason, RestartState, Team, TeamShapePlacement, Vec2 } from "../model";
+import type { CountableTeamStat, MatchState, PlayerRuntime, RestartKind, RestartReason, RestartState, Team, TeamShapePlacement, Vec2 } from "../model";
 import { clearDribbleOwner, clearGoalkeeperAttempts, registerControlledTeam } from "./control";
 import { emitCognitiveEvent } from "./cognitive-events";
 import { emitMatchEvent } from "./events";
@@ -174,6 +174,18 @@ const restartGeometry = (kind: RestartKind, exitPosition: Vec2, team: Team): { s
 };
 
 /**
+ * Cada reinício concedido soma para quem o cobra. A saída de bola fica de fora do tipo, e não de
+ * um `if` aqui dentro: ela não é concedida a ninguém, e o `Exclude` obriga a tabela a cobrir
+ * qualquer reinício novo que apareça.
+ */
+const RESTART_COUNTER: Record<Exclude<RestartKind, "kickoff">, CountableTeamStat> = {
+  throwIn: "throwIns",
+  corner: "corners",
+  goalKick: "goalKicks",
+  freeKick: "freeKicks",
+};
+
+/**
  * Inicia uma bola parada: põe a bola no ponto (parada), escolhe o cobrador e arma o estado. NÃO
  * mexe na posição dos jogadores — eles caminham até o desenho por conta própria. Chamado pela
  * detecção de saída de bola (ball-system) e pelos reinícios do lifecycle (intervalo, impedimento).
@@ -224,8 +236,10 @@ export const beginRestart = (
   // Lateral, escanteio e tiro de meta não têm impedimento na cobrança; o tiro livre e a saída, sim.
   state.offsideExemptRestart = kind === "throwIn" || kind === "corner" || kind === "goalKick";
   state.nextCognitionAt = state.elapsed;
-  // A saída de bola não emite `restart-awarded` (o evento é dos reinícios com a bola saindo de campo).
-  if (kind !== "kickoff") emitMatchEvent(state, { type: "restart-awarded", team, restartKind: kind });
+  if (kind !== "kickoff") {
+    state.stats[team][RESTART_COUNTER[kind]] += 1;
+    emitMatchEvent(state, { type: "restart-awarded", team, restartKind: kind });
+  }
 };
 
 /** Tiro livre no ponto da infração, para o time que a sofreu — impedimento (Lei 11) ou falta (12). */

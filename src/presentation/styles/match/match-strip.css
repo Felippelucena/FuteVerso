@@ -5,8 +5,14 @@
   grid-template-columns: auto minmax(120px, 1fr) auto;
   align-items: center;
   gap: 14px;
+  row-gap: 7px;
   border-top: 1px solid var(--line);
 }
+
+/* Segunda linha: mesma grade da posse, meio tom abaixo — é leitura de apoio, não a manchete. */
+.strip-minor strong { font-size: var(--type-md); color: var(--text-soft); }
+
+.strip-minor span { font-size: var(--type-3xs); }
 
 .match-strip > div:not(.possession-track) {
   display: flex;
@@ -38,6 +44,13 @@
   background: var(--blue);
   transition: width 240ms ease;
 }
+
+/* Depois da trilha base, e não antes: as duas regras têm a mesma especificidade, então quem
+   vence é a ordem. O xG não divide azul/coral como a posse — ele mostra quanto do perigo criado
+   é da casa, numa cor que não se confunde com a barra de cima. */
+.possession-track--xg { height: 3px; background: var(--surface-track); }
+
+.possession-track--xg span { background: var(--lime); }
 
 @media (max-width: 580px) {
   .match-strip {

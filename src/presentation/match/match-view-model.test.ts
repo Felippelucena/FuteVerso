@@ -17,6 +17,9 @@ describe("match view model", () => {
       possessionLabel: "Bola em disputa",
       bluePossession: 50,
       coralPossession: 50,
+      blueXg: "0.00",
+      coralXg: "0.00",
+      xgShare: 50,
     });
   });
 

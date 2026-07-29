@@ -13,6 +13,8 @@ import {
 import { emitMatchEvent } from "../runtime/events";
 import { emitCognitiveEvent, relevantPlayersNear } from "../runtime/cognitive-events";
 import { duelEdge } from "../runtime/duel";
+import { BIG_CHANCE, expectedGoals } from "../runtime/expected-goals";
+import { insidePenaltyArea } from "../runtime/formation-geometry";
 import { GOAL_MOUTH, insideGoalMouth, resolveGoalFrameContact } from "../runtime/goal-frame";
 import { beginRestart, registerRestartKick } from "../runtime/restart";
 import { offsideOffendersAtPass } from "../runtime/offside";
@@ -245,6 +247,15 @@ export const executeBallAction = (state: MatchState, player: PlayerRuntime, acti
     if (technique === "header") state.stats[player.team].headers += 1;
     if (technique === "volley") state.stats[player.team].volleys += 1;
     if (distance(player.position, action.target) > FIELD.width * 0.29) state.stats[player.team].longShots += 1;
+    // Onde a bola foi batida, não onde está o corpo: é o pé que decide se o chute saiu da área.
+    const origin = { ...state.ball.position };
+    if (insidePenaltyArea(player.team, origin, false)) state.stats[player.team].shotsInsideBox += 1;
+    // O que a chance valia entra aqui, com `shots`, e não no desfecho: uma chance vale o que vale
+    // independentemente de ter entrado. Assim `xG / finalizações` fecha sempre.
+    const chance = expectedGoals(state, player, origin, technique);
+    state.stats[player.team].expectedGoals += chance;
+    if (chance >= BIG_CHANCE) state.stats[player.team].bigChances += 1;
+    if (assistProvider(state, player.team, player.profile.id)) state.stats[player.team].expectedAssists += chance;
     const goalLineX = player.team === "blue" ? FIELD.width : 0;
     const goalPoint = predictShotPoint(state.ball.position, state.ball.velocity, state.ball.height, state.ball.verticalVelocity, solution.duration);
     // Previsão da rota, e só isso: é o que faz o goleiro reagir. A estatística de chute no alvo
@@ -254,6 +265,8 @@ export const executeBallAction = (state: MatchState, player: PlayerRuntime, acti
       team: player.team,
       startedAt: state.elapsed,
       technique,
+      origin,
+      expectedGoals: chance,
       target: executedTarget,
       targetHeight: requestedHeight,
       expectedArrivalAt: state.elapsed + solution.duration,
@@ -440,6 +453,21 @@ export const updateControlledBall = (state: MatchState, decisions: Map<string, A
 
 const otherTeam = (team: Team): Team => team === "blue" ? "coral" : "blue";
 
+/** Por quanto tempo o último passe certo ainda responde pelo que aconteceu depois dele. */
+const ASSIST_WINDOW_SECONDS = 8;
+
+/**
+ * Quem deu a bola e ainda está no prazo de levar o crédito — o mesmo prazo para a assistência do
+ * gol e para a assistência esperada, porque é a mesma pergunta feita em dois instantes: uma
+ * quando a bola entra, outra quando ela é chutada.
+ */
+const assistProvider = (state: MatchState, team: Team, excludeId: string | undefined): PlayerRuntime | null => {
+  const assist = state.lastAssist;
+  if (!assist || assist.team !== team || state.elapsed - assist.time >= ASSIST_WINDOW_SECONDS) return null;
+  if (assist.playerId === excludeId) return null;
+  return state.players.find((player) => player.profile.id === assist.playerId) ?? null;
+};
+
 const registerGoal = (state: MatchState, scorerTeam: Team): void => {
   const conceding: Team = scorerTeam === "blue" ? "coral" : "blue";
   const activeShooter = state.activeShot?.team === scorerTeam ? state.activeShot.shooterId : null;
@@ -459,10 +487,8 @@ const registerGoal = (state: MatchState, scorerTeam: Team): void => {
     const learningAmount = state.learningEnabled ? 0.009 : 0;
     adaptPlayerPolicy(scorer, origin === "shot" ? "shoot" : origin === "pass" ? "pass" : "dribble", learningAmount);
   }
-  const assist = state.lastAssist && state.lastAssist.team === scorerTeam && state.elapsed - state.lastAssist.time < 8
-    ? state.players.find((player) => player.profile.id === state.lastAssist?.playerId)
-    : null;
-  if (assist && assist.profile.id !== scorer?.profile.id) assist.memory.stats.assists += 1;
+  const assist = assistProvider(state, scorerTeam, scorer?.profile.id);
+  if (assist) assist.memory.stats.assists += 1;
   emitMatchEvent(state, { type: "goal-scored", team: scorerTeam, playerId: scorer?.profile.id ?? null, origin });
   state.lastAssist = null;
   // Bola no meio: os jogadores voltam à formação e o cobrador caminha até a marca central. A
@@ -486,6 +512,22 @@ const registerFrameRebound = (state: MatchState): void => {
   const nearby = relevantPlayersNear(state, state.ball.position);
   if (pass) emitCognitiveEvent(state, "passResolved", nearby, { passId: pass.id, outcome: "loose" });
   emitCognitiveEvent(state, "ballTrajectoryChanged", nearby, { shotId, passId: pass?.id });
+};
+
+/**
+ * A bola saiu de campo, e o reinício sai daqui. Um chute em curso terminou neste instante e não
+ * foi ao alvo: sem resolvê-lo antes, `beginRestart` o fecharia como jogada desfeita e a
+ * finalização não somaria em coluna nenhuma — justamente o "chutou para fora", que é o desfecho
+ * mais comum de todos. Mesmo motivo pelo qual o gol se resolve dentro de `registerGoal`.
+ */
+const registerBallOut = (
+  state: MatchState,
+  kind: "goalKick" | "corner" | "throwIn",
+  team: Team,
+  position: Vec2,
+): void => {
+  resolveShot(state, "off");
+  beginRestart(state, kind, team, position);
 };
 
 export const updateBall = (state: MatchState, dt: number): void => {
@@ -544,12 +586,12 @@ export const updateBall = (state: MatchState, dt: number): void => {
     if (ball.controllerId === null && insideGoalMouth(crossingY, crossingHeight)) registerGoal(state, otherTeam(defendingTeam));
     else {
       const restartTeam = ball.lastTouch === defendingTeam ? otherTeam(defendingTeam) : defendingTeam;
-      beginRestart(state, restartTeam === defendingTeam ? "goalKick" : "corner", restartTeam, ball.position);
+      registerBallOut(state, restartTeam === defendingTeam ? "goalKick" : "corner", restartTeam, ball.position);
     }
     return;
   }
   if (ball.position.y < -ball.radius || ball.position.y > FIELD.height + ball.radius) {
     const restartTeam = ball.lastTouch ? otherTeam(ball.lastTouch) : (ball.position.x < FIELD.width / 2 ? "blue" : "coral");
-    beginRestart(state, "throwIn", restartTeam, ball.position);
+    registerBallOut(state, "throwIn", restartTeam, ball.position);
   }
 };

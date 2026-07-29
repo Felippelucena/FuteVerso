@@ -372,6 +372,10 @@ export const POSSESSION = {
   finalThirdEnter: 0.68,
   finalThirdRearm: 0.58,
   finalThirdEntryCooldown: 7.5,
+  // A área é uma zona menor e mais disputada que o terço final: a bola entra e sai dela em
+  // segundos, então a carência é menor e a rearmagem fica logo atrás da linha da grande área.
+  boxRearm: 0.78,
+  boxEntryCooldown: 3.5,
 } as const;
 
 export const COGNITION = {

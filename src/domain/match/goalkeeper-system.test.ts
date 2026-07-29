@@ -50,6 +50,7 @@ const armLaunchedAttempt = (
   keeper.velocity = { x: 0, y: 0 };
   state.activeShot = source === "shot" ? {
     id: 1, shooterId: "maya-fw", team: "coral", startedAt: 0, technique: "power",
+    origin: { x: 14, y: keeper.position.y + yOffset }, expectedGoals: 0,
     target: { x: 0, y: keeper.position.y + yOffset }, targetHeight: height,
     expectedArrivalAt: 0.2, expectedSpeed: speed,
     goalPoint: { position: { x: 0, y: keeper.position.y + yOffset }, height }, onTarget: true, goalkeeperTouched: false,
@@ -88,6 +89,7 @@ const fireShotAtGoal = (state: MatchState, aimY: number, speed: number, height: 
   state.ball.velocity = { x: -speed, y: (aimY - FIELD.height / 2) / flight };
   state.activeShot = {
     id: 1, shooterId: "maya-fw", team: "coral", startedAt: state.elapsed, technique: "power",
+    origin: { x: range, y: FIELD.height / 2 }, expectedGoals: 0,
     target: { x: 0, y: aimY }, targetHeight: height,
     expectedArrivalAt: state.elapsed + flight, expectedSpeed: speed,
     goalPoint: { position: { x: 0, y: aimY }, height }, onTarget: true, goalkeeperTouched: false,
