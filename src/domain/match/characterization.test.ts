@@ -71,7 +71,14 @@ describe("caracterizacao deterministica", () => {
       short: hashFingerprint(actual.short),
       long: hashFingerprint(actual.long),
     };
-    expect(hashes).toEqual({ short: "e308fbee", long: "022bc5c9" });
+    // Re-baseline por três mudanças medidas: (1) a latitude do apoio passou a vir da CÉLULA e não
+    // do portador, e a fatia do quadro (`bodyShare`) virou por eixo — a largura que o motor PEDE
+    // subiu de 40,2 m para 46,0 m, casando com as âncoras; (2) o canal de ataque ganhou histerese
+    // (`TACTICS.channelHold`) — de 22,8 para 8,5 trocas por minuto, e o desvio lateral de cada
+    // jogador até a própria âncora caiu de 9,2 m para 6,3 m; (3) o deslocamento por exclusividade
+    // (`firstFreeCell`) passou a preferir a célula que o jogador já ocupava — de 10,1 para 9,1
+    // trocas de faixa por jogador por minuto.
+    expect(hashes).toEqual({ short: "feeb6a8e", long: "e961cb65" });
     // Timeout explícito: com 22 jogadores em campo a simulação custa ~2,4× o que custava no
     // 5x5, e o padrão de 5s estourava quando a suíte roda em paralelo.
   }, 60_000);

@@ -82,7 +82,7 @@ export const defensiveTarget = (
     const burstDuration = clamp(distance(player.position, recoverPoint) / Math.max(1, raceSpeed), PHYSICS.burstDuration, DEFENSE.recoverBurstMax);
     return {
       target: recoverPoint,
-      frame: { anchor, bodyId: null, bodyShare: 0 },
+      frame: { anchor, bodyId: null, bodyShare: { x: 0, y: 0 } },
       intent: "covering",
       reason: "recoverShape",
       burst: true,
@@ -97,5 +97,12 @@ export const defensiveTarget = (
   // A firmeza é exatamente a fatia: marcação frouxa é sustentar a zona (que se recoloca com o
   // bloco), marcação firme é ir junto com o homem. Sem o quadro, o alvo virava um ponto congelado
   // enquanto a bola e o bloco andavam — e estalava 9 m a cada replanejamento.
-  return { target, frame: { anchor, bodyId: mark?.profile.id ?? null, bodyShare: tightness }, intent, reason, burst: defensiveBurst };
+  // Marcar é ir com o homem nos dois eixos: a firmeza vale igual em profundidade e em faixa.
+  return {
+    target,
+    frame: { anchor, bodyId: mark?.profile.id ?? null, bodyShare: { x: tightness, y: tightness } },
+    intent,
+    reason,
+    burst: defensiveBurst,
+  };
 };

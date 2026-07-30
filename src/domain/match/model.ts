@@ -333,8 +333,15 @@ export interface TargetFrame {
   anchor: Vec2;
   /** Corpo que o alvo acompanha (o portador, o marcado). Nulo é alvo só do gramado. */
   bodyId: string | null;
-  /** Fatia do alvo que pertence ao corpo. 0 = puro gramado, 1 = colado nele. */
-  bodyShare: number;
+  /**
+   * Fatia do alvo que pertence ao corpo, **por eixo**. 0 = puro gramado, 1 = colado nele.
+   *
+   * Por eixo porque acompanhar em profundidade e acompanhar em faixa são decisões distintas: o
+   * apoiador se oferece a uma distância da bola (x segue o portador) na faixa que o time lhe deu
+   * (y segue a célula). Com uma fatia só, a latitude era rebocada junto e o time jogava 33 m de
+   * largura com as células abertas em 44 — o alvo ancorava certo e o QUADRO o desfazia.
+   */
+  bodyShare: Vec2;
 }
 
 export interface AgentDecision {
@@ -357,7 +364,7 @@ export type PlanTarget =
    * recoloca a cada percepção), o que é do corpo acompanha o corpo. Guardar o resultado já somado
    * congelava as duas por até 0,85 s.
    */
-  | { kind: "anchored"; anchorOffset: Vec2; bodyId: string | null; bodyOffset: Vec2; bodyShare: number }
+  | { kind: "anchored"; anchorOffset: Vec2; bodyId: string | null; bodyOffset: Vec2; bodyShare: Vec2 }
   | { kind: "goalkeeper" };
 
 export interface PlayerPlan {

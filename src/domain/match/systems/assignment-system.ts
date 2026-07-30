@@ -543,11 +543,28 @@ const lateralPullFor = (player: PlayerRuntime, choice: DutyChoice, attackingRows
   return neighbourAttacks ? 1 : 0.35;
 };
 
-const firstFreeCell = (desired: AssignmentZone, taken: Set<string>): AssignmentZone => {
+/**
+ * A célula que o jogador de fato recebe, quando a que ele queria já é de outro. `previous` é a que
+ * ele ocupava no plano anterior, e entra como **histerése**: entre as livres igualmente próximas do
+ * que ele queria, a que ele já estava ocupando.
+ *
+ * Sem ela o desempate era ordem fixa da grade, e o primeiro critério (`Math.abs(column - desired
+ * .column)`) preferia preservar a COLUNA — isto é, preferia deslocar o jogador de FAIXA, ~11 m para
+ * o lado. Como a ordem de reivindicação muda junto com os deveres (`DUTY_CLAIM`, prioridade), o
+ * deslocamento saía diferente a cada plano e o jogador era jogado de um lado para o outro: medido,
+ * **10,1 trocas de faixa por jogador por minuto**. Ninguém ocupa uma faixa que é dele por seis
+ * segundos, e era isso que deixava o time jogando 34 m de largura com os alvos pedindo 46.
+ */
+const firstFreeCell = (
+  desired: AssignmentZone,
+  taken: Set<string>,
+  previous: AssignmentZone | null,
+): AssignmentZone => {
   if (!taken.has(cellKey(desired))) return desired;
   return ALL_CELLS
     .filter((cell) => !taken.has(cellKey(cell)))
     .sort((first, second) => cellDistance(desired, first) - cellDistance(desired, second)
+      || (previous ? cellDistance(previous, first) - cellDistance(previous, second) : 0)
       || Math.abs(first.column - desired.column) - Math.abs(second.column - desired.column)
       || first.column - second.column
       || first.row - second.row)[0] ?? desired;
@@ -617,8 +634,11 @@ export const buildAssignments = (
     || second.player.positionFit - first.player.positionFit
     || byId(first.player, second.player));
 
+  // As células do plano anterior: a memória de onde cada um estava, para o deslocamento por
+  // exclusividade não remanejar o time a cada atualização. Mesma fonte que o `previousSafetyId`.
+  const previousZones = state.tactics[team].collectivePlan?.assignments;
   for (const { player, choice, cell, lateralPull } of ordered) {
-    const zone = firstFreeCell(cell, taken);
+    const zone = firstFreeCell(cell, taken, previousZones?.[player.profile.id]?.zone ?? null);
     taken.add(cellKey(zone));
     assignments[player.profile.id] = {
       duty: choice.duty,

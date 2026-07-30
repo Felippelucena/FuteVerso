@@ -262,6 +262,21 @@ export const TACTICS = {
   // esses números lá e acompanham a duração em qualquer outra.
   protectLeadShare: 0.2,
   chaseGameShare: 0.25,
+  /**
+   * Vantagem que o canal de ataque em vigor leva sobre os outros dois na própria nota. É histerese,
+   * o mesmo remédio que o último homem (`previousSafetyId`) e a fase (`candidatePhase`) já usam.
+   *
+   * Sem ela `selectAttackChannel` era um `argmax` puro entre três candidatos quase empatados, e
+   * medido: o canal trocava **22,8 vezes por minuto** (uma a cada 2,6 s). Cada troca desliza o bloco
+   * inteiro por até 18 m (`LANE_SLIDE`), o que fazia a âncora de todo mundo correr a 8,7 m/s em y
+   * contra 4,5 m/s de perna — 87% de toda a agitação lateral do time. O resultado era um time
+   * permanentemente EM TRÂNSITO para uma forma que nunca ocupava: ele pedia 45 m de largura e
+   * jogava com 33.
+   *
+   * O valor é em pontos da nota, e `space` entra nela dividida por 12,6 m: 0,35 quer dizer "o outro
+   * corredor precisa ter uns 4 m mais de espaço para valer a viagem".
+   */
+  channelHold: 0.35,
 } as const;
 
 /**

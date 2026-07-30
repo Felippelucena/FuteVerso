@@ -92,7 +92,18 @@ const detectPhase = (state: MatchState, team: Team, shape: TeamShape): TacticalP
 const average = (players: PlayerRuntime[], value: (player: PlayerRuntime) => number): number =>
   players.reduce((sum, player) => sum + value(player), 0) / Math.max(1, players.length);
 
-const selectAttackChannel = (state: MatchState, team: Team, players: PlayerRuntime[], opponents: PlayerRuntime[]): AttackChannel => {
+/**
+ * Por qual corredor o time ataca. O canal em vigor entra na disputa com a vantagem de já ser o
+ * canal (`TACTICS.channelHold`): trocar de lado desloca o bloco inteiro, e um time que troca a cada
+ * dois segundos nunca chega a lado nenhum.
+ */
+const selectAttackChannel = (
+  state: MatchState,
+  team: Team,
+  players: PlayerRuntime[],
+  opponents: PlayerRuntime[],
+  current: AttackChannel | null,
+): AttackChannel => {
   const direction = team === "blue" ? 1 : -1;
   const horizon = average(players, (player) => predictionHorizon(player, 0.35));
   const channels: AttackChannel[] = ["left", "center", "right"];
@@ -108,7 +119,8 @@ const selectAttackChannel = (state: MatchState, team: Team, players: PlayerRunti
         return player.profile.skills.sprintSpeed / 100 - distance(predicted, point) / FIELD.width;
       }));
       const centralProgression = channel === "center" ? 0.08 : 0;
-      return space / (FIELD.width * 0.12) + support * 0.5 + centralProgression;
+      const holding = channel === current ? TACTICS.channelHold : 0;
+      return space / (FIELD.width * 0.12) + support * 0.5 + centralProgression + holding;
     };
     return score(second) - score(first);
   })[0];
@@ -167,7 +179,10 @@ const createCollectivePlan = (state: MatchState, team: Team): TeamCollectivePlan
   const opponents = state.players.filter((player) => player.team !== team);
   const actorId = activeBallPlayerId(state);
   const posture = collectivePosture(state, team);
-  const attackChannel = selectAttackChannel(state, team, outfield, opponents);
+  // O canal em vigor sai do plano anterior: não precisa de estado novo, e é a mesma fonte que o
+  // `previousSafetyId` logo abaixo usa para a histerese dele.
+  const attackChannel = selectAttackChannel(state, team, outfield, opponents,
+    tactical.collectivePlan?.attackChannel ?? null);
   // Regra uniforme dos estilos: `auto` é o que o motor decide sozinho, qualquer outro valor é
   // ordem do treinador. Nenhum caso especial de permeio.
   const defensiveBlock = directives.defensiveBlock === "auto"

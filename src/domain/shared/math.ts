@@ -42,6 +42,17 @@ export const blend = (a: Vec2, b: Vec2, amount: number): Vec2 => ({
   y: a.y * (1 - amount) + b.y * amount,
 });
 
+/**
+ * `blend` com uma fatia por eixo. Existe porque profundidade e faixa lateral são perguntas
+ * diferentes: um apoiador acompanha o portador em profundidade (a que distância da bola me ofereço)
+ * e a própria célula em latitude (que faixa do campo ocupo). Com uma fatia só, a segunda seguia a
+ * primeira e o time jogava 33 m de largura com as células abertas em 44.
+ */
+export const blendAxes = (a: Vec2, b: Vec2, amount: Vec2): Vec2 => ({
+  x: lerp(a.x, b.x, amount.x),
+  y: lerp(a.y, b.y, amount.y),
+});
+
 export const dot = (a: Vec2, b: Vec2): number => a.x * b.x + a.y * b.y;
 
 export const cross = (a: Vec2, b: Vec2): number => a.x * b.y - a.y * b.x;

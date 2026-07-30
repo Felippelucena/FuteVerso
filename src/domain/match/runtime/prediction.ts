@@ -1,6 +1,6 @@
 import { PHYSICS, TACTICS } from "../config";
 import type { MatchState, PlayerRuntime, Vec2 } from "../model";
-import { add, blend, clamp, closestPointOnSegment, distance, length, scale } from "../../shared/math";
+import { add, blendAxes, clamp, closestPointOnSegment, distance, length, scale } from "../../shared/math";
 import { playerSkillAcceleration, playerSkillSpeed } from "./player-metrics";
 import { assignedAnchor } from "./formation-geometry";
 import { clampToField } from "./pitch";
@@ -35,7 +35,7 @@ const planTargetPosition = (state: MatchState, player: PlayerRuntime): Vec2 | nu
     const body = target.bodyId
       ? state.players.find((candidate) => candidate.profile.id === target.bodyId) ?? null
       : null;
-    return body ? blend(anchored, add(body.position, target.bodyOffset), target.bodyShare) : anchored;
+    return body ? blendAxes(anchored, add(body.position, target.bodyOffset), target.bodyShare) : anchored;
   }
   return null;
 };

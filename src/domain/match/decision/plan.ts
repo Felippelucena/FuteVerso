@@ -1,5 +1,5 @@
 import { COGNITION, PHYSICS } from "../config";
-import { add, blend, clamp, subtract } from "../../shared/math";
+import { add, blendAxes, clamp, subtract } from "../../shared/math";
 import type { AgentDecision, MatchState, PlanTarget, PlayerPlan, PlayerRuntime, Vec2 } from "../model";
 import { activeBallPlayerId } from "../runtime/control";
 import { assignedAnchor } from "../runtime/formation-geometry";
@@ -43,7 +43,7 @@ const planTarget = (decision: AgentDecision, state: MatchState): PlanTarget => {
       anchorOffset: subtract(decision.movementTarget, frame.anchor),
       bodyId: body?.profile.id ?? null,
       bodyOffset: body ? subtract(decision.movementTarget, body.position) : { x: 0, y: 0 },
-      bodyShare: body ? frame.bodyShare : 0,
+      bodyShare: body ? frame.bodyShare : { x: 0, y: 0 },
     };
   }
   return { kind: "point", position: { ...decision.movementTarget } };
@@ -150,7 +150,7 @@ export const resolvePlanDecision = (player: PlayerRuntime, state: MatchState): A
     // preso ao gramado enquanto o corpo de referência anda.
     const anchored = add(assignedAnchor(state.tactics[player.team].collectivePlan, player), anchorOffset);
     const body = bodyId ? state.players.find((candidate) => candidate.profile.id === bodyId) ?? null : null;
-    movementTarget = body ? blend(anchored, add(body.position, bodyOffset), bodyShare) : anchored;
+    movementTarget = body ? blendAxes(anchored, add(body.position, bodyOffset), bodyShare) : anchored;
   }
   const controlsBall = state.ball.controllerId === player.profile.id;
   const ballAction = controlsBall ? plan.ballAction : { kind: "none" } as const;

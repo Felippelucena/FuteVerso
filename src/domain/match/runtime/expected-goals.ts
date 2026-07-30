@@ -68,6 +68,24 @@ const openGoalAngle = (origin: Vec2, goalX: number): number => {
   return Math.abs(toBottom - toTop);
 };
 
+/**
+ * A chance de gol só pela **geometria**: distância e ângulo, sem pressão, sem corpo na rota e sem
+ * técnica de contato. É o núcleo posicional deste mesmo modelo — `expectedGoals` o completa com o
+ * que o lance tem de vivo, e `runtime/pitch-value` o usa para saber quanto vale ter a bola em cada
+ * palmo do gramado.
+ *
+ * Existe para haver **uma** régua de "quão bom é chutar daqui", compartilhando `MODEL` e
+ * `openGoalAngle` com o xG do lance. Duas fórmulas para a mesma pergunta é o defeito que
+ * `pass-viability` já teve de desfazer no passe.
+ */
+export const positionalGoalChance = (origin: Vec2, goalX: number): number => {
+  const mouth = { x: goalX, y: FIELD.height / 2 };
+  const metres = Math.max(1, distance(origin, mouth) / FIELD.unitsPerMeter);
+  return clamp(logistic(MODEL.intercept
+    + MODEL.angle * openGoalAngle(origin, goalX)
+    + MODEL.logDistance * Math.log(metres)), 0.001, 0.99);
+};
+
 export interface ChanceGeometry {
   /** Distância até o meio do gol, em metros. */
   readonly metres: number;

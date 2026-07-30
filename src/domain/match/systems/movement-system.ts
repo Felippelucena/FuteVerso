@@ -91,6 +91,12 @@ const updatePlayer = (state: MatchState, player: PlayerRuntime, decision: AgentD
     && player.profile.position === "goalkeeper" && player.goalkeeperAlertUntil > state.elapsed;
   // Marcar é acompanhar um homem que se mexe: quem faz isso andando chega sempre um passo atrás.
   // Sustentar a zona (`covering`), não — aí o jogador se recoloca no próprio ritmo.
+  //
+  // Medido e DESCARTADO: pôr `supporting` nesta lista (a forma do time com a bola também se move, a
+  // 9,5 m/s em latitude) rendeu 0,55 m de largura ao custo de mandar o elenco de 23% para 55% do
+  // tempo em corrida. O apoiador não chega porque a INCUMBÊNCIA dele troca de faixa 10 vezes por
+  // minuto, não porque ele ande — correr mais atrás de um alvo que se remaneja não é chegar. Revisar
+  // depois que a atribuição de célula tiver histerese.
   const running = !controlsBall && (
     movementGap > FIELD.width * 0.095
     || decision.intent === "pressing"

@@ -1,8 +1,8 @@
 import { FIELD, TACTICS } from "../config";
-import { add, blend, distance } from "../../shared/math";
+import { add, blend, distance, lerp } from "../../shared/math";
 import type { AssignmentDuty, DecisionReason, MatchState, PlayerRuntime, TargetFrame, Vec2 } from "../model";
 import { assignedAnchor, attackDirection } from "../runtime/formation-geometry";
-import { clampToField, edgeRisk, fieldX, fieldY } from "../runtime/pitch";
+import { clampToField, edgeRisk, fieldX } from "../runtime/pitch";
 import { predictPlayerPosition, predictionHorizon } from "../runtime/prediction";
 import { assignmentOf } from "../systems/assignment-system";
 import { crowdShift, perceptionDepth } from "./shared";
@@ -36,12 +36,6 @@ const DUTY_DEPTH: Record<AssignmentDuty, { fast: number; final: number; base: nu
   goalkeep: { fast: 0, final: 0, base: 0 },
 };
 
-/** Largura do bolsão de recepção que cada dever procura, em unidades verticais do campo. */
-const DUTY_WIDTH: Record<AssignmentDuty, number> = {
-  width: 22, support: 21, overlap: 20, runInBehind: 16, recycle: 12, restDefense: 10,
-  holdLine: 10, press: 10, trackRunner: 10, carry: 0, receive: 0, goalkeep: 0,
-};
-
 export const supportTarget = (
   player: PlayerRuntime,
   controller: PlayerRuntime,
@@ -58,30 +52,24 @@ export const supportTarget = (
   const phase = state.tactics[player.team].phase;
   const phaseIsFast = phase === "counterAttack";
   const phaseIsFinal = phase === "finalThird";
-  // O lado do bolsão vem da célula do jogador em relação ao portador: quem foi encarregado da
-  // faixa de cima oferece a linha por cima. Antes era a paridade do índice na escalação.
-  const side = anchor.y <= controller.position.y ? -1 : 1;
   const controllerNearEdge = edgeRisk(controller.position);
   const depth = DUTY_DEPTH[duty];
   const roleDepth = fieldX(phaseIsFast ? depth.fast : phaseIsFinal ? depth.final : depth.base);
   const anticipatedRoleDepth = roleDepth * (0.86 + player.profile.mental.anticipation / 500);
-  const roleWidth = fieldY(DUTY_WIDTH[duty]);
   const reason: DecisionReason = assignment?.rationale ?? "giveWidth";
   const horizon = predictionHorizon(player, phaseIsFast ? 0.82 : 0.42);
   const predictedController = predictPlayerPosition(controller, horizon * 0.55);
-  // O bolsão sai do dever: cada incumbência procura a própria faixa (`DUTY_WIDTH`), a uma
-  // profundidade própria (`DUTY_DEPTH`). O canal de ataque NÃO entra aqui.
+  // **Profundidade vem do PORTADOR; latitude vem da CÉLULA.** A que distância da bola eu me
+  // ofereço é pergunta do lance; que faixa do campo eu ocupo é pergunta do time.
   //
-  // Entrava: todo apoio era puxado para `channelY`, um único y, com força de até 0,72. Isso
-  // desfazia exatamente o escalonamento que `DUTY_WIDTH` desenha — os deveres se empilhavam na
-  // mesma faixa em vez de ocuparem faixas distintas, e o time jogava com 29 m de largura num
-  // campo de 64. O canal já age onde lhe cabe: desliza a grade inteira (`laneShift`) e enviesa
-  // a escolha de célula, que a invariante de exclusividade então espalha. Dois atratores
-  // concorrentes para a mesma decisão eram um a mais.
-  const passingPocket = {
-    x: predictedController.x + direction * anticipatedRoleDepth,
-    y: predictedController.y + side * roleWidth,
-  };
+  // A latitude vinha do portador também (`predictedController.y + side * roleWidth`), e era o
+  // terceiro atrator concorrente que este arquivo hospedou — depois do `channelY` que os dois
+  // comentários acima descrevem. Medido: as âncoras abrem o time a **44,5 m**, os corpos ficavam a
+  // **33,5 m**, com **8,9 m** de desvio em y por jogador. Não era a âncora nem a célula: era o
+  // bolsão puxando todo mundo para a faixa da bola. O escalonamento lateral que `DUTY_WIDTH`
+  // desenhava competia com a grade em vez de somar a ela, e agora é passo de busca de corredor
+  // (`laneShift`), não alvo.
+  const pocketDepth = predictedController.x + direction * anticipatedRoleDepth;
   if (duty === "restDefense") {
     const gap = fieldX(phase === "buildUp" ? 18 : phase === "progression" ? 20 : phaseIsFast ? 22 : 24);
     const ballLine = state.ball.position.x - direction * gap;
@@ -99,21 +87,15 @@ export const supportTarget = (
       target: clampToField({ x: safeX, y: blend(anchor, { x: safeX, y: state.ball.position.y }, 0.34).y }, 5),
       // A retaguarda não acompanha o portador: ela acompanha a linha da bola, que já é a
       // profundidade da própria célula.
-      frame: { anchor, bodyId: null, bodyShare: 0 },
+      frame: { anchor, bodyId: null, bodyShare: { x: 0, y: 0 } },
       reason: "restDefense",
       burst: false,
     };
   }
-  // A célula É o gramado: a profundidade dela já acompanha a bola (a altura de linha sai da posição
-  // dela) e o deslize lateral do bloco já é `placement.lateralShift`. O que sobra de "seguir o
-  // portador" é o BOLSÃO, e ele entra pela fatia — somar aqui um segundo puxão em y era o mesmo
-  // defeito do puxão para `channelY` que o comentário acima descreve: dois atratores para a mesma
-  // decisão, e o time jogando 31 m de largura com as células abertas em 45.
-  //
-  // A fatia é o complemento do peso da mistura, e é ela que o plano guarda: bola perto, o apoio
+  // A fatia é o peso da mistura em PROFUNDIDADE, e é ela que o plano guarda: bola perto, o apoio
   // vive mais do portador; bola longe, mais da própria célula.
   const carrierShare = 0.65 - supportDepth * 0.4;
-  const candidate = blend(passingPocket, anchor, 1 - carrierShare);
+  const candidate = { x: lerp(anchor.x, pocketDepth, carrierShare), y: anchor.y };
   // Portador encurralado na linha: quem se recolhe para dentro é quem está DO MESMO LADO que
   // ele — é esse o amontoado. Quem está do outro lado fica onde está, porque é justamente a
   // largura do lado oposto que dá a saída. Puxar todos para o eixo fechava o campo no momento
@@ -147,5 +129,13 @@ export const supportTarget = (
     && (phaseIsFinal || phaseIsFast || controller.velocity.x * direction > 2.5);
   const workThreshold = 0.58 - player.profile.mental.intensity / 500;
   const burst = player.sprintEnergy > workThreshold && player.sprintCooldown <= 0 && (transitionRun || depthRun);
-  return { target, frame: { anchor, bodyId: controller.profile.id, bodyShare: carrierShare }, reason, burst };
+  // Em profundidade o alvo acompanha o portador; em latitude, a célula. É esta assimetria que
+  // mantém o time largo entre um replanejamento e o outro — o alvo já nascia ancorado na célula, e
+  // era o quadro que o rebocava de volta para a faixa da bola.
+  return {
+    target,
+    frame: { anchor, bodyId: controller.profile.id, bodyShare: { x: carrierShare, y: 0 } },
+    reason,
+    burst,
+  };
 };
