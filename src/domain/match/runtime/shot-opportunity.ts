@@ -9,6 +9,8 @@ import { highestAimUnderCrossbar, shotLaunchSpeed } from "./shot-trajectory";
 export interface ShotOpportunity {
   action: Extract<BallAction, { kind: "shot" }>;
   utility: number;
+  /** O contato escolhido. Sai daqui e não do `action` porque na ação ele é opcional. */
+  technique: ShotTechnique;
   distance: number;
   angle: number;
   blocked: boolean;
@@ -111,6 +113,7 @@ export const evaluateShotOpportunity = (
       goalkeeperGap,
     },
     utility,
+    technique,
     distance: goalDistance,
     angle: visibleAngle,
     blocked,

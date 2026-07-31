@@ -1,10 +1,24 @@
 import { describe, expect, it } from "vitest";
+import { smallSidedMatchConfig } from "./__fixtures__/reference-match";
 import { FIELD } from "./config";
-import { pitchValue } from "./runtime/pitch-value";
-import type { Vec2 } from "./model";
+import { createMatchState } from "./index";
+import { pitchValue, possessionValue } from "./runtime/pitch-value";
+import type { PlayerRuntime, Vec2 } from "./model";
 
 const at = (fractionX: number, fractionY: number): Vec2 =>
   ({ x: FIELD.width * fractionX, y: FIELD.height * fractionY });
+
+/** Corpos parados onde eu quiser: `predictedSpaceAt` extrapola por velocidade, e aqui ela é zero. */
+const bodiesAt = (team: "blue" | "coral", ...points: Vec2[]): PlayerRuntime[] => {
+  const state = createMatchState(smallSidedMatchConfig(3));
+  const squad = state.players.filter((player) => player.team === team);
+  return points.map((point, index) => {
+    const body = squad[index]!;
+    body.position = { ...point };
+    body.velocity = { x: 0, y: 0 };
+    return body;
+  });
+};
 
 /**
  * A superfície de valor de posse. O que este teste trava não são números, e sim as **propriedades
@@ -52,5 +66,40 @@ describe("valor de posse do gramado", () => {
     expect(score(back, 0.97)).toBeGreaterThan(score(forward, 0.45));
     // E não é aversão ao risco: a MESMA bola à frente, agora com corredor limpo, ganha de longe.
     expect(score(forward, 0.85)).toBeGreaterThan(score(back, 0.97));
+  });
+
+  /**
+   * O eixo de disponibilidade. Sem ele a superfície é cega a adversário, e foi essa cegueira que fez a
+   * primeira ligação desta reforma dizer que conduzir até o gol saía de graça.
+   */
+  describe("disponibilidade", () => {
+    it("cobra o corpo em cima, e cobra mais no meio-campo que na área", () => {
+      const midfield = at(0.5, 0.5);
+      const box = at(0.9, 0.5);
+      const glued = (point: Vec2): PlayerRuntime[] =>
+        bodiesAt("coral", { x: point.x + 2, y: point.y + 2 });
+      const ratio = (point: Vec2): number =>
+        possessionValue("blue", point, [], glued(point), 0.3).ours
+        / possessionValue("blue", point, [], [], 0.3).ours;
+
+      // O que se trava é a ORDEM, não a magnitude: marcar cobra, e cobra mais onde a única saída que
+      // sobra (chutar) vale pouco. Cravar os números prenderia a calibragem do `MARKING_ROOM`.
+      expect(ratio(midfield)).toBeLessThan(0.7);
+      expect(ratio(midfield)).toBeLessThan(ratio(box));
+      expect(ratio(box)).toBeLessThan(1);
+    });
+
+    it("é assimétrica no lugar certo: quem marca um lado é o corpo do outro", () => {
+      const contested = at(0.75, 0.5);
+      const near = { x: contested.x + 2, y: contested.y + 2 };
+      const free = possessionValue("blue", contested, [], [], 0.3);
+      const theirsClose = possessionValue("blue", contested, [], bodiesAt("coral", near), 0.3);
+      const oursClose = possessionValue("blue", contested, bodiesAt("blue", near), [], 0.3);
+
+      expect(theirsClose.ours).toBeLessThan(free.ours);
+      expect(theirsClose.theirs).toBeCloseTo(free.theirs, 6);
+      expect(oursClose.theirs).toBeLessThan(free.theirs);
+      expect(oursClose.ours).toBeCloseTo(free.ours, 6);
+    });
   });
 });

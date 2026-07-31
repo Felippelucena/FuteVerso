@@ -629,6 +629,11 @@ describe("posse segura nas maos", () => {
     // Soltou dentro da janela, depois do tempo de acomodar a bola, e nunca para o marcador.
     expect(releasedAt).not.toBeNull();
     expect(releasedAt!).toBeGreaterThan(GOALKEEPING.minimumHoldSeconds);
+    // E soltou porque ACHOU uma saída, não porque a janela estourou. Sem este teto o teste passava com
+    // o goleiro segurando a bola até o fim — foi assim que ele deixou passar um `releaseStandard` que
+    // ficara na escala antiga quando a nota do passe virou probabilidade de gol, e o goleiro parou de
+    // distribuir por completo sem que a suíte reclamasse.
+    expect(releasedAt!).toBeLessThan(GOALKEEPING.maximumHoldSeconds * 0.6);
     expect(state.ball.lastTouchPlayerId).toBe(keeper.profile.id);
     // E saiu de perto da própria linha em vez de distribuir de dentro do gol.
     expect(keeper.position.x).toBeGreaterThan(startX + keeper.radius);

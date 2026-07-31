@@ -1,8 +1,9 @@
 import { DUEL, FIELD, PHYSICS } from "../config";
 import type { DribbleRangeReason, DribbleTouchRange, MatchState, PlayerRuntime, Vec2 } from "../model";
 import { add, clamp, cross, dot, normalize, scale, subtract } from "../../shared/math";
+import { laneSurvival } from "./pass-viability";
 import { clampToField } from "./pitch";
-import { predictedSpaceAt, predictPlayerAlongPlan } from "./prediction";
+import { interceptionThreat, predictedSpaceAt, predictPlayerAlongPlan } from "./prediction";
 import { etaToPoint, playerSkillSpeed } from "./player-metrics";
 
 export interface ForwardRunway {
@@ -100,6 +101,32 @@ export const knockPastEligible = (state: MatchState, carrier: PlayerRuntime, cha
   const space = others.length ? predictedSpaceAt(behind, others, 0.4) : FIELD.width;
   return space >= DUEL.knockPastMinSpace * FIELD.width;
 };
+
+/**
+ * **A chance de a bola ainda ser nossa depois deste toque** — o que `completionChance` é para o passe.
+ *
+ * Era o que faltava para os três verbos do portador competirem na mesma unidade: a condução era a
+ * única saída cujo risco não era cobrado, e por isso levar a bola até o gol parecia de graça — o valor
+ * da área (0,47–0,77) contra um chute de 20 m que já pagava pressão e corpo na rota. O atacante
+ * deixava de chutar, e não por estar mal calibrado: a comparação é que era desonesta.
+ *
+ * A pergunta é a MESMA do passe, e por isso a régua é a mesma: quantos corpos alcançam a bola no
+ * caminho (`interceptionThreat` → `laneSurvival`), e se há um em cima de mim, passo por ele
+ * (`escapeConfidence`, que sai do duelo). A carreta é lenta — o tempo de viagem é o do portador, não o
+ * de uma bola chutada —, e é por isso que a defesa projetada tem tempo de fechar o corredor.
+ *
+ * Medi e descartei perguntar a corrida (`raceChance(opponentEta - carrierEta)`): `chooseDribbleTouch`
+ * só devolve toque que **já** vence a corrida por `raceMargin`, então a resposta vinha 1,00 por
+ * construção. Medir um evento pré-filtrado é o mesmo que não medir.
+ */
+export const carrySurvival = (
+  carrier: PlayerRuntime,
+  opponents: PlayerRuntime[],
+  touch: DribbleTouchChoice,
+  pressure: number,
+  escapeConfidence: number,
+): number => laneSurvival(interceptionThreat(carrier.position, touch.target, opponents, touch.carrierEta))
+  * (1 - pressure * (1 - escapeConfidence));
 
 export const chooseDribbleTouch = (
   state: MatchState,

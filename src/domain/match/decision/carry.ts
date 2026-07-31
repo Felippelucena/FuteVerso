@@ -1,13 +1,15 @@
-import { CONDUCT, DECISION, DUEL, FIELD, GOALKEEPING, MENTALITY, PHYSICS, TACTICS } from "../config";
+import { DECISION, DUEL, FIELD, GOALKEEPING, MENTALITY, PHYSICS, TACTICS } from "../config";
 import { add, clamp, distance, dot, normalize, scale, subtract } from "../../shared/math";
 import { mentalityBias, type FreedomInstruction } from "../../tactics/model";
 import type { AgentDecision, DecisionReason, DribbleStyle, MatchState, PlayerRuntime, Vec2 } from "../model";
 import { keeperHoldingBall } from "../runtime/control";
-import { chooseDribbleTouch, evaluateForwardRunway, knockPastEligible } from "../runtime/dribble-runway";
+import { carrySurvival, chooseDribbleTouch, evaluateForwardRunway, knockPastEligible } from "../runtime/dribble-runway";
 import { duelEdge, duelStrength } from "../runtime/duel";
-import { attackDirection, goalCenter } from "../runtime/formation-geometry";
+import { expectedGoals } from "../runtime/expected-goals";
+import { attackDirection } from "../runtime/formation-geometry";
 import { goalkeeperReleasePost } from "../runtime/goalkeeper-geometry";
 import { centrality, channelAffinity, clampToField, edgeRisk, fieldX, fieldY } from "../runtime/pitch";
+import { possessionValue } from "../runtime/pitch-value";
 import { predictedSpaceAt, predictionHorizon } from "../runtime/prediction";
 import { isRestartTaker } from "../runtime/restart";
 import { evaluateShotOpportunity } from "../runtime/shot-opportunity";
@@ -18,6 +20,10 @@ import { decisionNoise, nearestPlayer } from "./shared";
  * A decisão de quem está com a bola: chutar, passar ou levá-la — e, levando, com que toque. É a
  * única trilha que compara utilidades entre si, porque é a única em que o jogador escolhe o que
  * FAZER com a bola em vez de para onde correr.
+ *
+ * As três utilidades estão em **probabilidade de gol**, e é isso que dispensa o fator de escala entre
+ * elas. O que sobrou de somatório à mão aqui é só preferência — e preferência multiplica recompensa,
+ * não risco.
  */
 
 const chooseDribbleTarget = (player: PlayerRuntime, opponents: PlayerRuntime[], state: MatchState): Vec2 => {
@@ -125,14 +131,6 @@ export const carrierDecision = (
     ? clamp((state.elapsed - state.tactics[player.team].phaseStartedAt) / 6, 0, 1) * carrier.finalThirdUrgency
     : 0;
   const shot = evaluateShotOpportunity(player, opponents, state);
-  const clearChanceBonus = shot && !shot.blocked && shot.distance < fieldX(18) ? carrier.clearChanceBonus : 0;
-  const shotUtility = shot ? shot.utility + clearChanceBonus + finalThirdUrgency + aggression * 0.12
-    + composure * pressure * 0.1 + freedomAppetite(player.instruction.shootFreedom)
-    + decisionNoise(player, state, 11) : -1;
-  const passUtility = pass ? pass.score + policy.pass * carrier.passPolicyWeight
-    + pressure * (carrier.passUnderPressure + composure * 0.2)
-    + edgeRisk(player.position) * carrier.passFromEdge + teamwork * 0.14 + decisions * 0.1
-    + decisionNoise(player, state, 23) : -1;
   const controlAge = Math.max(0, state.elapsed - state.ball.controlStartedAt);
   const baseDribbleTarget = chooseDribbleTarget(player, opponents, state);
   // O toque à frente segue o MESMO rumo que o portador escolheu para levar a bola, e não o eixo do
@@ -148,31 +146,48 @@ export const carrierDecision = (
     && etaAdvantage >= 0.35;
   const activeBreak = player.objective === "aggressiveBreak" && state.elapsed < player.objectiveExpiresAt
     && forwardRunway.distance >= fieldX(13) && player.sprintEnergy > 0.4;
-  const dribbleSpace = predictedSpaceAt(baseDribbleTarget, opponents, predictionHorizon(player, pressure));
-  // Item 3: valor de "conduzir para abrir um chute melhor". Avalia o chute que existiria após
-  // um toque à frente (touchChoice.target) e credita o ganho sobre o chute de agora.
-  const goalTargetPoint = goalCenter(player.team, false);
-  const carryOrigin = touchChoice.target;
-  const futureShot = touchChoice.range
-    ? evaluateShotOpportunity(player, opponents, state, { origin: { position: carryOrigin, facing: subtract(goalTargetPoint, carryOrigin) } })
-    : null;
-  const carryShotGain = (futureShot?.utility ?? -1) - (shot?.utility ?? -1);
-  const carryShotBonus = futureShot && !futureShot.blocked
-    && forwardRunway.distance >= touchChoice.touchDistance
-    && futureShot.distance < fieldX(CONDUCT.carryShotMaxDistance)
-    ? clamp(carryShotGain - CONDUCT.carryShotMinGain, 0, CONDUCT.carryShotCap) * CONDUCT.carryShotWeight
-    : 0;
-  const dribbleUtility = policy.dribble * carrier.dribblePolicyWeight
-    + clamp(dribbleSpace / fieldX(carrier.dribbleSpaceReference), 0, 1.4)
+  // Os três verbos na MESMA unidade — probabilidade de esta posse virar gol — e cada um pagando o
+  // próprio risco: `p · valor(destino) − (1 − p) · valor deles no destino`. A preferência (política
+  // aprendida, instrução do treinador, personalidade, urgência de fase) multiplica só a RECOMPENSA.
+  //
+  // Antes o chute vinha de uma soma à mão de onze termos com base 0,72, o passe de valor × chance e a
+  // condução de outra soma de dez. Comparar três réguas exigia um fator de escala mágico entre elas, e
+  // era ele — não o futebol — que decidia a partida. Pior: a condução era a única sem risco cobrado,
+  // e por isso levar a bola até o gol parecia de graça.
+  const horizon = predictionHorizon(player, pressure);
+  const shotChance = shot ? expectedGoals(state, player, player.position, shot.technique) : 0;
+  // Chute que não entra devolve a bola no palmo menos perigoso do gramado: é o mesmo
+  // `valor deles no destino` dos outros dois verbos, com o destino sendo o próprio gol.
+  const shotLoss = shot ? possessionValue(player.team, shot.action.target, teammates, opponents, horizon).theirs : 0;
+  const shotAppetite = 1 + finalThirdUrgency + aggression * 0.12 + composure * pressure * 0.1
+    + policy.shoot * carrier.shootPolicyWeight
+    - (shot?.isLong ? carrier.longShotRestraint : 0)
+    + freedomAppetite(player.instruction.shootFreedom)
+    + decisionNoise(player, state, 11);
+  const shotUtility = shot ? shotChance * Math.max(0, shotAppetite) - shotLoss * (1 - shotChance) : -1;
+  const passAppetite = 1 + policy.pass * carrier.passPolicyWeight
+    + pressure * (carrier.passUnderPressure + composure * 0.2)
+    + edgeRisk(player.position) * carrier.passFromEdge + teamwork * 0.14 + decisions * 0.1
+    + decisionNoise(player, state, 23);
+  const passUtility = pass ? pass.reward * Math.max(0, passAppetite) - pass.risk : -1;
+  const carryHold = carrySurvival(player, opponents, touchChoice, pressure, escapeConfidence);
+  const carryValue = possessionValue(player.team, touchChoice.target, teammates, opponents, horizon);
+  const dribbleAppetite = 1 + policy.dribble * carrier.dribblePolicyWeight
     + creativity * 0.22 + aggression * 0.08
-    - pressure * (0.8 - composure * 0.16 - escapeConfidence * 0.82)
     - edgeRisk(baseDribbleTarget) * carrier.dribbleFromEdge
     + (breakEligible ? clamp(forwardRunway.distance / fieldX(45), 0, 1) * carrier.breakBonus : 0)
     + (activeBreak ? carrier.breakContinuation : 0)
-    + carryShotBonus
     + freedomAppetite(player.instruction.dribbleFreedom)
     + decisionNoise(player, state, 37);
-  const clearShootingChance = Boolean(shot && !shot.blocked && shot.distance < fieldX(18));
+  const dribbleUtility = carryValue.ours * carryHold * Math.max(0, dribbleAppetite)
+    - carryValue.theirs * (1 - carryHold);
+  // De onde uma chance limpa é para bater sem pensar duas vezes. A distância era 18% do campo cravada,
+  // e isso sempre foi uma decisão de treinador escondida no código: a liberdade de finalizar não tinha
+  // voz nenhuma justamente na chance clara, que é onde um treinador mais quer opinar. Agora ela move a
+  // régua — de ~13 m em `rarely` a ~25 m em `often`.
+  const clearChanceRange = carrier.clearChanceRange
+    + freedomAppetite(player.instruction.shootFreedom) * carrier.clearChanceFreedom;
+  const clearShootingChance = Boolean(shot && !shot.blocked && shot.distance < fieldX(clearChanceRange));
   if (clearShootingChance && pass && passUtility > shotUtility + carrier.clearChancePassEdge) {
     return { movementTarget: player.position, burst: false, posture: "inPossession", intent: "passing", reason: pass.reason, ballAction: pass.action };
   }

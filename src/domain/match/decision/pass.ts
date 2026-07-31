@@ -14,7 +14,8 @@ import {
   raceChance,
   receptionMargin,
 } from "../runtime/pass-viability";
-import { attackingProgress, centrality, channelAffinity, clampToField, edgeRisk, fieldX } from "../runtime/pitch";
+import { attackingProgress, channelAffinity, clampToField, fieldX } from "../runtime/pitch";
+import { possessionValue } from "../runtime/pitch-value";
 import { etaToPoint } from "../runtime/player-metrics";
 import { predictPlayerAlongPlan } from "../runtime/prediction";
 import { assignmentOf } from "../systems/assignment-system";
@@ -24,10 +25,16 @@ import { assignmentOf } from "../systems/assignment-system";
  * A escolha do passe: para quem, por onde e como. Enumera todo companheiro contra as oito
  * variantes de bola (chão/ar × curto/longo × pé/espaço) e devolve a melhor.
  *
- * A nota é **valor esperado**: o que a bola vale multiplicado pela chance de ela chegar, menos o
- * que custa perdê-la. A chance vem inteira de `runtime/pass-viability`, que é a mesma conta que o
- * `possession-system` aplica no primeiro toque de verdade — decisão e execução deixaram de ter
- * opiniões próprias sobre o que é um passe difícil.
+ * A nota é **valor esperado, em probabilidade de gol**: quanto vale ter a bola no alvo × a chance de
+ * ela chegar, menos o que vale a eles tê-la ali × a chance de não chegar. A chance vem inteira de
+ * `runtime/pass-viability`, que é a mesma conta que o `possession-system` aplica no primeiro toque de
+ * verdade; o valor vem inteiro de `runtime/pitch-value`, que é a mesma superfície que o portador lê
+ * para conduzir. Decisão e execução não têm opinião própria sobre o que é um passe difícil, e os três
+ * verbos do portador não têm régua própria sobre o que é um lance bom.
+ *
+ * Oito termos somados à mão morreram aqui — progresso, espaço, centralidade, inversão, função do
+ * recebedor, repertório e o `turnoverCost`. Eles aproximavam à mão o que a superfície responde de
+ * uma vez, e o pior deles punia recuar: um passe seguro de 20 m para trás entrava valendo −0,75.
  */
 
 export const PASS_VARIANTS = (["ground", "air"] as const).flatMap((trajectory) =>
@@ -39,12 +46,18 @@ export const PASS_VARIANTS = (["ground", "air"] as const).flatMap((trajectory) =
 export interface PassOption {
   action: Extract<BallAction, { kind: "pass" }>;
   score: number;
+  /**
+   * As duas metades da nota. Quem compara verbos (`carrierDecision`) precisa aplicar o próprio
+   * apetite só à recompensa — multiplicar a nota líquida faria a vontade de passar descontar também
+   * o preço de perder a bola.
+   */
+  reward: number;
+  risk: number;
   reason: DecisionReason;
 }
 
 export const choosePass = (player: PlayerRuntime, teammates: PlayerRuntime[], opponents: PlayerRuntime[], state: MatchState): PassOption | null => {
   const direction = attackDirection(player.team);
-  const carrierEdgeRisk = edgeRisk(player.position);
   const collective = state.tactics[player.team].collectivePlan;
   const phase = state.tactics[player.team].phase;
   // Consciência de impedimento: um bom passador não entrega a bola a quem já está impedido. A
@@ -129,15 +142,13 @@ export const choosePass = (player: PlayerRuntime, teammates: PlayerRuntime[], op
         laneSurvival(threat),
       );
 
-      // --- O que a bola VALE se chegar ---
-      const openness = Math.min(...opponents.map((opponent) => distance(target, predictPlayerAlongPlan(state, opponent, solution.duration))));
+      // --- O que a bola VALE se chegar, e o que custa não chegar: a MESMA superfície, dos dois lados ---
+      const value = possessionValue(player.team, target, teammates, opponents, solution.duration);
       const passerTechnique = (player.profile.skills.passing + player.profile.skills.vision) / 200;
       const longProgression = progress > fieldX(18) && (phase === "buildUp" || phase === "progression" || phase === "counterAttack");
       const crossesPitch = (player.position.y - FIELD.height / 2) * (target.y - FIELD.height / 2) < 0;
-      const switchValue = carrierEdgeRisk * centrality(target) * (crossesPitch ? 1.2 : 0.42);
       const wallPass = state.lastAssist?.playerId === teammate.profile.id
         && state.elapsed - state.lastAssist.time < DECISION.pass.wallPassWindow;
-      const roleBonus = teammate.profile.role === "finisher" ? Math.max(0, progress) / fieldX(35) : 0;
       // O valor de passar para alguém sai do dever dele, não de um id nomeado no plano. Cada
       // dever decai com a ordem (`priority`), para o time não despejar tudo no mesmo corredor
       // só porque três jogadores foram encarregados de atacar as costas da linha.
@@ -159,36 +170,31 @@ export const choosePass = (player: PlayerRuntime, teammates: PlayerRuntime[], op
               ? clamp(1 - passDistance / fieldX(24), 0, 1) * 0.24
               : 0)
         : 0;
-      const value = DECISION.pass.purpose;
-      const purposeBonus = purpose === "cutback" ? value.cutback
-        : purpose === "cross" ? (teammate.profile.role === "finisher" ? value.crossToFinisher : value.cross)
-          : purpose === "throughBall" ? value.throughBall
-            : purpose === "layoff" && wallPass ? value.layoff
-              : 0;
-      const worth = clamp(progress / fieldX(DECISION.pass.progressReference), -0.8, 1.45)
-        + clamp(openness / fieldX(DECISION.pass.opennessReference), 0, 1) * DECISION.pass.space
-        + centrality(target) * DECISION.pass.centrality + roleBonus
-        + switchValue + (wallPass ? DECISION.pass.wallPass : 0) + collectiveBonus + purposeBonus
-        + (longProgression ? passerTechnique * 0.36 : 0)
+      // A preferência MULTIPLICA a recompensa, nunca o risco: quem gosta de uma bola acha que ela vale
+      // mais, não que perdê-la custa menos. Em unidade de gol uma parcela de 0,34 engoliria a conta
+      // inteira — trocar a escala e manter as parcelas foi o que travou o goleiro e o atacante na
+      // primeira tentativa desta reforma.
+      const appetite = 1 + collectiveBonus + (wallPass ? DECISION.pass.wallPass : 0)
+        + (longProgression ? passerTechnique * DECISION.pass.longBallTechnique : 0)
         + (player.profile.mental.teamwork - 50) / 100 * 0.22
         + (player.profile.mental.decisionMaking - 50) / 100 * 0.16
         + (player.profile.mental.creativity - 50) / 100 * 0.06;
-
-      // Perder a bola custa o que ela vale ao adversário no ponto em que ele a recolhe: perto do
-      // nosso gol é quase um gol, no ataque é só um contra-ataque.
-      const turnoverCost = DECISION.pass.turnoverCost * (1 - attackingProgress(player.team, target.x));
-      // Passar para um companheiro já impedido é jogar fora a posse: penalidade dura, fora da
-      // multiplicação, que só o deixa competitivo se todas as outras saídas forem piores ainda.
-      const offsidePenalty = isOffsideNow(teammate) ? DECISION.pass.offsidePenalty : 0;
-      const score = worth * completion - turnoverCost * (1 - completion) - offsidePenalty;
-      const reason: DecisionReason = wallPass ? "wallPass" : switchValue > 0.52 ? "switchPlay" : "progressivePass";
-      return { teammate, target, passDistance, score, reason, variant, purpose, receiverEta, opponentEta, completion };
+      // Passar para um companheiro já impedido é jogar fora a posse: entra no risco, não como desconto
+      // no sucesso, e é dura o bastante para só sobrar se todas as outras saídas forem piores ainda.
+      const reward = value.ours * completion * Math.max(0, appetite);
+      const risk = value.theirs * (1 - completion)
+        + (isOffsideNow(teammate) ? DECISION.pass.offsidePenalty : 0);
+      const reason: DecisionReason = wallPass ? "wallPass"
+        : crossesPitch && passDistance > fieldX(24) ? "switchPlay" : "progressivePass";
+      return { teammate, target, passDistance, reward, risk, score: reward - risk, reason, variant, purpose, receiverEta, opponentEta, completion };
     }))
     .sort((a, b) => b.score - a.score);
   const best = candidates[0];
   if (!best) return null;
   return {
     score: best.score,
+    reward: best.reward,
+    risk: best.risk,
     reason: best.reason,
     action: {
       kind: "pass",

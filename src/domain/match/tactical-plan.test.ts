@@ -164,7 +164,13 @@ describe("o plano tático chega ao motor", () => {
 
   it("puxa a decisão do portador conforme a liberdade de finalizar", () => {
     // Uma varredura de posições, e não uma partida: o que muda é o limiar entre chutar e seguir
-    // com a bola, e ele só se revela na margem — em campo aberto o atleta chuta de qualquer jeito.
+    // com a bola, e ele só se revela na margem.
+    //
+    // A margem exige um marcador em cena. Sem ele o atacante está livre a 20 m do gol e conduzir é a
+    // resposta certa em qualquer instrução — foi assim que esta varredura deixou de discriminar quando
+    // as três utilidades passaram a ser probabilidade de gol: dentro de 18 m a chance clara manda, e
+    // fora dela a condução livre ganha de qualquer chute. O zagueiro goal-side é o que devolve a
+    // decisão à margem, cobrando da condução o corpo no caminho.
     const looksTaken = (shootFreedom: FreedomInstruction): number => {
       let shooting = 0;
       for (let step = 0; step < 12; step += 1) {
@@ -173,6 +179,11 @@ describe("o plano tático chega ao motor", () => {
         striker.position = {
           x: FIELD.width * (0.58 + step * 0.03),
           y: FIELD.height * (0.5 + ((step % 3) - 1) * 0.12),
+        };
+        const marker = state.players.find((player) => player.team === "coral" && player.profile.position === "centerBack")!;
+        marker.position = {
+          x: striker.position.x + FIELD.unitsPerMeter * 4,
+          y: striker.position.y + FIELD.unitsPerMeter * (step % 4) * 0.9,
         };
         state.ball.position = { ...striker.position };
         state.ball.controllerId = striker.profile.id;

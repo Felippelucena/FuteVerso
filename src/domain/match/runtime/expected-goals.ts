@@ -69,21 +69,42 @@ const openGoalAngle = (origin: Vec2, goalX: number): number => {
 };
 
 /**
- * A chance de gol só pela **geometria**: distância e ângulo, sem pressão, sem corpo na rota e sem
- * técnica de contato. É o núcleo posicional deste mesmo modelo — `expectedGoals` o completa com o
- * que o lance tem de vivo, e `runtime/pitch-value` o usa para saber quanto vale ter a bola em cada
- * palmo do gramado.
+ * Até onde a batida do elenco alcança a meta, em metros. Não é número novo: é a régua que
+ * `evaluateShotOpportunity` já aplica por jogador (`fieldX(22 + kickPower * 0.16)`), lida sobre a faixa
+ * de `kickPower` de um plantel (~35 a ~80). Dentro do piso todo mundo alcança; acima do teto, ninguém.
+ *
+ * A regressão logística não tem termo de alcance — ela extrapola, e de 50 m ainda devolve 5,6% de
+ * chance de gol. Dentro da tabela de `pitch-value` isso nunca importou (o `max` do Bellman prefere
+ * encadear a chutar de longe, então o ramo do chute não vence), mas basta lê-la como "o que sobra de um
+ * palmo marcado" para a mentira passar a valer: o chute impossível virava o piso do palmo.
+ */
+const SHOT_RANGE = { everyone: 29, nobody: 37 } as const;
+
+/**
+ * A chance de gol pela **geometria** — distância, ângulo e alcance —, opcionalmente com a pressão de
+ * quem está em cima. Sem corpo na rota e sem técnica de contato: é o núcleo posicional deste mesmo
+ * modelo. `expectedGoals` o completa com o que o lance tem de vivo, e `runtime/pitch-value` o usa para
+ * saber quanto vale ter a bola em cada palmo do gramado.
+ *
+ * `pressure` existe porque quem lê a superfície precisa das duas perguntas: a tabela é resolvida com
+ * pressão **zero** (é um campo médio, e o Bellman quer o melhor que aquele palmo oferece), mas "o que
+ * sobra de um palmo com um corpo em cima" é o chute **daquele** palmo, apertado. Sem isso o motor
+ * creditava ao atacante marcado na área um chute livre que ele não tem — e ele conduzia em vez de
+ * bater, porque conduzir prometia o chute livre um passo à frente. Terceira encarnação do mesmo
+ * defeito: recompensa idealizada contra risco real.
  *
  * Existe para haver **uma** régua de "quão bom é chutar daqui", compartilhando `MODEL` e
  * `openGoalAngle` com o xG do lance. Duas fórmulas para a mesma pergunta é o defeito que
  * `pass-viability` já teve de desfazer no passe.
  */
-export const positionalGoalChance = (origin: Vec2, goalX: number): number => {
+export const positionalGoalChance = (origin: Vec2, goalX: number, pressure = 0): number => {
   const mouth = { x: goalX, y: FIELD.height / 2 };
   const metres = Math.max(1, distance(origin, mouth) / FIELD.unitsPerMeter);
-  return clamp(logistic(MODEL.intercept
+  const withinRange = clamp((SHOT_RANGE.nobody - metres) / (SHOT_RANGE.nobody - SHOT_RANGE.everyone), 0, 1);
+  return withinRange * clamp(logistic(MODEL.intercept
     + MODEL.angle * openGoalAngle(origin, goalX)
-    + MODEL.logDistance * Math.log(metres)), 0.001, 0.99);
+    + MODEL.logDistance * Math.log(metres)
+    + MODEL.pressure * pressure), 0.001, 0.99);
 };
 
 export interface ChanceGeometry {

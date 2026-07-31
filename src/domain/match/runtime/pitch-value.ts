@@ -1,8 +1,10 @@
 import { FIELD } from "../config";
-import { clamp } from "../../shared/math";
-import type { Team, Vec2 } from "../model";
+import { clamp, lerp } from "../../shared/math";
+import type { PlayerRuntime, Team, Vec2 } from "../model";
 import { attackDirection } from "./formation-geometry";
 import { positionalGoalChance } from "./expected-goals";
+import { opposingTeam } from "./kickoff";
+import { predictedSpaceAt } from "./prediction";
 
 /**
  * **Quanto vale ter a bola aqui**, em probabilidade de gol.
@@ -148,3 +150,61 @@ export const pitchValue = (team: Team, point: Vec2): number => {
   const bottom = at(columnLow, rowHigh) * (1 - columnFraction) + at(columnHigh, rowHigh) * columnFraction;
   return top * (1 - rowFraction) + bottom * rowFraction;
 };
+
+/**
+ * O palmo em que um jogador ainda joga livre, em metros: além disto o corpo mais próximo não muda o
+ * que ele consegue fazer com a bola, e dentro disto muda tudo. Mesma ordem de grandeza do
+ * `opennessReference` que o passe usava (14 m) — e é ele, junto do `dribbleSpaceReference` da
+ * condução, que este eixo aposenta.
+ */
+const MARKING_ROOM = 14;
+
+/**
+ * **Quanto vale ter a bola aqui AGORA**, para um dos lados.
+ *
+ * `pitchValue` é campo médio: cego a adversário *por construção*, porque é tabela estática. Usada
+ * crua como recompensa ela diz que a área vale 0,47–0,77 sempre — e daí o motor concluir que conduzir
+ * até o gol sai de graça, e o atacante nunca mais chutar.
+ *
+ * O eixo que faltava é o que o próprio Bellman já separa: de um palmo de grama dá-se **chutar** ou
+ * **encadear mais uma ação**. Livre, valem as duas, e o palmo vale o máximo delas (`pitchValue`). Com
+ * um corpo em cima não há tempo de armar encadeamento nenhum, e sobra a primeira — **o chute daquele
+ * palmo, apertado**, e não o chute ideal. Interpolar entre as duas dispensa piso inventado.
+ *
+ * Que a marcação entre também dentro do piso não é detalhe: era o que faltava para o atacante voltar a
+ * bater. Creditando o chute LIVRE ao palmo marcado, conduzir prometia sempre o chute livre um passo à
+ * frente, e o motor caiu de 42,5 para 3,0 chutes por partida. Recompensa idealizada contra risco real,
+ * pela terceira vez nesta reforma.
+ */
+const sideValue = (team: Team, point: Vec2, markers: PlayerRuntime[], seconds: number): number => {
+  const room = markers.length ? predictedSpaceAt(point, markers, seconds) / FIELD.unitsPerMeter : MARKING_ROOM;
+  const free = clamp(room / MARKING_ROOM, 0, 1);
+  const goalX = attackDirection(team) > 0 ? FIELD.width : 0;
+  return lerp(positionalGoalChance(point, goalX, 1 - free), pitchValue(team, point), free);
+};
+
+/** As duas pontas do mesmo palmo de grama: o que ele nos vale, e o que vale a eles. */
+export interface PointValue {
+  readonly ours: number;
+  readonly theirs: number;
+}
+
+/**
+ * O valor de um ponto pelos **dois lados** — o que ganhamos com a bola ali e o que eles ganham se ela
+ * ficar com eles ali. Uma chamada, uma régua para as duas pontas: é o que substitui o
+ * `turnoverCost * (1 - attackingProgress)`, que aproximava a segunda à mão, e o que impede as duas de
+ * voltarem a discordar.
+ *
+ * Quem marca um lado é o corpo do outro, e é isso que torna a conta assimétrica no lugar certo: um
+ * alvo cercado vale pouco para nós **e** muito para eles.
+ */
+export const possessionValue = (
+  team: Team,
+  point: Vec2,
+  ourBodies: PlayerRuntime[],
+  theirBodies: PlayerRuntime[],
+  seconds: number,
+): PointValue => ({
+  ours: sideValue(team, point, theirBodies, seconds),
+  theirs: sideValue(opposingTeam(team), point, ourBodies, seconds),
+});

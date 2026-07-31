@@ -314,22 +314,47 @@ export const DECISION = {
   /** Instrução individual do treinador. `normal` vale zero: o padrão não mexe em nada. */
   freedomAppetite: { rarely: -0.4, normal: 0, often: 0.4 },
 
-  /** A comparação de topo do portador: chutar, passar ou levar. */
+  /**
+   * A comparação de topo do portador: chutar, passar ou levar. As três utilidades estão em
+   * **probabilidade de gol** (ver `decision/carry`), e por isso o que mora aqui se divide em dois:
+   *
+   * - **preferência**, adimensional, que multiplica a recompensa — 0,5 é "meio lance a mais de
+   *   vontade". Estes números atravessaram a troca de unidade intactos, porque sempre foram relativos.
+   * - **margem**, em probabilidade de gol, que compara duas utilidades. Estes tiveram de ser
+   *   reaferidos: um lance de rotina vale ~0,03 nesta escala, então uma margem de 0,38 (a antiga)
+   *   equivalia a exigir dez lances de vantagem, e o portador nunca entregava a bola.
+   *
+   * `clearChanceBonus` e `dribbleSpaceReference` morreram: a chance clara agora domina sozinha,
+   * porque o xG dela é grande de verdade, e o espaço no destino virou eixo da superfície de valor.
+   */
   carrier: {
-    // Chance clara de gol domina qualquer alternativa — só um passe claramente melhor a supera.
-    clearChanceBonus: 1.45,
-    clearChancePassEdge: 0.18,
+    /**
+     * De onde uma chance limpa é para bater sem comparar com nada, em percentual de campo — e quanto a
+     * liberdade de finalizar move essa régua. É a única saída que atropela a comparação, porque é
+     * regra de futebol e não utilidade: com o gol aberto não se dá mais um toque para acomodar.
+     */
+    clearChanceRange: 18,
+    clearChanceFreedom: 15,
+    // --- Margens, em probabilidade de gol ---
+    clearChancePassEdge: 0.02,
     // Quanto o passe precisa superar a condução para o portador entregá-la. Sob pressão a régua é
     // baixa (segurar custa caro); em espaço livre ele leva a bola.
-    passAdvantageUnderPressure: 0.08,
-    passAdvantageInSpace: 0.38,
+    passAdvantageUnderPressure: 0.004,
+    passAdvantageInSpace: 0.02,
+    // --- Preferências, adimensionais ---
     // Peso da política aprendida de cada saída (ver PlayerPolicy).
     passPolicyWeight: 0.52,
     dribblePolicyWeight: 0.62,
+    shootPolicyWeight: 0.38,
     passUnderPressure: 0.58,
     passFromEdge: 0.62,
-    dribbleSpaceReference: 15,
     dribbleFromEdge: 0.55,
+    /**
+     * O que o time desconta de um chute de fora (> 29 m). O xG desses chutes é honesto, mas o
+     * intercepto do modelo está aferido à conversão do próprio motor — que é generosa —, e sem freio o
+     * time trocaria circulação por bomba de longe. É estilo, não física: "o time chuta pouco de fora".
+     */
+    longShotRestraint: 0.6,
     breakBonus: 0.54,
     breakContinuation: 0.32,
     finalThirdUrgency: 0.22,
@@ -344,34 +369,32 @@ export const DECISION = {
    * perde para a de 90% sem precisar de penalidade nenhuma — e as penalidades ad-hoc que
    * existiam para simular isso (pressão de linha, comprimento, desconto aéreo) saíram todas.
    *
-   * O que mora aqui é só o VALOR: quanto vale receber em tal lugar, de tal jeito, servindo tal
-   * dever. A chance de chegar é geometria e sai de `runtime/pass-viability`.
+   * O que **valia** a bola morava aqui, em oito parcelas: progresso, espaço, centralidade, inversão,
+   * função do recebedor e repertório. Todas morreram — quanto vale ter a bola em tal palmo é uma
+   * pergunta só, e a resposta é `runtime/pitch-value`. Com elas foi-se o `turnoverCost`, que
+   * aproximava à mão o que a superfície responde lida do outro lado.
+   *
+   * Sobrou aqui só **preferência**: adimensional, multiplicando a recompensa. O plano tático e a
+   * personalidade escolhem entre bolas de valor parecido; não redefinem o que uma bola vale.
    */
   pass: {
-    progressReference: 24,
-    opennessReference: 14,
-    /** Receber com espaço vale por si: dá o próximo lance. Não é mais o termo de risco que era. */
-    space: 0.42,
-    centrality: 0.18,
     wallPass: 0.64,
     /** Janela da tabela: por quanto tempo quem me passou a bola ainda é o parceiro da devolução. */
     wallPassWindow: 4.2,
-    /**
-     * O que custa entregar a bola. Cresce quanto mais perto do próprio gol ela se perde — perder
-     * no ataque é um contra-ataque; perder na saída é um gol. É a única parcela que sobrou fora
-     * da multiplicação, porque ela é o preço do fracasso, não um desconto no sucesso.
-     */
-    turnoverCost: 1.15,
+    /** Confiança do passador na bola longa: quem tem passe e visão tenta a que os outros não tentam. */
+    longBallTechnique: 0.36,
     channelAffinity: 0.2,
-    /** Repertório: bola de cada tipo vale o que o futebol paga por ela. */
-    purpose: { cutback: 0.42, crossToFinisher: 0.32, cross: 0.14, throughBall: 0.28, layoff: 0.22 },
     /**
      * Servir o dever que o coletivo entregou. É por aqui que o time joga PARA quem foi encarregado
      * de atacar as costas da linha, em vez de para um id nomeado no plano.
      */
     duty: { runInBehind: 0.34, runInBehindRisk: 0.18, overlap: 0.2, support: 0.18, restDefense: 0.3 },
-    /** Passar para quem já está impedido é jogar a posse fora: penalidade dura, não desconto. */
-    offsidePenalty: 5,
+    /**
+     * Passar para quem já está impedido é jogar a posse fora. Entra no RISCO, não como desconto no
+     * sucesso — e em unidade de gol basta ser uma ordem de grandeza acima de um lance bom (~0,03) para
+     * o passe impedido só sobrar quando não houver mais nada.
+     */
+    offsidePenalty: 0.5,
   },
 } as const;
 
@@ -513,13 +536,15 @@ export const GOALKEEPING = {
   // do dobro disto ele segura até a janela quase estourar, e aí o passe sai pior do que sairia
   // antes.
   //
-  // Reaferido quando a nota do passe virou valor × probabilidade: a escala encolheu (o teto de
-  // uma nota boa caiu de ~5 para ~2,5), e a régua antiga de 5 punha o goleiro segurando a bola
-  // 3,3s em média em vez dos ~2s de antes. Este número só faz sentido junto da escala de
-  // `DECISION.pass` — mexer numa exige remedir a outra.
+  // Reaferido duas vezes, e a segunda é a moral da história: quando a nota do passe virou
+  // **probabilidade de gol**, este limiar ficou na escala velha e o goleiro parou de distribuir por
+  // completo — 2,8 contra notas de ~0,03. Não foi calibragem ruim, foi um limiar esquecido numa régua
+  // que trocou de unidade. Sair jogando é caro de propósito: perder a bola na saída vale quase um gol
+  // para eles, então até a melhor opção do goleiro é um lance de nota baixa. Este número só faz
+  // sentido junto da escala de `DECISION.pass` — mexer numa exige remedir a outra.
   minimumHoldSeconds: 1.2,
   maximumHoldSeconds: 6,
-  releaseStandard: 2.8,
+  releaseStandard: 0.012,
   // Depois de espalmar/rebater, fica em alerta e se reposiciona em velocidade por este tempo.
   alertSeconds: 2.6,
   // Velocidade de reposicionamento durante o alerta (corrida, não a corridinha de ajuste).
@@ -682,14 +707,6 @@ export const SHIELD = {
   // Velocidade com que a bola contorna o corpo (rad/s). Uma virada completa de proteção leva
   // ~0,3s, que é o tempo de um passo. Mais rápido que isto e a âncora vira teleporte de novo.
   turnRate: 6,
-} as const;
-
-// Lookahead de condução→finalização: valoriza conduzir para abrir um chute melhor.
-export const CONDUCT = {
-  carryShotWeight: 0.6, // peso do bônus na utilidade de drible
-  carryShotMinGain: 0.3, // só conta se o chute futuro superar o atual por esta margem
-  carryShotCap: 1.2, // teto do ganho considerado
-  carryShotMaxDistance: 20, // o chute futuro precisa ser de dentro de fieldX(20) para valer
 } as const;
 
 // Lei 11 — impedimento. `runMarginProgress` é o afrouxamento "equilibrado": o teto de avanço da
