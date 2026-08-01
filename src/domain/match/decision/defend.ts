@@ -1,5 +1,6 @@
 import { DEFENSE, FIELD, PHYSICS } from "../config";
 import { add, blend, clamp, distance, normalize, scale, subtract } from "../../shared/math";
+import { resolvedRoleOf } from "../../tactics/roles";
 import type { AgentDecision, DecisionReason, MatchState, PlayerRuntime, TargetFrame, Vec2 } from "../model";
 import { assignedAnchor, attackDirection, goalCenter } from "../runtime/formation-geometry";
 import type { MarkingAssignment } from "../runtime/marking";
@@ -75,7 +76,7 @@ export const defensiveTarget = (
   // valia para zagueiros nos segundos seguintes à perda, porque a âncora era fixa e ficar
   // adiantado era exceção. Com o bloco subindo e descendo atrás da bola, estar fora de forma é a
   // situação comum — e recompor passou a ser trabalho de todo mundo, não só da zaga.
-  const guaranteed = player.profile.role === "defender" && justLost;
+  const guaranteed = resolvedRoleOf(player.instruction).holdsTheLine && justLost;
   if (advanced && (guaranteed || (player.sprintEnergy > DEFENSE.recoverMinEnergy && player.sprintCooldown <= 0))) {
     const recoverPoint = clampToField(guaranteed ? blend(anchor, ownGoal, 0.25) : anchor, 3);
     const raceSpeed = playerSkillSpeed(player) * PHYSICS.burstSpeedFactor;

@@ -52,7 +52,6 @@ const isPosition = (value: unknown): value is PlayerPosition =>
 export const isValidProfile = (value: unknown): value is PlayerProfile => {
   if (!value || typeof value !== "object") return false;
   const profile = value as PlayerProfile;
-  const roles = ["finisher", "playmaker", "defender"];
   return typeof profile.id === "string"
     && typeof profile.name === "string"
     && profile.name.trim().length > 0
@@ -69,8 +68,6 @@ export const isValidProfile = (value: unknown): value is PlayerProfile => {
     // Goleiro não acumula posição de linha, e ninguém adota o gol como segunda posição:
     // a troca é bloqueada na escalação, não penalizada.
     && (profile.position === "goalkeeper" ? profile.secondaryPositions.length === 0 : !profile.secondaryPositions.includes("goalkeeper"))
-    && roles.includes(profile.role)
-    && (profile.position !== "goalkeeper" || profile.role === "defender")
     && !!profile.skills
     && skillKeys.every((key) => isScore(profile.skills[key]))
     && !!profile.mental

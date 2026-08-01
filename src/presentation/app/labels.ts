@@ -1,6 +1,7 @@
 import { HALF_DURATION } from "../../domain/match/config";
 import type { AssignmentDuty, DecisionReason, DribbleRangeReason, DribbleTouchRange, MatchState, MovementPace, PassPurpose, ShotTechnique, TacticalPhase } from "../../domain/match/model";
-import type { PlayerPosition, PlayerRole } from "../../domain/roster/model";
+import type { PlayerPosition } from "../../domain/roster/model";
+import type { TacticalDuty } from "../../domain/tactics/roles";
 import type { Team } from "../../domain/shared/model";
 import type {
   FreedomInstruction,
@@ -9,6 +10,7 @@ import type {
   TacticalMentality,
 } from "../../domain/tactics/model";
 import type { PositionFitLevel } from "../../domain/tactics/position-fit";
+import type { RoleFitLevel } from "../../domain/tactics/role-fit";
 import type { TacticalPlanIssueKind } from "../../domain/tactics/rules";
 import type { BuildUpStyle, DefensiveBlock, PressTrigger } from "../../domain/tactics/vocabulary";
 
@@ -43,10 +45,15 @@ export const POSITION_SHORT_LABELS: Record<PlayerPosition, string> = {
   striker: "ATA",
 };
 
-export const ROLE_LABELS: Record<PlayerRole, string> = {
-  finisher: "Finalizador",
-  playmaker: "Construção",
-  defender: "Defesa",
+/**
+ * O dever tático, no eixo do FM. Os rótulos das FUNÇÕES não moram aqui: cada uma já carrega o seu em
+ * `domain/tactics/roles`, do mesmo jeito que cada slot carrega a própria sigla — o catálogo é a fonte
+ * única, e duplicá-lo aqui só criaria uma segunda lista para envelhecer.
+ */
+export const TACTICAL_DUTY_LABELS: Record<TacticalDuty, string> = {
+  defend: "Defender",
+  support: "Apoiar",
+  attack: "Atacar",
 };
 
 export const INTENT_LABELS = {
@@ -225,6 +232,18 @@ export const POSITION_FIT_LABELS: Record<PositionFitLevel, string> = {
   awkward: "Improviso leve",
   makeshift: "Improviso pesado",
   blocked: "Não pode jogar aqui",
+};
+
+/**
+ * Aptidão do atleta para a função pedida. Curto de propósito: aparece ao lado do nome de cada função
+ * no seletor, como o `++` do EA FC, e um rótulo longo ali empurraria a função para fora da linha.
+ */
+export const ROLE_FIT_LABELS: Record<RoleFitLevel, string> = {
+  natural: "★★★",
+  accomplished: "★★",
+  capable: "★",
+  awkward: "–",
+  unsuited: "✗",
 };
 
 export const PLAN_ISSUE_LABELS: Record<TacticalPlanIssueKind, string> = {

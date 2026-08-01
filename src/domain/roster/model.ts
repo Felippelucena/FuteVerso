@@ -9,9 +9,11 @@ export type PlayerPosition =
   | "defensiveMid" | "centerMid" | "rightMid" | "leftMid" | "attackingMid"
   | "rightWing" | "leftWing" | "striker";
 
-// Posição diz onde o jogador atua; função diz como ele decide. Os dois eixos são
-// independentes: um centerMid pode ser playmaker ou defender.
-export type PlayerRole = "finisher" | "playmaker" | "defender";
+// A posição diz onde o jogador atua. **Como ele decide não mora mais aqui**: havia um campo `role`
+// com três valores (finisher/playmaker/defender) que era, na prática, uma função tática escondida
+// dentro do atleta — quem definia o comportamento era um enum de nascença, e não quem escala o time.
+// Função e dever passaram a ser input do plano (`domain/tactics/roles`), e a aptidão do atleta para
+// cada função sai dos atributos que já existem (`domain/tactics/role-fit`).
 
 export interface PlayerSkills {
   acceleration: number;
@@ -52,7 +54,6 @@ export interface PlayerProfile {
   position: PlayerPosition;
   // Posições em que o jogador atua sem penalidade de improviso, além da principal.
   secondaryPositions: PlayerPosition[];
-  role: PlayerRole;
   skills: PlayerSkills;
   mental: PlayerMentalAttributes;
 }

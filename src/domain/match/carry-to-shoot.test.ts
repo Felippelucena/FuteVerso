@@ -4,41 +4,19 @@ import { decideAll } from "./decision";
 import { perceive } from "./runtime/ball-situation";
 import { FIELD } from "./config";
 import { createMatchState } from "./index";
-import { evaluateShotOpportunity } from "./runtime/shot-opportunity";
 
-const createTestMatch = (seed = 3) => createMatchState(smallSidedMatchConfig(seed));
-
-describe("lookahead condução→finalização (Item 3)", () => {
-  it("avalia o chute a partir de uma posição futura: mais perto e livre supera a atual bloqueada", () => {
-    const state = createTestMatch();
-    const shooter = state.players.find((p) => p.team === "blue" && p.profile.position === "striker")!;
-    const blocker = state.players.find((p) => p.team === "coral" && p.profile.position === "centerBack")!;
-    const keeper = state.players.find((p) => p.team === "coral" && p.profile.position === "goalkeeper")!;
-    shooter.profile.skills.kickPower = 75;
-    shooter.profile.skills.finishing = 80;
-    shooter.position = { x: FIELD.width * 0.8, y: FIELD.height / 2 };
-    shooter.facing = { x: 1, y: 0 };
-    // Na linha do chute atual: metade do caminho entre o chutador e o poste em que ele mira.
-    const nearPost = { x: FIELD.width, y: FIELD.goalTop + 2.2 };
-    blocker.position = { x: (shooter.position.x + nearPost.x) / 2, y: (shooter.position.y + nearPost.y) / 2 };
-    blocker.velocity = { x: 0, y: 0 };
-    keeper.position = { x: FIELD.width, y: FIELD.height / 2 };
-    const opponents = state.players.filter((p) => p.team === "coral");
-
-    const shotNow = evaluateShotOpportunity(shooter, opponents, state);
-    const ahead = { x: FIELD.width * 0.94, y: FIELD.height / 2 };
-    const shotAhead = evaluateShotOpportunity(shooter, opponents, state, { origin: { position: ahead, facing: { x: 1, y: 0 } } });
-
-    expect(shotNow).not.toBeNull();
-    expect(shotAhead).not.toBeNull();
-    expect(shotAhead!.distance).toBeLessThan(shotNow!.distance);
-    expect(shotNow!.blocked).toBe(true);
-    expect(shotAhead!.blocked).toBe(false);
-    expect(shotAhead!.utility).toBeGreaterThan(shotNow!.utility);
-  });
-
-  it("prefere conduzir rumo ao gol a tabelar para trás quando a condução abre um chute muito melhor", () => {
-    const state = createTestMatch(11);
+/**
+ * Conduzir rumo ao gol em vez de tabelar para trás, quando o corredor está aberto e o chute daqui não
+ * existe.
+ *
+ * O comportamento sobreviveu à troca de régua, mas o mecanismo mudou e vale registrar: existia um
+ * *lookahead* explícito (`CONDUCT.carryShot*`) que avaliava o chute futuro e creditava o ganho à
+ * utilidade do drible. Ele morreu com a superfície de valor de posse — ela já paga por chegar mais
+ * perto, sem precisar simular a finalização de lá. Um termo somado à mão a menos para envelhecer.
+ */
+describe("condução rumo ao gol", () => {
+  it("prefere conduzir a tabelar para trás quando o corredor à frente está aberto", () => {
+    const state = createMatchState(smallSidedMatchConfig(11));
     startOpenPlay(state);
     state.elapsed = 8;
     const carrier = state.players.find((p) => p.team === "coral" && p.profile.position === "centerMid")!;

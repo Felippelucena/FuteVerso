@@ -103,7 +103,14 @@ describe("calibracao da circulacao de bola", () => {
           && player.profile.position !== "goalkeeper");
         widths.push(Math.max(...mates.map((p) => p.position.y)) - Math.min(...mates.map((p) => p.position.y)));
         const opponents = state.players.filter((player) => player.team !== controller.team);
-        cleanLanes.push(countCleanLanes(controller, mates, opponents));
+        // Só portador de LINHA. O goleiro tem o time inteiro aberto à frente — 4,1 corredores limpos
+        // contra 0,3 de um jogador de linha —, e `mates` já o exclui do outro lado da conta. Com ele
+        // no papel de portador bastavam 9% de amostras dele para dobrar a média: o número media
+        // **quanto tempo o goleiro segura a bola**, e um goleiro que distribui rápido (melhorar) o
+        // derrubava pela metade. Foi por pouco que isso não fez reverter uma reforma boa.
+        if (controller.profile.position !== "goalkeeper") {
+          cleanLanes.push(countCleanLanes(controller, mates, opponents));
+        }
       }
       finishTracked();
       minutes += state.elapsed / 60;

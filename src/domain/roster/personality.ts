@@ -1,5 +1,5 @@
 import { clamp } from "../shared/math";
-import type { PlayerMentalAttributes, PlayerPolicy, PlayerProfile, PlayerRole } from "./model";
+import type { PlayerMentalAttributes, PlayerPolicy, PlayerProfile } from "./model";
 
 export type MentalPreset = "balanced" | "cerebral" | "bold" | "intense" | "disciplined" | "creative";
 
@@ -26,19 +26,36 @@ export const createMentalAttributes = (
   overrides: Partial<PlayerMentalAttributes> = {},
 ): PlayerMentalAttributes => ({ ...MENTAL_PRESETS[preset], ...overrides });
 
-const rolePolicy = (role: PlayerRole): PlayerPolicy => ({
-  shoot: role === "finisher" ? 0.78 : 0.48,
-  pass: role === "playmaker" ? 0.82 : 0.6,
-  dribble: role === "finisher" ? 0.68 : 0.54,
-  press: role === "defender" ? 0.76 : 0.6,
-  mark: role === "defender" ? 0.82 : 0.56,
-  cover: role === "defender" ? 0.8 : 0.58,
-});
+/**
+ * A propensão inicial de cada saída, **derivada das habilidades**.
+ *
+ * Antes vinha de `PlayerRole` — finisher/playmaker/defender, três rótulos de nascença que davam
+ * `shoot: 0,78` a um e `0,48` a todos os outros. Aquilo era, na prática, uma função tática escondida
+ * no atleta: quem decidia como o jogador jogava era um enum, não o treinador nem os atributos. A
+ * função virou escolha do plano (`domain/tactics/roles`), e o que sobra aqui é o que sempre deveria
+ * ter sido: quem finaliza bem chuta mais, quem passa e enxerga bem passa mais, quem defende bem
+ * pressiona e marca mais.
+ *
+ * A escala é a mesma de antes (0,48 a 0,82 nas pontas) para o elenco não mudar de temperamento junto
+ * com a reforma — só a origem do número mudou.
+ */
+const skillPolicy = (skills: PlayerProfile["skills"]): PlayerPolicy => {
+  const from = (value: number, low: number, high: number): number => low + (high - low) * clamp(value / 100, 0, 1);
+  const creator = (skills.passing + skills.vision) / 2;
+  return {
+    shoot: from(skills.finishing, 0.4, 0.82),
+    pass: from(creator, 0.5, 0.84),
+    dribble: from(skills.control, 0.44, 0.72),
+    press: from(skills.defending, 0.54, 0.78),
+    mark: from(skills.defending, 0.5, 0.84),
+    cover: from(skills.defending, 0.52, 0.82),
+  };
+};
 
 const centered = (value: number): number => (value - 65) / 100;
 
-export const createInitialPolicy = (profile: Pick<PlayerProfile, "role" | "mental">): PlayerPolicy => {
-  const base = rolePolicy(profile.role);
+export const createInitialPolicy = (profile: Pick<PlayerProfile, "skills" | "mental">): PlayerPolicy => {
+  const base = skillPolicy(profile.skills);
   const mental = profile.mental;
   return {
     shoot: clamp(base.shoot + centered(mental.aggression) * 0.2 + centered(mental.composure) * 0.14 + centered(mental.creativity) * 0.1, 0.1, 0.95),
@@ -51,7 +68,7 @@ export const createInitialPolicy = (profile: Pick<PlayerProfile, "role" | "menta
 };
 
 export const policyLearningBounds = (
-  profile: Pick<PlayerProfile, "role" | "mental">,
+  profile: Pick<PlayerProfile, "skills" | "mental">,
   key: keyof PlayerPolicy,
 ): { minimum: number; maximum: number } => {
   const baseline = createInitialPolicy(profile)[key];

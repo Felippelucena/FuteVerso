@@ -2,6 +2,7 @@ import type { PlayerMemory, PlayerProfile } from "../roster/model";
 import type { PlayerInstruction, TeamDirectives } from "../tactics/model";
 import type { TacticalSlotId } from "../tactics/slots";
 import type { AttackChannel, BuildUpStyle, DefensiveBlock, PressTrigger } from "../tactics/vocabulary";
+import type { AssignmentDuty } from "../tactics/vocabulary";
 import type { MatchRules } from "./rules";
 import type { Team, Vec2 } from "../shared/model";
 
@@ -14,12 +15,11 @@ export type {
   PlayerPolicy,
   PlayerPosition,
   PlayerProfile,
-  PlayerRole,
   PlayerSkills,
 } from "../roster/model";
 // O vocabulário tático é declarado por domain/tactics, que é quem oferece essas opções ao
 // treinador; o motor as consome e reexporta para manter sua superfície pública intacta.
-export type { AttackChannel, BuildUpStyle, DefensiveBlock, PressTrigger } from "../tactics/vocabulary";
+export type { AssignmentDuty, AttackChannel, BuildUpStyle, DefensiveBlock, PressTrigger } from "../tactics/vocabulary";
 export type { PlayerInstruction, TacticalMentality, TeamDirectives } from "../tactics/model";
 export type { TacticalSlotId } from "../tactics/slots";
 
@@ -681,35 +681,6 @@ export interface TeamTacticalState {
   /** Último homem da atualização anterior. Só existe para dar histerese ao rest defense. */
   safetyPlayerId: string | null;
 }
-
-/**
- * O que um jogador está encarregado de fazer agora. É a entrega do nível coletivo para o
- * individual: quem decide movimento e ação lê o dever, em vez de redescobrir o trabalho a
- * partir de booleanos avulsos e da função do atleta.
- */
-export type AssignmentDuty =
-  // Com a bola nos pés (ou a caminho deles).
-  | "carry"
-  | "receive"
-  // Sem a bola, com o time em posse.
-  | "runInBehind"
-  | "support"
-  | "width"
-  | "overlap"
-  | "restDefense"
-  /**
-   * A tabela: quem se oferece ATRÁS da linha da bola para ela voltar e sair de novo. Era o
-   * buraco da forma — todo apoio vivia à frente do portador (de +7 a +35 m) e a única opção
-   * atrás era o rest defense, a 19-25 m e com alvo próprio. Entre um e outro não havia ninguém
-   * encarregado de se oferecer, e por isso a triangulação não tinha como acontecer.
-   */
-  | "recycle"
-  // Sem a bola, com o time fora de posse.
-  | "press"
-  | "trackRunner"
-  | "holdLine"
-  // Em qualquer momento.
-  | "goalkeep";
 
 /** Célula da grade tática 7x5 — as mesmas coordenadas de `TacticalSlot.zone`. */
 export interface AssignmentZone {

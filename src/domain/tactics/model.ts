@@ -1,4 +1,5 @@
 import { clamp } from "../shared/math";
+import { DEFAULT_ROLE_BY_SLOT, findRole, type TacticalDuty, type TacticalRoleId } from "./roles";
 import type { TacticalSlotId } from "./slots";
 import { PRESS_TRIGGERS, type BuildUpStyle, type DefensiveBlock, type PressTrigger } from "./vocabulary";
 
@@ -66,7 +67,14 @@ export type SupportInstruction = "hold" | "balanced" | "attack";
 export type MarkingInstruction = "zone" | "man";
 export type FreedomInstruction = "rarely" | "normal" | "often";
 
+/**
+ * O que o treinador pede **daquele slot**. Os quatro eixos finos continuam aqui, mas o que os define
+ * primeiro é a dupla função × dever: escolher "ponta, atacar" já acerta os quatro de uma vez, e o
+ * treinador afina por cima só quando quer.
+ */
 export interface PlayerInstruction {
+  role: TacticalRoleId;
+  duty: TacticalDuty;
   /** Quanto o jogador abandona a âncora do slot para acompanhar o ataque. */
   support: SupportInstruction;
   marking: MarkingInstruction;
@@ -74,11 +82,33 @@ export interface PlayerInstruction {
   dribbleFreedom: FreedomInstruction;
 }
 
+/**
+ * O padrão de quem não escolheu nada. `boxToBox`/`support` é o mais neutro do catálogo — meio de
+ * campo, sem viés de profundidade nem de largura —, e por isso é ele que mantém a partida de
+ * referência igual ao que o motor produzia sozinho.
+ */
 export const DEFAULT_INSTRUCTION: PlayerInstruction = {
+  role: "boxToBox",
+  duty: "support",
   support: "balanced",
   marking: "zone",
   shootFreedom: "normal",
   dribbleFreedom: "normal",
+};
+
+/**
+ * A instrução que uma função × dever produz sozinha. O treinador parte daqui; cada eixo que ele mexer
+ * fica gravado por cima. É o que faz a função ser um **atalho honesto** em vez de um quinto botão: os
+ * quatro eixos continuam sendo a verdade que o motor lê.
+ */
+export const instructionFromRole = (roleId: TacticalRoleId, duty: TacticalDuty): PlayerInstruction => {
+  const role = findRole(roleId);
+  return {
+    ...DEFAULT_INSTRUCTION,
+    ...role?.instruction,
+    role: roleId,
+    duty: role && !role.duties.includes(duty) ? role.duties[0]! : duty,
+  };
 };
 
 export interface TacticalAssignment {
@@ -113,5 +143,15 @@ export const directivesOf = (plan: TeamTacticalPlan): TeamDirectives => ({
   pressTriggers: [...plan.pressTriggers],
 });
 
+/**
+ * A instrução em vigor para um slot: a do treinador, se ele mexeu, ou a que a função padrão daquele
+ * slot produz. O padrão **por slot** é o que garante que um time sem nenhuma instrução salva ainda
+ * tenha zagueiro de zagueiro e ponta de ponta.
+ */
 export const instructionFor = (plan: TeamTacticalPlan, slotId: TacticalSlotId): PlayerInstruction =>
-  plan.instructions[slotId] ?? DEFAULT_INSTRUCTION;
+  plan.instructions[slotId] ?? defaultInstructionFor(slotId);
+
+export const defaultInstructionFor = (slotId: TacticalSlotId): PlayerInstruction => {
+  const preset = DEFAULT_ROLE_BY_SLOT[slotId];
+  return preset ? instructionFromRole(preset.role, preset.duty) : DEFAULT_INSTRUCTION;
+};

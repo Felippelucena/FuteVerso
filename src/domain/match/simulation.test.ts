@@ -141,7 +141,7 @@ describe("qualidade coletiva da simulacao", () => {
   it("muda a fase e coordena funções ofensivas conforme o contexto", () => {
     const state = createTestMatch(456);
     startOpenPlay(state);
-    const carrier = state.players.find((player) => player.team === "blue" && player.profile.role === "playmaker")!;
+    const carrier = state.players.find((player) => player.team === "blue" && player.profile.position === "centerMid")!;
     carrier.position = { x: FIELD.width * 0.2, y: FIELD.height / 2 };
     state.ball.position = { ...carrier.position };
     state.ball.controllerId = carrier.profile.id;
@@ -164,8 +164,8 @@ describe("qualidade coletiva da simulacao", () => {
     perceive(state);
 
     const decisions = decideAll(state);
-    const forward = state.players.find((player) => player.team === "blue" && player.profile.role === "finisher")!;
-    const defenders = state.players.filter((player) => player.team === "blue" && player.profile.role === "defender" && player.profile.position !== "goalkeeper");
+    const forward = state.players.find((player) => player.team === "blue" && player.profile.position === "striker")!;
+    const defenders = state.players.filter((player) => player.team === "blue" && player.profile.position === "centerBack");
     expect(decisions.get(forward.profile.id)?.reason).toBe("runInBehind");
     // Com o time avançado, ao menos um defensor segura a retaguarda (rest defense).
     expect(defenders.some((defender) => decisions.get(defender.profile.id)?.reason === "restDefense")).toBe(true);
@@ -175,8 +175,8 @@ describe("qualidade coletiva da simulacao", () => {
     const state = createTestMatch(654);
     startOpenPlay(state);
     state.elapsed = 30;
-    const carrier = state.players.find((player) => player.team === "blue" && player.profile.role === "defender" && player.profile.position !== "goalkeeper")!;
-    const forward = state.players.find((player) => player.team === "blue" && player.profile.role === "finisher")!;
+    const carrier = state.players.find((player) => player.team === "blue" && player.profile.position === "centerBack")!;
+    const forward = state.players.find((player) => player.team === "blue" && player.profile.position === "striker")!;
     carrier.position = { x: FIELD.width * 0.18, y: FIELD.height / 2 };
     carrier.velocity = { x: 1, y: 0 };
     forward.position = { x: FIELD.width * 0.23, y: FIELD.height * 0.62 };
@@ -369,7 +369,7 @@ describe("qualidade coletiva da simulacao", () => {
     state.ballControlTeam = "coral";
     state.lastControlledTeam = "coral";
     const blueOutfield = state.players.filter((player) => player.team === "blue" && player.profile.position !== "goalkeeper");
-    const blueDefender = blueOutfield.find((player) => player.profile.role === "defender")!;
+    const blueDefender = blueOutfield.find((player) => player.profile.position === "centerBack")!;
     blueDefender.position = { x: controller.position.x - 5, y: controller.position.y };
     blueDefender.profile.mental.aggression = 100;
     blueDefender.profile.mental.intensity = 100;

@@ -8,7 +8,7 @@ import { dutyHolders } from "./systems/assignment-system";
 import { updateTacticalContext } from "./systems/tactics-system";
 import { BUILD_UP_STYLES, DEFENSIVE_BLOCKS } from "../tactics/vocabulary";
 import { DEFAULT_INSTRUCTION, NEUTRAL_DIRECTIVES } from "../tactics/model";
-import type { FreedomInstruction, TacticalMentality, TeamDirectives } from "../tactics/model";
+import type { FreedomInstruction, PlayerInstruction, TacticalMentality, TeamDirectives } from "../tactics/model";
 import type { MatchState, PlayerRuntime, TeamCollectivePlan } from "./model";
 
 /**
@@ -21,14 +21,16 @@ import type { MatchState, PlayerRuntime, TeamCollectivePlan } from "./model";
  */
 type Directives = Partial<Omit<TeamDirectives, "mentality">> & { mentality?: Partial<TacticalMentality> };
 
-/** Mesmo cenário, mesma semente: só as diretrizes do azul mudam. */
-const directed = (overrides: Directives, freedom?: Partial<Record<"shootFreedom", FreedomInstruction>>): MatchState => {
+/** Mesmo cenário, mesma semente: só as diretrizes (e, se pedido, as instruções) do azul mudam. */
+const directed = (overrides: Directives, instruction?: Partial<PlayerInstruction>): MatchState => {
   const config = smallSidedMatchConfig(11);
   const { blue } = config.teams;
   config.teams.blue = { ...blue, ...overrides, mentality: { ...blue.mentality, ...overrides.mentality } };
-  if (freedom) {
+  if (instruction) {
     for (const participant of config.participants) {
-      if (participant.team === "blue") participant.instruction = { ...participant.instruction, ...freedom };
+      if (participant.team === "blue" && participant.slotId !== "gol") {
+        participant.instruction = { ...participant.instruction, ...instruction };
+      }
     }
   }
   const state = createMatchState(config);
@@ -174,7 +176,7 @@ describe("o plano tático chega ao motor", () => {
     const looksTaken = (shootFreedom: FreedomInstruction): number => {
       let shooting = 0;
       for (let step = 0; step < 12; step += 1) {
-        const state = directed({}, { shootFreedom });
+        const state = directed({}, { shootFreedom, role: "insideForward", duty: "attack" });
         const striker = state.players.find((player) => player.team === "blue" && player.profile.position === "striker")!;
         striker.position = {
           x: FIELD.width * (0.58 + step * 0.03),
@@ -197,6 +199,35 @@ describe("o plano tático chega ao motor", () => {
     };
 
     expect(looksTaken("often")).toBeGreaterThan(looksTaken("rarely"));
+  });
+
+  /**
+   * A trava da reforma de função: **os mesmos onze, o mesmo desenho, dois times diferentes.** Antes o
+   * comportamento vinha de `PlayerRole`, campo de nascença do atleta — trocar de plano não mudava
+   * nada, e o treinador não tinha como pedir um time que sobe ou um que segura.
+   */
+  it("faz o mesmo elenco jogar diferente conforme a função e o dever", () => {
+    const shape = (instruction: Partial<PlayerInstruction>): { depth: number; pressers: number } => {
+      const state = directed({}, instruction);
+      updateTacticalContext(state, 0);
+      const outfield = state.players.filter((player) => player.team === "blue" && player.slotId !== "gol");
+      const depth = outfield.reduce((sum, player) => sum + player.homeAnchor.x, 0) / outfield.length;
+
+      // O mesmo lance, nos dois times: adversário conduzindo no nosso terço, sem pressão em cima.
+      coralCarryingAt(state, 0.24);
+      updateTacticalContext(state, 0);
+      // O segundo pressionador é um a mais na bola, além do primeiro — e só quem segura a linha o é.
+      return { depth, pressers: dutyHolders(state.tactics.blue.collectivePlan, "press").length };
+    };
+
+    const holding = shape({ role: "anchor", duty: "defend" });
+    const pushing = shape({ role: "poacher", duty: "attack" });
+
+    // Quem pede um time de finalizadores recebe um time mais alto...
+    expect(pushing.depth).toBeGreaterThan(holding.depth);
+    // ...e ninguém que largue a linha para dobrar na bola: segurar a linha é propriedade da FUNÇÃO, e
+    // um time sem retaguarda não tem quem saia. É a diferença que o antigo `PlayerRole` não fazia.
+    expect(holding.pressers).toBeGreaterThan(pushing.pressers);
   });
 
   it("obedece ao treinador no meio do jogo, e a instrução fica com o slot", () => {

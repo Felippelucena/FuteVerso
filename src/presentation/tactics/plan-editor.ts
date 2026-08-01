@@ -3,14 +3,17 @@ import { playerOverall } from "../../domain/roster/rating";
 import { applyFormation, autoPickPlan } from "../../domain/tactics/auto-lineup";
 import { defaultFormation, findFormation, FORMATIONS, matchFormation } from "../../domain/tactics/formations";
 import {
-  DEFAULT_INSTRUCTION,
+  defaultInstructionFor,
   instructionFor,
+  instructionFromRole,
   type FreedomInstruction,
   type PlayerInstruction,
   type TacticalMentality,
   type TeamTacticalPlan,
 } from "../../domain/tactics/model";
 import { positionFit } from "../../domain/tactics/position-fit";
+import { rolesForSlot } from "../../domain/tactics/role-fit";
+import { findRole, TACTICAL_DUTIES, TACTICAL_ROLES, type TacticalRoleId } from "../../domain/tactics/roles";
 import { inspectPlan } from "../../domain/tactics/rules";
 import { findSlot, TACTICAL_GRID, TACTICAL_SLOTS, type TacticalSlot, type TacticalSlotId } from "../../domain/tactics/slots";
 import {
@@ -35,7 +38,9 @@ import {
   POSITION_FIT_LABELS,
   POSITION_SHORT_LABELS,
   PRESS_TRIGGER_LABELS,
+  ROLE_FIT_LABELS,
   SUPPORT_LABELS,
+  TACTICAL_DUTY_LABELS,
 } from "../app/labels";
 
 /**
@@ -76,9 +81,11 @@ const spotOf = (element: HTMLElement): PlanSpot | null => {
   return null;
 };
 
-const isDefaultInstruction = (instruction: PlayerInstruction): boolean =>
-  (Object.keys(DEFAULT_INSTRUCTION) as (keyof PlayerInstruction)[])
-    .every((key) => instruction[key] === DEFAULT_INSTRUCTION[key]);
+const isDefaultInstruction = (instruction: PlayerInstruction, slotId: TacticalSlotId): boolean => {
+  const standard = defaultInstructionFor(slotId);
+  return (Object.keys(standard) as (keyof PlayerInstruction)[])
+    .every((key) => instruction[key] === standard[key]);
+};
 
 /**
  * O editor de plano tático: campo com slots, banco, disponíveis e os controles que o motor lê.
@@ -252,9 +259,25 @@ export class PlanEditor {
             <option value="${value}" ${value === current ? html`selected` : ""}>${text}</option>`)}
         </select>
       </label>`;
+    // Função e dever primeiro: escolher "ponta, atacar" já acerta os quatro eixos de baixo, que ficam
+    // para quem quiser afinar. A aptidão ao lado de cada função é o `++` do EA FC — sai dos atributos
+    // que o atleta já tem, e por isso não há campo novo em ninguém.
+    const fitted = rolesForSlot(player, slot, TACTICAL_ROLES);
+    const duties = findRole(instruction.role)?.duties ?? TACTICAL_DUTIES;
     return html`
       <section class="plan-panel">
         <header><strong>${player.name}</strong><span>${slot.label} · ${POSITION_FIT_LABELS[positionFit(player, slot).level]}</span></header>
+        <div class="plan-instructions plan-instructions--role">
+          <label><span>Função</span>
+            <select data-instruction="role">
+              ${fitted.map(({ role, fit }) => html`
+                <option value="${role.id}" ${role.id === instruction.role ? html`selected` : ""}>
+                  ${role.label} · ${ROLE_FIT_LABELS[fit.level]}</option>`)}
+            </select>
+          </label>
+          ${choice("duty", "Dever", instruction.duty,
+            Object.fromEntries(duties.map((duty) => [duty, TACTICAL_DUTY_LABELS[duty]])))}
+        </div>
         <div class="plan-instructions">
           ${choice("support", "Apoio ao ataque", instruction.support, SUPPORT_LABELS)}
           ${choice("marking", "Marcação", instruction.marking, MARKING_LABELS)}
@@ -436,10 +459,15 @@ export class PlanEditor {
     const instruction = target.closest<HTMLSelectElement>("[data-instruction]");
     if (instruction && this.selectedSlot) {
       const field = instruction.dataset.instruction as keyof PlayerInstruction;
-      const updated = { ...instructionFor(plan, this.selectedSlot), [field]: instruction.value as FreedomInstruction };
-      // O plano só guarda quem foge do padrão: voltar ao padrão apaga a entrada em vez de gravar
-      // uma cópia dele, e é o que mantém `instructions` legível.
-      if (isDefaultInstruction(updated)) delete plan.instructions[this.selectedSlot];
+      const current = instructionFor(plan, this.selectedSlot);
+      // Trocar de FUNÇÃO redesenha os quatro eixos finos a partir dela — é o que faz a função ser um
+      // atalho de verdade e não um quinto botão. Trocar o dever, ou um eixo fino, preserva o resto.
+      const updated = field === "role"
+        ? instructionFromRole(instruction.value as TacticalRoleId, current.duty)
+        : { ...current, [field]: instruction.value as FreedomInstruction };
+      // O plano só guarda quem foge do padrão DO SLOT: voltar ao padrão apaga a entrada em vez de
+      // gravar uma cópia dele, e é o que mantém `instructions` legível.
+      if (isDefaultInstruction(updated, this.selectedSlot)) delete plan.instructions[this.selectedSlot];
       else plan.instructions[this.selectedSlot] = updated;
       this.commit(plan);
     }

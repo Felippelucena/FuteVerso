@@ -361,11 +361,12 @@ export class GameApplication {
       return;
     }
     if (!previous) return;
-    const changed = previous.role !== player.role
+    const changed = JSON.stringify(previous.skills) !== JSON.stringify(player.skills)
       || JSON.stringify(previous.mental) !== JSON.stringify(player.mental);
     if (!changed) return;
-    // Função ou personalidade mudaram: a política inicial é recalculada, mas a carreira
-    // acumulada continua valendo.
+    // Habilidade ou personalidade mudaram: a política inicial é recalculada, mas a carreira
+    // acumulada continua valendo. (Antes o gatilho era a função do atleta, que deixou de existir —
+    // função é escolha do plano, e trocá-la não reescreve o temperamento de ninguém.)
     const recalibrated = createMemory(player);
     recalibrated.stats = { ...stored.stats };
     recalibrated.version = stored.version + 1;

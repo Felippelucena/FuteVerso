@@ -157,7 +157,7 @@ describe("ações e física da bola", () => {
   it("faz uma finalizacao viajar claramente mais rapido que um passe longo", () => {
     const shotState = createTestMatch(515);
     startOpenPlay(shotState);
-    const shooter = shotState.players.find((player) => player.team === "blue" && player.profile.role === "finisher")!;
+    const shooter = shotState.players.find((player) => player.team === "blue" && player.profile.position === "striker")!;
     shooter.position = { x: FIELD.width / 2, y: FIELD.height / 2 };
     shooter.profile.skills.kickPower = 75;
     shotState.players.forEach((player, index) => {

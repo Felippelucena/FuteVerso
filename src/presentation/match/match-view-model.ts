@@ -2,7 +2,14 @@ import { goalkeeperQuality, playerRating, type MatchState } from "../../domain/m
 import { FIELD } from "../../domain/match/config";
 import type { PlayerRuntime } from "../../domain/match/model";
 import type { Team } from "../../domain/shared/model";
-import { DRIBBLE_RANGE_REASON_LABELS, DRIBBLE_TOUCH_LABELS, INTENT_LABELS, PACE_LABELS, PASS_PURPOSE_LABELS, percentage, POSITION_LABELS, REASON_LABELS, ROLE_LABELS, SHOT_TECHNIQUE_LABELS, teamLabel, type TeamNames } from "../app/labels";
+import { DRIBBLE_RANGE_REASON_LABELS, DRIBBLE_TOUCH_LABELS, INTENT_LABELS, PACE_LABELS, PASS_PURPOSE_LABELS, percentage, POSITION_LABELS, REASON_LABELS, SHOT_TECHNIQUE_LABELS, TACTICAL_DUTY_LABELS, teamLabel, type TeamNames } from "../app/labels";
+import { findRole } from "../../domain/tactics/roles";
+import type { PlayerInstruction } from "../../domain/tactics/model";
+
+const roleLabel = (instruction: PlayerInstruction): string => {
+  const role = findRole(instruction.role);
+  return role ? `${role.label} (${TACTICAL_DUTY_LABELS[instruction.duty].toLowerCase()})` : "–";
+};
 
 export interface MatchHeaderViewModel {
   blueGoals: string;
@@ -173,7 +180,8 @@ export const createPlayerDetailViewModel = (state: MatchState, player: PlayerRun
     playerId: player.profile.id,
     team: player.team,
     name: player.profile.name,
-    position: `${POSITION_LABELS[player.profile.position]} · ${ROLE_LABELS[player.profile.role]}`,
+    // A função que ele está EXERCENDO, com o dever — não mais um rótulo de nascença do atleta.
+    position: `${POSITION_LABELS[player.profile.position]} · ${roleLabel(player.instruction)}`,
     intent: intentLabel(state, player),
     reason: REASON_LABELS[player.decisionReason],
     rating: playerRating(player).toFixed(1),

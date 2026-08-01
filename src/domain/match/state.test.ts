@@ -97,12 +97,23 @@ describe("estado inicial e escalações", () => {
     }
   });
 
-  it("faz a função do jogador deslocar a âncora dentro do slot", () => {
+  it("faz a função TÁTICA deslocar a âncora dentro do slot, e o dever por cima dela", () => {
     const state = createTestMatch();
     const defender = state.players.find((player) => player.profile.position === "centerBack")!;
-    const original = formationAnchor(defender);
-    defender.profile.role = "finisher";
-    expect(formationAnchor(defender).x).not.toBe(original.x);
+    const direction = defender.team === "blue" ? 1 : -1;
+    const asDefender = formationAnchor(defender).x;
+
+    // A função é escolha do treinador, não campo de nascença do atleta: o MESMO jogador, no MESMO
+    // slot, ocupa lugares diferentes conforme o que se pede dele.
+    defender.instruction = { ...defender.instruction, role: "poacher", duty: "attack" };
+    const asPoacher = formationAnchor(defender).x;
+    expect(direction * (asPoacher - asDefender)).toBeGreaterThan(0);
+
+    // E o dever move dentro da própria função — é o eixo que dispensa duas funções por lado.
+    defender.instruction = { ...defender.instruction, role: "fullBack", duty: "defend" };
+    const holding = formationAnchor(defender).x;
+    defender.instruction = { ...defender.instruction, role: "fullBack", duty: "support" };
+    expect(direction * (formationAnchor(defender).x - holding)).toBeGreaterThan(0);
   });
 
   it("mantém o goleiro na linha do gol, sem deslocamento por função", () => {

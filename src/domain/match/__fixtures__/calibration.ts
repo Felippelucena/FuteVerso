@@ -21,3 +21,17 @@ export const CALIBRATION = env?.CALIBRATE === "1";
  *   bash:        BUDGET=1 npx vitest run src/domain/match/engine-budget.test.ts
  */
 export const BUDGET = env?.BUDGET === "1";
+
+/**
+ * Gate do **regime** (`match-regime.test.ts`): duas sementes, ~70 s, e devolve o retrato grosso do
+ * jogo — onde a bola vive, quanto o portador avança, quantos chutes e gols saem.
+ *
+ * Existe separado de `CALIBRATE` porque serve a outro momento. A calibragem de oito sementes é para
+ * **afinar número** e custa cinco minutos; esta é para **detectar quebra** entre uma fase de reforma e
+ * a seguinte, quando afinar ainda seria trabalho jogado fora. Foi ela que separou artefato de defeito
+ * na reforma do valor de posse, medindo o HEAD como controle com uma variável de diferença.
+ *
+ *   PowerShell:  $env:REGIME=1; npx vitest run match-regime
+ *   bash:        REGIME=1 npx vitest run match-regime
+ */
+export const REGIME = env?.REGIME === "1";

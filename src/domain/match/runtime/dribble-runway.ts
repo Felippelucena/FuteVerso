@@ -115,9 +115,11 @@ export const knockPastEligible = (state: MatchState, carrier: PlayerRuntime, cha
  * (`escapeConfidence`, que sai do duelo). A carreta é lenta — o tempo de viagem é o do portador, não o
  * de uma bola chutada —, e é por isso que a defesa projetada tem tempo de fechar o corredor.
  *
- * Medi e descartei perguntar a corrida (`raceChance(opponentEta - carrierEta)`): `chooseDribbleTouch`
- * só devolve toque que **já** vence a corrida por `raceMargin`, então a resposta vinha 1,00 por
- * construção. Medir um evento pré-filtrado é o mesmo que não medir.
+ * **Sem a corrida**, e isto foi medido nos dois sentidos. `chooseDribbleTouch` filtra por `raceMargin`
+ * no knock-on mas não no caminho de fallback, então o termo não é redundante em teoria — só que somá-lo
+ * derruba a condução a ponto de o time não chegar mais à área: chutes de dentro caíram de 4,5 para 2,5
+ * e o xG por partida de 1,11 para 0,30. O motor já cobra a corrida em outro lugar (o próprio duelo,
+ * quando o marcador chega), e cobrá-la aqui também é o mesmo lance pago duas vezes.
  */
 export const carrySurvival = (
   carrier: PlayerRuntime,

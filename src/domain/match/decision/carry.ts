@@ -26,6 +26,22 @@ import { decisionNoise, nearestPlayer } from "./shared";
  * não risco.
  */
 
+/**
+ * **Para onde levar a bola.** Cinco leques à frente, e não a rosa dos ventos.
+ *
+ * Medi a versão omnidirecional — oito rumos pesados pela superfície de valor, que era a régua certa em
+ * teoria e aposentava esta soma à mão. **Piorou o jogo**: terço final de 0,285 para 0,203, chutes de
+ * dentro da área de 4,5 para 3,5, xG de 1,11 para 0,99. A causa é estrutural, não de calibragem fina: a
+ * superfície é **cega a linha**. Andar 12 m de lado quase não muda a distância ao gol (o gradiente de
+ * `pitchValue` rende ~20% nesse passo) mas muda muito a disponibilidade (até ~5×), então lateral-para-o-
+ * -espaço vence frente-para-o-tráfego em quase toda posição. O time passava a partida se arrastando de
+ * lado. O termo `progress` desta soma é grosseiro, mas carrega o que a superfície não sabe dizer nesta
+ * granularidade: ir para frente é o ponto do jogo.
+ *
+ * O anel volta quando a disponibilidade estiver calibrada contra o gradiente (`MARKING_ROOM`, hoje 14 m,
+ * é largo demais e torna o termo seletivo demais pelo companheiro isolado). Enquanto isso, o verbo
+ * "segurar" que a fase queria vive no portão de acomodação, que é contínuo na pressão.
+ */
 const chooseDribbleTarget = (player: PlayerRuntime, opponents: PlayerRuntime[], state: MatchState): Vec2 => {
   const direction = attackDirection(player.team);
   const stride = fieldX(12);

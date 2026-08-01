@@ -1,6 +1,6 @@
 import { FIELD, GOALKEEPING } from "../config";
 import { clamp, distance, distanceToSegment, dot, normalize, subtract } from "../../shared/math";
-import type { BallAction, MatchState, PlayerRuntime, ShotTechnique, Vec2 } from "../model";
+import type { BallAction, MatchState, PlayerRuntime, ShotTechnique } from "../model";
 import { predictPlayerPosition } from "./prediction";
 import { pressureAt } from "./control";
 import { fieldX } from "./pitch";
@@ -22,8 +22,6 @@ export interface ShotContext {
   /** Primeiro toque: a bola já chega com pace e o contato só a direciona. */
   prepared?: boolean;
   technique?: ShotTechnique;
-  /** Avaliar o chute a partir de outra posição/orientação — por exemplo, depois de conduzir. */
-  origin?: { position: Vec2; facing: Vec2 };
   /** Altura da bola no contato. Padrão: a altura de agora. */
   contactHeight?: number;
 }
@@ -42,11 +40,9 @@ export const evaluateShotOpportunity = (
   state: MatchState,
   context: ShotContext = {},
 ): ShotOpportunity | null => {
-  const { prepared = false, technique: preparedTechnique, origin } = context;
-  // Item 3: opcionalmente avalia o chute a partir de uma posição/orientação futura (após conduzir),
-  // mantendo a pressão medida na posição atual (conservador).
-  const shooterPosition = origin?.position ?? player.position;
-  const shooterFacing = normalize(origin?.facing ?? player.facing);
+  const { prepared = false, technique: preparedTechnique } = context;
+  const shooterPosition = player.position;
+  const shooterFacing = normalize(player.facing);
   const direction = player.team === "blue" ? 1 : -1;
   const goalX = direction > 0 ? FIELD.width : 0;
   const goalkeeper = opponents.find((opponent) => opponent.profile.position === "goalkeeper") ?? null;

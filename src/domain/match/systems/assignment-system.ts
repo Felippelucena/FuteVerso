@@ -1,5 +1,6 @@
 import { clamp, distance } from "../../shared/math";
 import { mentalityBias, type TacticalMentality } from "../../tactics/model";
+import { resolvedRoleOf } from "../../tactics/roles";
 import { TACTICAL_GRID } from "../../tactics/slots";
 import { DECISION, DEFENSE, FIELD, MENTALITY, OFFSIDE } from "../config";
 import type {
@@ -187,7 +188,7 @@ const chooseSecondPresser = (
   const presserGap = presser ? distance(presser.position, state.ball.position) : Number.POSITIVE_INFINITY;
   if (presserGap <= DEFENSE.secondPresserUnpressuredGap * FIELD.width) return null;
   const carrierFuture = predictPlayerPosition(carrier, predictionHorizon(carrier, 0.7) * 0.4);
-  const eligible = candidates.filter((player) => player.profile.role === "defender"
+  const eligible = candidates.filter((player) => resolvedRoleOf(player.instruction).holdsTheLine
     && distance(player.position, carrierFuture) < DEFENSE.secondPresserEngageRange * FIELD.width);
   return [...eligible].sort((first, second) =>
     distance(first.position, carrierFuture) - distance(second.position, carrierFuture) || byId(first, second))[0] ?? null;
@@ -219,20 +220,33 @@ const forwardness = (player: PlayerRuntime, context: AssignmentContext): number 
   const fromInstruction = player.instruction.support === "attack" ? 0.25
     : player.instruction.support === "hold" ? -0.25
       : 0;
-  const fromRole = player.profile.role === "finisher" ? 0.12 : player.profile.role === "playmaker" ? 0.04 : 0;
+  // A função tática, e não mais os três valores de nascença do atleta (finalizador 0,12 / armador
+  // 0,04 / defensor 0). É o mesmo eixo que desloca a âncora, lido aqui para ordenar quem corre.
+  const fromRole = resolvedRoleOf(player.instruction).depth * 0.12;
   const fromChannel = channelAffinity(player.position, context.attackChannel) * 0.1;
   const athletic = (player.profile.skills.sprintSpeed + player.profile.mental.anticipation) / 2000;
   return fromSlot + fromInstruction + fromRole + fromChannel + athletic + context.risk * 0.08;
 };
 
 /** Quem serve de último homem: defende bem, lê o jogo e já está do lado certo da bola. */
+/**
+ * Quanto a função escolhida pelo treinador **procura** este dever. É o gancho da reforma de função:
+ * o motor continua escolhendo a incumbência sozinho, e o plano entra enviesando essa escolha em vez
+ * de acrescentar um sistema paralelo.
+ */
+const ROLE_SEEK_BONUS = 9;
+
+const seeksDuty = (player: PlayerRuntime, duty: AssignmentDuty): number =>
+  resolvedRoleOf(player.instruction).seeks.includes(duty) ? ROLE_SEEK_BONUS : 0;
+
 const safetyScore = (player: PlayerRuntime, team: Team, context: AssignmentContext): number => {
   const goalSide = 1 - attackingProgress(team, player.position.x);
   const central = centrality(player.position);
   const fromInstruction = player.instruction.support === "hold" ? 8 : player.instruction.support === "attack" ? -8 : 0;
   return player.profile.skills.defending * 0.42 + player.profile.mental.decisionMaking * 0.2
     + player.profile.mental.anticipation * 0.18 + player.profile.mental.teamwork * 0.12
-    + goalSide * 5 + central * 3 + fromInstruction - forwardness(player, context) * 6;
+    + goalSide * 5 + central * 3 + fromInstruction + seeksDuty(player, "restDefense")
+    - forwardness(player, context) * 6;
 };
 
 // ---------------------------------------------------------------------------------------------

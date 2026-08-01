@@ -71,14 +71,24 @@ describe("caracterizacao deterministica", () => {
       short: hashFingerprint(actual.short),
       long: hashFingerprint(actual.long),
     };
-    // Re-baseline por três mudanças medidas: (1) a latitude do apoio passou a vir da CÉLULA e não
-    // do portador, e a fatia do quadro (`bodyShare`) virou por eixo — a largura que o motor PEDE
-    // subiu de 40,2 m para 46,0 m, casando com as âncoras; (2) o canal de ataque ganhou histerese
-    // (`TACTICS.channelHold`) — de 22,8 para 8,5 trocas por minuto, e o desvio lateral de cada
-    // jogador até a própria âncora caiu de 9,2 m para 6,3 m; (3) o deslocamento por exclusividade
-    // (`firstFreeCell`) passou a preferir a célula que o jogador já ocupava — de 10,1 para 9,1
-    // trocas de faixa por jogador por minuto.
-    expect(hashes).toEqual({ short: "feeb6a8e", long: "e961cb65" });
+    // Re-baseline da reforma do valor de posse, medida em `pass-calibration` (8 sementes) e em
+    // `match-regime` (2 sementes, com o HEAD como controle):
+    //
+    // 1. O núcleo posicional do xG ganhou **alcance** e **pressão** (`positionalGoalChance`). Nenhum
+    //    dos dois muda a tabela de `pitch-value` — lá o `max` do Bellman nunca escolhia o chute de
+    //    50 m —, mas mudam tudo quando a mesma função é lida como "o que sobra de um palmo apertado".
+    //    Sem a pressão, o motor creditava ao atacante marcado na área um chute livre que ele não tem,
+    //    e conduzir prometia sempre o chute livre um passo à frente: 3,0 chutes por partida.
+    // 2. A superfície ganhou o eixo de **disponibilidade** (`possessionValue`), que aposentou o
+    //    `openness` do passe e o `dribbleSpace` da condução.
+    // 3. A **condução passou a pagar risco** (`carrySurvival`) — era o único dos três verbos que não
+    //    pagava, e por isso levar a bola até o gol saía de graça.
+    // 4. **Função × dever** virou input do plano: a âncora, a ordem de avanço, o segundo pressionador
+    //    e a cobertura garantida leem a função escolhida, não mais os três valores de `PlayerRole`.
+    //
+    // Efeito de partida: 42,5 → 7,0 chutes (o alvo comprimido é ~5,8), xG voltou a bater com os gols
+    // (1,04 contra 1,5), terço final de 8,3% para 26,7%, `interceptedShare` 0,328 → 0,301.
+    expect(hashes).toEqual({ short: "42eb302f", long: "14a09307" });
     // Timeout explícito: com 22 jogadores em campo a simulação custa ~2,4× o que custava no
     // 5x5, e o padrão de 5s estourava quando a suíte roda em paralelo.
   }, 60_000);

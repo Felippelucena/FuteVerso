@@ -22,7 +22,6 @@ const newPlayer = (overrides: Partial<PlayerProfile> = {}): PlayerProfile => ({
   birthYear: 2002,
   position: "centerMid",
   secondaryPositions: [],
-  role: "playmaker",
   skills: {
     acceleration: 70, sprintSpeed: 70, burst: 70, stamina: 70, control: 70, strength: 70,
     passing: 70, vision: 70, finishing: 60, defending: 60, kickPower: 70, goalkeeping: 20,
@@ -157,14 +156,19 @@ describe("GameApplication", () => {
     expect(await context.application.savePlayer(invalid)).toEqual({ ok: false, reason: "invalid-player" });
   });
 
-  it("preserva a carreira e recalibra a política quando a função muda", async () => {
+  it("preserva a carreira e recalibra a política quando a habilidade muda", async () => {
     const { application, catalog, world } = context;
     const target = world.players.find((player) => player.position === "centerMid")!;
     const memory = (await catalog.memories.get(target.id))!;
     memory.stats.goals = 7;
     await catalog.memories.put([memory]);
 
-    await application.savePlayer({ ...target, role: target.role === "playmaker" ? "defender" : "playmaker" });
+    // O gatilho era a função do atleta, que deixou de existir. Quem semeia a política agora é a
+    // habilidade, então é ela que a recalibra.
+    await application.savePlayer({
+      ...target,
+      skills: { ...target.skills, finishing: target.skills.finishing >= 90 ? 40 : 92 },
+    });
 
     const updated = (await catalog.memories.get(target.id))!;
     expect(updated.stats.goals).toBe(7);

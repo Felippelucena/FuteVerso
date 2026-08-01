@@ -3,8 +3,10 @@ import type { PageQuery } from "../../../application/ports/catalog";
 import { COUNTRIES, countryName } from "../../../content/countries";
 import { activeContractOf } from "../../../domain/contract/queries";
 import type {
-  PlayerMentalAttributes, PlayerPosition, PlayerProfile, PlayerRole, PlayerSkills,
+  PlayerMentalAttributes, PlayerPosition, PlayerProfile, PlayerSkills,
 } from "../../../domain/roster/model";
+import { roleFit } from "../../../domain/tactics/role-fit";
+import { rolesForPosition } from "../../../domain/tactics/roles";
 import {
   createMentalAttributes, dominantMentalTraits, MENTAL_PRESET_LABELS, MENTAL_PRESETS, type MentalPreset,
 } from "../../../domain/roster/personality";
@@ -13,7 +15,7 @@ import { playerOverall } from "../../../domain/roster/rating";
 import { playerAge } from "../../../domain/roster/rules";
 import { findAll } from "../../app/dom";
 import { html } from "../../app/html";
-import { POSITION_LABELS, POSITION_SHORT_LABELS, ROLE_LABELS } from "../../app/labels";
+import { POSITION_LABELS, POSITION_SHORT_LABELS } from "../../app/labels";
 import type { EntityDescriptor } from "../entity";
 import { numberField, readNumber, readText, selectField, textField } from "../fields";
 
@@ -26,6 +28,14 @@ const SKILL_FIELDS: { key: keyof PlayerSkills; label: string }[] = [
   // "Força" agora é a do corpo (`strength`); esta aqui sempre foi a da perna.
   { key: "kickPower", label: "Potência do chute" }, { key: "goalkeeping", label: "Goleiro" },
 ];
+
+/** A função em que este atleta rende mais, entre as que a posição dele comporta. */
+const bestRoleLabel = (player: PlayerProfile): string => {
+  const best = rolesForPosition(player.position)
+    .map((role) => ({ role, fit: roleFit(player, role) }))
+    .sort((first, second) => second.fit.rating - first.fit.rating)[0];
+  return best ? best.role.label : "–";
+};
 
 const MENTAL_FIELDS: { key: keyof PlayerMentalAttributes; label: string }[] = [
   { key: "decisionMaking", label: "Tomada de decisão" }, { key: "anticipation", label: "Antecipação" },
@@ -58,7 +68,6 @@ const blankPlayer = (currentYear: number): PlayerProfile => ({
   birthYear: currentYear - DEFAULT_AGE,
   position: "centerMid",
   secondaryPositions: [],
-  role: "playmaker",
   skills: Object.fromEntries(SKILL_FIELDS.map(({ key }) => [key, 65])) as unknown as PlayerSkills,
   mental: createMentalAttributes("balanced"),
 });
@@ -83,7 +92,9 @@ export const playerDescriptor = (application: GameApplication): EntityDescriptor
         return html`${POSITION_SHORT_LABELS[player.position]}${secondary ? html` <em>(${secondary})</em>` : ""}`;
       },
     },
-    { label: "Função", width: "94px", render: ({ player }) => html`${ROLE_LABELS[player.role]}` },
+    // A função não é mais campo do atleta: é escolha do treinador, no plano tático. O que cabe aqui
+    // é o que os atributos dele DIZEM — a função em que ele é melhor, entre as que a posição permite.
+    { label: "Melhor função", width: "128px", render: ({ player }) => html`${bestRoleLabel(player)}` },
     // Idade cresce quando o ano de nascimento diminui; a coluna inverte para que "crescente"
     // signifique o que o cabeçalho mostra.
     { label: "Idade", sort: "birthYear", invert: true, width: "62px", align: "end", render: ({ age }) => html`${age}` },
@@ -133,8 +144,6 @@ export const playerDescriptor = (application: GameApplication): EntityDescriptor
               COUNTRIES.map((country) => ({ value: country.code, label: country.name })))}
             ${selectField("position", "Posição", player.position, PLAYER_POSITIONS
               .map((position) => ({ value: position, label: `${POSITION_SHORT_LABELS[position]} · ${POSITION_LABELS[position]}` })))}
-            ${selectField("role", "Função", player.role,
-              Object.entries(ROLE_LABELS).map(([value, label]) => ({ value, label })))}
           </div>
           <div class="field-heading"><strong>Posições secundárias</strong><span>onde atua sem improviso</span></div>
           <div class="checkbox-grid">
@@ -167,7 +176,6 @@ export const playerDescriptor = (application: GameApplication): EntityDescriptor
             .filter((input) => input.checked)
             .map((input) => input.value as PlayerPosition)
             .filter((secondary) => secondary !== position),
-          role: position === "goalkeeper" ? "defender" : String(data.get("role")) as PlayerRole,
         };
       },
     },

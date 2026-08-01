@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { squadOf } from "../../domain/contract/queries";
 import { TEAM_SIZE } from "../../domain/tactics/model";
-import { DEFAULT_INSTRUCTION, instructionFor } from "../../domain/tactics/model";
+import { defaultInstructionFor, instructionFor } from "../../domain/tactics/model";
 import { positionFit } from "../../domain/tactics/position-fit";
 import { findSlot, GOALKEEPER_SLOT_ID } from "../../domain/tactics/slots";
 import { createTestContext, createTestSetup, createTestWorld } from "../__fixtures__/test-world";
@@ -92,15 +92,20 @@ describe("plano tático que viaja com o participante", () => {
     }
   });
 
-  it("usa a instrução padrão para slot sem ajuste do treinador", () => {
+  it("usa a instrução padrão DO SLOT para quem o treinador não ajustou", () => {
     const world = createTestWorld();
     const setup = createTestSetup(world);
     setup.blue.plan.instructions = {};
 
     const config = buildMatchConfig(createTestContext(world, setup));
 
+    // O padrão é por slot, não global: um zagueiro nasce zagueiro. Com um padrão único para todos, o
+    // time saía a campo sem ninguém encarregado de segurar a linha, porque isso é propriedade da
+    // função — e o segundo pressionador e a cobertura garantida simplesmente não aconteciam.
     expect(config.participants.filter(({ team }) => team === "blue")
-      .every(({ instruction }) => instruction.support === DEFAULT_INSTRUCTION.support)).toBe(true);
+      .every(({ instruction, slotId }) => instruction.support === defaultInstructionFor(slotId).support)).toBe(true);
+    const keeper = config.participants.find(({ slotId }) => slotId === "gol")!;
+    expect(keeper.instruction.role).toBe("goalkeeper");
   });
 
   it("entrega instrução isolada do plano", () => {
@@ -108,9 +113,10 @@ describe("plano tático que viaja com o participante", () => {
     const setup = createTestSetup(world);
     const config = buildMatchConfig(createTestContext(world, setup));
     const participant = config.participants[0];
+    const before = instructionFor(setup.blue.plan, participant.slotId).support;
 
-    participant.instruction.support = "attack";
+    participant.instruction.support = participant.instruction.support === "attack" ? "hold" : "attack";
 
-    expect(instructionFor(setup.blue.plan, participant.slotId).support).toBe(DEFAULT_INSTRUCTION.support);
+    expect(instructionFor(setup.blue.plan, participant.slotId).support).toBe(before);
   });
 });

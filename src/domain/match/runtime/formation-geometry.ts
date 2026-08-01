@@ -1,4 +1,5 @@
 import { clamp } from "../../shared/math";
+import { resolvedRoleOf } from "../../tactics/roles";
 import { findSlot, TACTICAL_GRID } from "../../tactics/slots";
 import { FIELD } from "../config";
 import type { AssignmentZone, PlayerRuntime, Team, TeamCollectivePlan, TeamShapePlacement, Vec2 } from "../model";
@@ -210,11 +211,20 @@ export const formationAnchor = (player: PlayerRuntime): Vec2 => {
   return { x: anchor.x + attackDirection(player.team) * roleAdvance, y: anchor.y };
 };
 
-/** Avanço que a função do jogador aplica sobre a célula-base, em percentual da largura. */
+/**
+ * Avanço que a função TÁTICA aplica sobre a célula-base, em percentual da largura.
+ *
+ * Antes vinha de `profile.role`, três valores de nascença do atleta: finalizador +4, defensor -3,
+ * armador 0. Agora vem da função que o treinador escolheu para o slot, com o dever por cima — e é por
+ * isso que o mesmo lateral com dever de defender e de atacar passa a ocupar dois lugares diferentes,
+ * sem precisar de duas funções no catálogo.
+ */
+const ROLE_ADVANCE_SPAN = 4;
+
 const roleAdvancePercent = (player: PlayerRuntime): number =>
   player.profile.position === "goalkeeper"
     ? 0
-    : player.profile.role === "finisher" ? 4 : player.profile.role === "defender" ? -3 : 0;
+    : resolvedRoleOf(player.instruction).depth * ROLE_ADVANCE_SPAN;
 
 /** Faixa de profundidade que a formação neutra ocupa: da zaga (recuada) ao centroavante. */
 const OUTFIELD_BACK_DEPTH = NEUTRAL_LINE_HEIGHT - 3;

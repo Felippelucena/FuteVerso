@@ -1,4 +1,4 @@
-import type { PlayerMentalAttributes, PlayerPosition, PlayerProfile, PlayerRole, PlayerSkills } from "../../domain/roster/model";
+import type { PlayerMentalAttributes, PlayerPosition, PlayerProfile, PlayerSkills } from "../../domain/roster/model";
 import { createMentalAttributes, MENTAL_PRESETS, type MentalPreset } from "../../domain/roster/personality";
 import type { CountryCode } from "../../domain/shared/model";
 import { nameCatalogFor } from "../names";
@@ -24,28 +24,30 @@ const ARCHETYPES: Record<PlayerPosition, Partial<Record<keyof PlayerSkills, numb
   striker: { finishing: 11, control: 5, burst: 6, strength: 7, kickPower: 4, acceleration: 3, defending: -26, passing: -8, vision: -6, stamina: -4, goalkeeping: -50 },
 };
 
-// Funções plausíveis por posição, com peso. A função é o eixo de decisão do motor e não
-// deve ser deduzida da posição: um volante pode ser construtor, um ponta pode ser defensivo.
-const ROLE_WEIGHTS: Record<PlayerPosition, [PlayerRole, number][]> = {
-  goalkeeper: [["defender", 1]],
-  centerBack: [["defender", 0.92], ["playmaker", 0.08]],
-  rightBack: [["defender", 0.78], ["playmaker", 0.22]],
-  leftBack: [["defender", 0.78], ["playmaker", 0.22]],
-  defensiveMid: [["defender", 0.66], ["playmaker", 0.34]],
-  centerMid: [["playmaker", 0.72], ["defender", 0.24], ["finisher", 0.04]],
-  rightMid: [["playmaker", 0.6], ["defender", 0.28], ["finisher", 0.12]],
-  leftMid: [["playmaker", 0.6], ["defender", 0.28], ["finisher", 0.12]],
-  attackingMid: [["playmaker", 0.64], ["finisher", 0.36]],
-  rightWing: [["finisher", 0.62], ["playmaker", 0.38]],
-  leftWing: [["finisher", 0.62], ["playmaker", 0.38]],
-  striker: [["finisher", 0.88], ["playmaker", 0.12]],
-};
+/**
+ * Personalidades típicas por posição — enviesadas, não determinísticas.
+ *
+ * Eram duas tabelas: posição → função (`PlayerRole`) → personalidade. A função saiu do atleta e virou
+ * escolha do treinador, e com ela saiu a indireção: o que a primeira tabela de fato codificava era
+ * "onde ele joga sugere que tipo de gente ele é", que é o que sobrou escrito aqui, direto.
+ */
+const DEFENSIVE_MINDS: [MentalPreset, number][] = [["disciplined", 0.38], ["intense", 0.3], ["balanced", 0.2], ["cerebral", 0.12]];
+const CREATOR_MINDS: [MentalPreset, number][] = [["cerebral", 0.34], ["creative", 0.3], ["balanced", 0.22], ["disciplined", 0.14]];
+const ATTACKING_MINDS: [MentalPreset, number][] = [["bold", 0.36], ["creative", 0.28], ["intense", 0.2], ["balanced", 0.16]];
 
-// Personalidades típicas por função — enviesadas, não determinísticas.
-const PRESET_WEIGHTS: Record<PlayerRole, [MentalPreset, number][]> = {
-  defender: [["disciplined", 0.38], ["intense", 0.3], ["balanced", 0.2], ["cerebral", 0.12]],
-  playmaker: [["cerebral", 0.34], ["creative", 0.3], ["balanced", 0.22], ["disciplined", 0.14]],
-  finisher: [["bold", 0.36], ["creative", 0.28], ["intense", 0.2], ["balanced", 0.16]],
+const PRESET_WEIGHTS: Record<PlayerPosition, [MentalPreset, number][]> = {
+  goalkeeper: DEFENSIVE_MINDS,
+  centerBack: DEFENSIVE_MINDS,
+  rightBack: DEFENSIVE_MINDS,
+  leftBack: DEFENSIVE_MINDS,
+  defensiveMid: DEFENSIVE_MINDS,
+  centerMid: CREATOR_MINDS,
+  rightMid: CREATOR_MINDS,
+  leftMid: CREATOR_MINDS,
+  attackingMid: CREATOR_MINDS,
+  rightWing: ATTACKING_MINDS,
+  leftWing: ATTACKING_MINDS,
+  striker: ATTACKING_MINDS,
 };
 
 // Posições secundárias plausíveis: vizinhas na linha ou no corredor.
@@ -124,8 +126,8 @@ const generateSkills = (random: ContentRandom, position: PlayerPosition, quality
   return skills;
 };
 
-const generateMental = (random: ContentRandom, role: PlayerRole, quality: number): PlayerMentalAttributes => {
-  const preset = weightedPick(random, PRESET_WEIGHTS[role]);
+const generateMental = (random: ContentRandom, position: PlayerPosition, quality: number): PlayerMentalAttributes => {
+  const preset = weightedPick(random, PRESET_WEIGHTS[position]);
   const base = createMentalAttributes(preset);
   // Jogador melhor tende a decidir melhor, sem apagar o perfil do preset.
   const lift = (quality - 65) * 0.35;
@@ -156,7 +158,6 @@ export const generatePlayer = (
   options: PlayerGenerationOptions,
 ): PlayerProfile => {
   const { currentYear, nationality, position, quality } = options;
-  const role = position === "goalkeeper" ? "defender" : weightedPick(random, ROLE_WEIGHTS[position]);
   const age = options.age ?? generateAge(random);
   return {
     id: `player-${random.int(0, 0xffffff).toString(36)}${random.int(0, 0xffffff).toString(36)}`,
@@ -165,9 +166,8 @@ export const generatePlayer = (
     birthYear: currentYear - age,
     position,
     secondaryPositions: generateSecondaryPositions(random, position),
-    role,
     skills: generateSkills(random, position, quality),
-    mental: generateMental(random, role, quality),
+    mental: generateMental(random, position, quality),
   };
 };
 
